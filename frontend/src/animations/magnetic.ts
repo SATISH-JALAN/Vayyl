@@ -37,18 +37,6 @@ export function initMagneticButtons(): void {
     yTo(0);
   });
 
-  // ── ScrambleText on hover ──
-  ctaBtn.addEventListener('mouseenter', () => {
-    gsap.to(ctaText, {
-      scrambleText: {
-        text: originalText,
-        chars: '01█▓░',
-        revealDelay: 0.4,
-        speed: 0.4,
-      },
-      duration: 0.8,
-    });
-  });
 
   // ── Also apply to hero CTA ──
   const heroCta = document.getElementById('hero-cta');

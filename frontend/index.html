@@ -304,45 +304,40 @@
     </div>
   </section>
 
-  <!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-       TRUST / STELLAR
-       ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
   <section class="trust" id="trust">
-    <div class="trust__float trust__float--1" id="float-1"></div>
-    <div class="trust__float trust__float--2" id="float-2"></div>
-
-    <div class="trust__header">
-      <h2 class="display-h2">Proven primitives, production chain</h2>
-    </div>
-
-    <div class="trust__stats" id="trust-stats">
-      <div class="stat">
-        <div class="stat__value" data-target="100" data-prefix="<" data-suffix="M">
-          <span class="accent">&lt;</span> <span class="counter-value">0</span><span class="accent">M</span>
-        </div>
-        <p class="stat__label">instructions per proof — well within Soroban's transaction ceiling</p>
-        <div class="trust__divider"></div>
+    <div class="trust__inner">
+      <div class="trust__lead">
+        <h2 class="trust__title">Proven primitives,<br>production chain.</h2>
+        <p class="trust__description">
+          Vayyl settles on Stellar — fast finality, predictable costs, and an established validator network. The same chain already clearing billions in real-world assets.
+        </p>
       </div>
 
-      <div class="stat">
-        <div class="stat__value">
-          BN254 <span class="accent">+</span> Groth16
+      <div class="trust__grid" id="trust-stats">
+        <div class="trust__item">
+          <div class="trust__item-header">
+            <span class="trust__item-value" data-target="100" data-prefix="<" data-suffix="M">&lt; <span class="counter-value">0</span>M</span>
+            <span class="trust__item-label">Instructions</span>
+          </div>
+          <p class="trust__item-text">Well within Soroban's transaction ceiling per proof.</p>
         </div>
-        <p class="stat__label">Battle-tested curve and proof system with native Stellar host function support</p>
-        <div class="trust__divider"></div>
-      </div>
 
-      <div class="stat">
-        <div class="stat__value">
-          <span class="accent">9</span> contracts
+        <div class="trust__item">
+          <div class="trust__item-header">
+            <span class="trust__item-value">BN254 + Groth16</span>
+            <span class="trust__item-label">Cryptography</span>
+          </div>
+          <p class="trust__item-text">Battle-tested curve and proof system with native Stellar host function support.</p>
         </div>
-        <p class="stat__label">Modular architecture — per-asset pools, single verifier, composable settlement</p>
-        <div class="trust__divider"></div>
-      </div>
-    </div>
 
-    <div class="trust__bottom">
-      <p>Vayyl settles on Stellar — fast finality, predictable costs, an established validator network. The same chain already clearing billions in real-world assets.</p>
+        <div class="trust__item">
+          <div class="trust__item-header">
+            <span class="trust__item-value">9</span>
+            <span class="trust__item-label">Smart Contracts</span>
+          </div>
+          <p class="trust__item-text">Modular architecture — per-asset pools, single verifier, composable settlement.</p>
+        </div>
+      </div>
     </div>
   </section>
 

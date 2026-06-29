@@ -33,9 +33,8 @@ export function initDrawSVG(): void {
   const tl = gsap.timeline({
     scrollTrigger: {
       trigger: diagram,
-      start: 'top 70%',
-      end: 'bottom 30%',
-      scrub: 0.8,
+      start: 'top 80%',
+      toggleActions: 'play none none none',
     },
   });
 

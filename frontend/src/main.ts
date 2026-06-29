@@ -89,7 +89,7 @@ function initReducedMotion(): void {
 
   // Show feature cards
   gsap.set('.features__grid .card', { autoAlpha: 1, y: 0 });
-  gsap.set('.stat', { autoAlpha: 1, y: 0 });
+  gsap.set('.trust__item', { autoAlpha: 1, y: 0 });
 }
 
 // ── Entry ──
