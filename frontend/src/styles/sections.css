@@ -36,9 +36,19 @@
   justify-content: center;
   align-items: center;
   text-align: center;
-  background: var(--charcoal) url('/images/hero-bg.webp') center 75%/cover no-repeat;
+  background: var(--charcoal);
   overflow: hidden;
   padding: var(--space-20) var(--container-pad) var(--space-16);
+}
+
+.hero__video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 0;
+  pointer-events: none;
 }
 
 .hero__grain {
@@ -54,20 +64,21 @@
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(ellipse 70% 60% at 50% 50%, rgba(38, 35, 33, 0.4) 0%, rgba(38, 35, 33, 0.8) 100%);
+    linear-gradient(to bottom, transparent 95%, var(--bg-primary) 100%),
+    radial-gradient(ellipse 80% 80% at 50% 50%, rgba(15, 12, 16, 0.2) 0%, rgba(15, 12, 16, 0.7) 100%);
   z-index: 1;
   pointer-events: none;
 }
 
 .hero__orb {
   position: absolute;
-  width: 50vw;
-  height: 50vw;
-  max-width: 600px;
-  max-height: 600px;
+  width: 60vw;
+  height: 60vw;
+  max-width: 800px;
+  max-height: 800px;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(244, 111, 115, 0.15) 0%, transparent 70%);
-  filter: blur(60px);
+  background: radial-gradient(circle, rgba(160, 120, 255, 0.25) 0%, rgba(255, 140, 180, 0.1) 40%, transparent 70%);
+  filter: blur(80px);
   z-index: 1;
   pointer-events: none;
   top: 50%;
@@ -90,6 +101,16 @@
 .hero__title {
   margin-bottom: var(--space-8);
   overflow: hidden;
+  /* GSAP SplitText creates child divs, so we apply the text-shadow here... */
+  text-shadow: 0 4px 15px rgba(0, 0, 0, 0.6);
+}
+
+/* ...and apply the background-clip gradient to all child text wrappers so they don't vanish */
+.hero__title * {
+  background: linear-gradient(135deg, #ffffff 10%, #fce7e9 50%, #e4d7ec 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
 .hero__subtitle {
@@ -97,7 +118,8 @@
   font-size: clamp(1rem, 1.4vw, 1.25rem);
   font-weight: 300;
   line-height: var(--leading-relaxed);
-  color: rgba(248, 246, 243, 0.55);
+  color: var(--ivory);
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.6);
   max-width: 52ch;
   margin-inline: auto;
   margin-bottom: var(--space-12);
