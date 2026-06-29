@@ -1,0 +1,105 @@
+/* ── Design Tokens ── */
+
+:root {
+  /* ── Palette ── */
+  --ivory:       #F8F6F3;
+  --charcoal:    #262321;
+  --coral:       #F46F73;
+  --burnt-clay:  #B96858;
+  --stone:       #938B85;
+  --linen:       #F2EEEA;
+  --dusty-rose:  #CF5059;
+  --taupe:       #655D58;
+  --sand:        #DED5CF;
+  --beige:       #C8BCB4;
+
+  /* Status (muted, not saturated) */
+  --success:     #607C5C;
+  --warning:     #C48B48;
+  --error:       #B5524E;
+  --info:        #7B726D;
+
+  /* ── Semantic color assignments ── */
+  --bg-primary:    var(--ivory);
+  --bg-dark:       var(--charcoal);
+  --bg-subtle:     var(--linen);
+  --text-primary:  var(--charcoal);
+  --text-inverse:  var(--ivory);
+  --text-muted:    var(--stone);
+  --text-body:     var(--taupe);
+  --accent:        var(--coral);
+  --accent-deep:   var(--burnt-clay);
+
+  /* ── Type Scale ── */
+  --font-display:  'Cormorant Garamond', Georgia, 'Times New Roman', serif;
+  --font-body:     'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono:     'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+
+  --text-hero:     clamp(3.5rem, 7.5vw, 7rem);
+  --text-h1:       clamp(2.5rem, 5vw, 4.5rem);
+  --text-h2:       clamp(1.875rem, 3.5vw, 3rem);
+  --text-h3:       clamp(1.25rem, 2vw, 1.5rem);
+  --text-body:     clamp(1rem, 1.125vw, 1.125rem);
+  --text-small:    0.9375rem;
+  --text-caption:  0.8125rem;
+  --text-mono:     0.875rem;
+
+  --leading-tight:   1.1;
+  --leading-display: 1.15;
+  --leading-body:    1.7;
+  --leading-relaxed: 1.85;
+
+  --tracking-tight:  -0.02em;
+  --tracking-normal: 0;
+  --tracking-wide:   0.06em;
+  --tracking-caps:   0.1em;
+
+  /* ── Spacing (4px base grid) ── */
+  --space-1:   0.25rem;   /*  4px */
+  --space-2:   0.5rem;    /*  8px */
+  --space-3:   0.75rem;   /* 12px */
+  --space-4:   1rem;      /* 16px */
+  --space-5:   1.25rem;   /* 20px */
+  --space-6:   1.5rem;    /* 24px */
+  --space-8:   2rem;      /* 32px */
+  --space-10:  2.5rem;    /* 40px */
+  --space-12:  3rem;      /* 48px */
+  --space-16:  4rem;      /* 64px */
+  --space-20:  5rem;      /* 80px */
+  --space-24:  6rem;      /* 96px */
+  --space-32:  8rem;      /* 128px */
+  --space-40:  10rem;     /* 160px */
+
+  /* ── Radii ── */
+  --radius-s:    4px;
+  --radius-m:    8px;
+  --radius-l:    16px;
+  --radius-xl:   24px;
+  --radius-full: 9999px;
+
+  /* ── Shadows ── */
+  --shadow-subtle:  0 1px 3px rgba(38, 35, 33, 0.04), 0 1px 2px rgba(38, 35, 33, 0.06);
+  --shadow-medium:  0 4px 16px rgba(38, 35, 33, 0.06), 0 2px 4px rgba(38, 35, 33, 0.04);
+  --shadow-lifted:  0 12px 40px rgba(38, 35, 33, 0.08), 0 4px 12px rgba(38, 35, 33, 0.04);
+  --shadow-glow:    0 0 40px rgba(244, 111, 115, 0.15);
+
+  /* ── Transitions ── */
+  --ease-out:     cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  --ease-out-expo: cubic-bezier(0.19, 1, 0.22, 1);
+  --ease-in-out:  cubic-bezier(0.76, 0, 0.24, 1);
+  --dur-fast:     150ms;
+  --dur-normal:   300ms;
+  --dur-slow:     600ms;
+
+  /* ── Z-index scale ── */
+  --z-base:      1;
+  --z-dropdown:  10;
+  --z-sticky:    20;
+  --z-overlay:   30;
+  --z-modal:     40;
+  --z-preloader: 100;
+
+  /* ── Container ── */
+  --container-max: 1360px;
+  --container-pad: clamp(var(--space-5), 4vw, var(--space-12));
+}

@@ -1,0 +1,32 @@
+/* ── Master Stylesheet ── */
+
+@import './reset.css';
+@import './tokens.css';
+@import './typography.css';
+@import './layout.css';
+@import './components.css';
+@import './sections.css';
+
+/* ── Global ── */
+
+html {
+  background: var(--charcoal);
+}
+
+body {
+  background: var(--bg-primary);
+}
+
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+  pointer-events: none;
+  z-index: 9999;
+}
+
+/* GSAP SplitText mask lines need overflow clip */
+.split-mask .line {
+  overflow: clip;
+}
