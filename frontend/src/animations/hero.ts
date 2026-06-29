@@ -21,6 +21,24 @@ export function initHeroAnimations(): gsap.core.Timeline {
     ease: 'power2.out',
   });
 
+  // ── Orb reveal and continuous rotation ──
+  tl.to(
+    '#hero-orb',
+    {
+      autoAlpha: 1,
+      duration: 2,
+      ease: 'power2.out',
+    },
+    0 // start immediately
+  );
+  
+  gsap.to('#hero-orb', {
+    rotation: 360,
+    duration: 30,
+    repeat: -1,
+    ease: 'none',
+  });
+
   // ── Headline character reveal ──
   const heroTitle = document.getElementById('hero-title');
   if (heroTitle) {
@@ -32,12 +50,14 @@ export function initHeroAnimations(): gsap.core.Timeline {
     tl.from(
       split.chars,
       {
-        yPercent: 110,
-        duration: 0.8,
-        ease: 'power3.out',
-        stagger: 0.035,
+        yPercent: 120,
+        opacity: 0,
+        filter: 'blur(10px)',
+        duration: 1.2,
+        ease: 'power4.out',
+        stagger: 0.05,
       },
-      '-=0.3'
+      '-=0.2'
     );
   }
 
@@ -105,7 +125,21 @@ export function initHeroAnimations(): gsap.core.Timeline {
   });
 
   gsap.to('.hero__line', {
-    y: 40,
+    y: 80,
+    ease: 'none',
+    scrollTrigger: {
+      trigger: '.hero',
+      start: 'top top',
+      end: 'bottom top',
+      scrub: 1,
+    },
+  });
+
+  // ── Orb parallax on scroll ──
+  gsap.to('#hero-orb', {
+    y: 150,
+    scale: 0.8,
+    opacity: 0.5,
     ease: 'none',
     scrollTrigger: {
       trigger: '.hero',

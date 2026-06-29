@@ -12,28 +12,53 @@ export function initCurtainReveal(): void {
   const section = document.getElementById('about');
   if (!section) return;
 
+  const textEl = curtain.querySelector('.reveal__curtain-text');
+  let wordSpans: NodeListOf<HTMLSpanElement> | null = null;
+
+  if (textEl) {
+    const text = textEl.textContent?.trim() || '';
+    const words = text.split(/\s+/);
+    textEl.innerHTML = words
+      .map((word) => `<span class="word" style="opacity: 0; transform: translateY(20px) scale(0.95); filter: blur(10px); display: inline-block; will-change: transform, opacity, filter;">${word}</span>`)
+      .join(' ');
+    wordSpans = textEl.querySelectorAll<HTMLSpanElement>('.word');
+  }
+
   const tl = gsap.timeline({
     scrollTrigger: {
       trigger: section,
       start: 'top top',
-      end: '+=120%',
+      end: '+=190%', // Balanced scroll distance
       pin: true,
-      scrub: 0.6,
+      scrub: 1, // Increased scrub smoothing so the animation feels more gradual and premium
     },
   });
 
-  // Fade out the curtain text first
-  tl.to('.reveal__curtain-text', {
-    autoAlpha: 0,
-    y: -30,
-    duration: 0.3,
-    ease: 'power2.in',
-  });
+  if (wordSpans && wordSpans.length > 0) {
+    // Reveal text word by word (cinematic blur & scale)
+    tl.to(wordSpans, {
+      opacity: 1,
+      y: 0,
+      scale: 1,
+      filter: 'blur(0px)',
+      duration: 1.8,
+      stagger: 0.08,
+      ease: 'power3.out',
+    });
 
-  // Wipe the curtain from left to right using clip-path
+    // Hold text so user can read it
+    tl.to({}, { duration: 1.0 });
+
+    // Removed text fade out to allow the clip-path to slice through it
+  } else {
+    // Fallback if no text element is found (just hold)
+    tl.to({}, { duration: 0.5 });
+  }
+
+  // Wipe the curtain from right to left using an expanding circular slice
   tl.to(curtain, {
-    clipPath: 'inset(0 0 0 100%)',
-    duration: 1,
+    clipPath: 'circle(0% at 0% 50%)',
+    duration: 2,
     ease: 'power2.inOut',
   });
 
@@ -42,11 +67,11 @@ export function initCurtainReveal(): void {
     '.reveal__text-block',
     {
       autoAlpha: 0,
-      x: -40,
-      duration: 0.6,
+      x: -60,
+      duration: 1,
       ease: 'power2.out',
     },
-    '-=0.4'
+    '-=1.2'
   );
 
   tl.from(
@@ -54,12 +79,12 @@ export function initCurtainReveal(): void {
     {
       autoAlpha: 0,
       scale: 0.95,
-      duration: 0.6,
+      duration: 1,
       ease: 'power2.out',
     },
-    '-=0.4'
+    '-=1.2'
   );
 
-  // Hold briefly
+  // Hold briefly before unpinning
   tl.to({}, { duration: 0.3 });
 }
