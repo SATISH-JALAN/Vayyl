@@ -1,7 +1,54 @@
+# Dependencies
 node_modules/
-dist/
-.env
+target/
 
-# Agent/Docs
-/docs/
+# Build outputs
+dist/
+*.wasm
+*.r1cs
+
+# Environment
+.env
+.env.local
+
+# Agent customizations
 /.agents/
+
+# Circom build artifacts
+circuits/build/
+*.sym
+*.wtns
+*.zkey
+*.ptau
+*.json.bak
+
+# Powers of Tau ceremony files (too large for git)
+*.ptau
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Rust
+contracts/target/
+backend/proof-bridge/target/
+
+# Postgres data
+pgdata/
+
+# Lock files (keep pnpm-lock, ignore others)
+package-lock.json
+yarn.lock
+
+# External upstream reference repository (cloned for parameter generation/testing)
+rs-soroban-poseidon/
+
+# Internal project documentation
+docs/
+

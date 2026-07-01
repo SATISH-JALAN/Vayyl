@@ -1,0 +1,26 @@
+[workspace]
+resolver = "2"
+members = [
+    "vayyl-pool-factory",
+    "vayyl-pool",
+    "groth16-verifier",
+    "asp-membership",
+    "asp-non-membership",
+    "position-manager",
+    "liquidation-engine",
+    "hidden-order-registry",
+    "agentic-settlement-hub",
+]
+
+[workspace.dependencies]
+soroban-sdk = "25.0.0"
+
+[profile.release]
+opt-level = "z"
+overflow-checks = true
+debug = 0
+strip = "symbols"
+debug-assertions = false
+panic = "abort"
+codegen-units = 1
+lto = true
