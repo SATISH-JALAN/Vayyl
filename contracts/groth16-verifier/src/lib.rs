@@ -2,10 +2,11 @@
 
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype,
-    crypto::Hash,
-    log, symbol_short,
-    Address, Bytes, BytesN, Env, Map, Vec,
+    crypto::bn254::{Bn254G1Affine, Bn254G2Affine, Fr},
+    log,
+    Address, BytesN, Env, Vec,
 };
+use core::ops::Neg;
 
 /// Circuit identifiers for different proof types
 #[contracttype]
@@ -35,20 +36,22 @@ pub enum DataKey {
 }
 
 /// Verification key components for Groth16/BN254
-/// Stored as raw bytes for the native host functions
+/// Points stored as raw bytes in Ethereum-compatible uncompressed format:
+///   G1: 64 bytes = be(x) || be(y)
+///   G2: 128 bytes = be(x_c1) || be(x_c0) || be(y_c1) || be(y_c0)
 #[contracttype]
 #[derive(Clone, Debug)]
 pub struct VerificationKey {
-    /// α ∈ G1 (64 bytes: x, y as 32-byte big-endian)
+    /// α ∈ G1 (64 bytes)
     pub alpha_g1: BytesN<64>,
-    /// β ∈ G2 (128 bytes: x0, x1, y0, y1 as 32-byte big-endian)
+    /// β ∈ G2 (128 bytes)
     pub beta_g2: BytesN<128>,
     /// γ ∈ G2 (128 bytes)
     pub gamma_g2: BytesN<128>,
     /// δ ∈ G2 (128 bytes)
     pub delta_g2: BytesN<128>,
     /// IC points ∈ G1[] — one per public input + 1
-    /// Each is 64 bytes (x, y)
+    /// Each is 64 bytes
     pub ic: Vec<BytesN<64>>,
 }
 
@@ -88,7 +91,6 @@ pub struct Groth16VerifierContract;
 impl Groth16VerifierContract {
     /// Initialize the verifier with an admin address
     pub fn initialize(env: Env, admin: Address) -> Result<(), Error> {
-        // Only allow initialization once
         if env.storage().instance().has(&DataKey::Admin) {
             return Err(Error::Unauthorized);
         }
@@ -97,7 +99,7 @@ impl Groth16VerifierContract {
     }
 
     /// Register a verification key for a circuit.
-    /// Admin-gated. Asserts gamma ≠ delta (prevents unrandomized Phase-2 forgery).
+    /// Admin-gated. Asserts gamma ≠ delta (prevents Veil Cash / FoomCash forgery bug).
     pub fn set_vk(env: Env, circuit_id: CircuitId, vk: VerificationKey) -> Result<(), Error> {
         let admin: Address = env
             .storage()
@@ -107,9 +109,6 @@ impl Groth16VerifierContract {
         admin.require_auth();
 
         // CRITICAL: gamma ≠ delta assertion
-        // This single check prevents the Veil Cash / FoomCash bug where
-        // an unrandomized Phase-2 trusted setup leaves gamma == delta,
-        // allowing any proof to forge-verify.
         if vk.gamma_g2 == vk.delta_g2 {
             log!(&env, "SECURITY: Rejected VK with gamma == delta for circuit {:?}", circuit_id);
             return Err(Error::GammaEqualsDelta);
@@ -124,7 +123,7 @@ impl Groth16VerifierContract {
             .instance()
             .set(&DataKey::Vk(circuit_id.clone()), &vk);
 
-        log!(&env, "VK registered for circuit {:?}, {} public inputs", 
+        log!(&env, "VK registered for circuit {:?}, {} public inputs",
              circuit_id, vk.ic.len() - 1);
 
         Ok(())
@@ -132,14 +131,15 @@ impl Groth16VerifierContract {
 
     /// Verify a Groth16 proof against registered VK for the given circuit.
     ///
-    /// Uses native BN254 host functions:
-    /// - `bn254_g1_mul` for scalar multiplication
-    /// - `bn254_g1_add` for point addition  
-    /// - `bn254_g1_msm` for multi-scalar multiplication (public input aggregation)
-    /// - `bn254_multi_pairing_check` for the final verification equation
+    /// Uses native BN254 host functions via `env.crypto().bn254()`:
+    /// - `g1_mul` for scalar multiplication
+    /// - `g1_add` for point addition
+    /// - `Neg` trait on `Bn254G1Affine` for point negation
+    /// - `pairing_check` for the final verification equation
     ///
-    /// The Groth16 verification equation is:
-    ///   e(A, B) = e(α, β) · e(vk_x, γ) · e(C, δ)
+    /// The Groth16 verification equation:
+    ///   e(A, B) · e(-α, β) · e(-vk_x, γ) · e(-C, δ) == 1
+    ///
     /// where vk_x = IC[0] + Σ(public_input[i] · IC[i+1])
     pub fn verify(
         env: Env,
@@ -154,66 +154,72 @@ impl Groth16VerifierContract {
             .ok_or(Error::VkNotFound)?;
 
         // Check public input count matches VK
-        // IC has (num_public_inputs + 1) entries
         let expected_inputs = vk.ic.len() - 1;
         if public_inputs.len() != expected_inputs {
             return Err(Error::PublicInputMismatch);
         }
 
+        let bn254 = env.crypto().bn254();
+
         // Step 1: Compute vk_x = IC[0] + Σ(public_input[i] · IC[i+1])
-        // Using MSM (multi-scalar multiplication) for efficiency
-        //
-        // For the MSM: we need to multiply each IC[i+1] by public_input[i]
-        // then add IC[0] to the result.
-        //
-        // The native bn254_g1_msm takes:
-        //   - points: serialized G1 points (64 bytes each)
-        //   - scalars: serialized scalars (32 bytes each)
-        // and returns the sum of scalar*point products.
+        let mut vk_x = Bn254G1Affine::from_bytes(vk.ic.get(0).unwrap());
 
-        // Collect IC points (IC[1..]) and scalars (public_inputs) for MSM
-        let num_inputs = public_inputs.len();
+        for i in 0..public_inputs.len() {
+            let ic_point = Bn254G1Affine::from_bytes(
+                vk.ic.get(i + 1).ok_or(Error::PublicInputMismatch)?
+            );
+            let scalar = Fr::from_bytes(
+                public_inputs.get(i).ok_or(Error::PublicInputMismatch)?
+            );
 
-        if num_inputs > 0 {
-            // Build point and scalar arrays for MSM
-            let mut msm_points = Bytes::new(&env);
-            let mut msm_scalars = Bytes::new(&env);
-
-            for i in 0..num_inputs {
-                let ic_point: BytesN<64> = vk.ic.get(i + 1).ok_or(Error::PublicInputMismatch)?;
-                let scalar: BytesN<32> = public_inputs.get(i).ok_or(Error::PublicInputMismatch)?;
-                msm_points.append(&Bytes::from_slice(&env, ic_point.to_array().as_slice()));
-                msm_scalars.append(&Bytes::from_slice(&env, scalar.to_array().as_slice()));
-            }
-
-            // Compute MSM: Σ(public_input[i] · IC[i+1])
-            let msm_result = env.crypto().bls12_381(); // placeholder — actual BN254 API below
-            // NOTE: The actual Soroban BN254 API uses:
-            //   env.crypto().bn254().g1_msm(points, scalars) -> BytesN<64>
-            //   env.crypto().bn254().g1_add(p1, p2) -> BytesN<64>
-            //   env.crypto().bn254().multi_pairing_check(pairs) -> bool
-            //
-            // The exact API surface depends on the soroban-sdk version.
-            // This is a structural placeholder — the logic is correct,
-            // the actual host function bindings will be confirmed against
-            // the SDK source in Sprint 1.
-            
-            // TODO: Replace with actual bn254_g1_msm call when SDK API is confirmed
-            // let msm_result = env.crypto().bn254().g1_msm(&msm_points, &msm_scalars);
-            // let vk_x = env.crypto().bn254().g1_add(&vk.ic.get(0).unwrap(), &msm_result);
+            // scalar * IC[i+1]
+            let product = bn254.g1_mul(&ic_point, &scalar);
+            // accumulate: vk_x = vk_x + product
+            vk_x = bn254.g1_add(&vk_x, &product);
         }
 
         // Step 2: Prepare pairing check inputs
-        // Groth16 verification: e(A, B) · e(-α, β) · e(-vk_x, γ) · e(-C, δ) == 1
-        // Equivalently via multi_pairing_check:
-        //   multi_pairing_check([(A, B), (neg_alpha, beta), (neg_vk_x, gamma), (neg_C, delta)])
-        //
-        // TODO: Implement once bn254 API surface is confirmed from SDK source
-        // For now, this contract compiles and demonstrates the architecture.
+        // Groth16: e(A, B) · e(-α, β) · e(-vk_x, γ) · e(-C, δ) == 1
 
-        log!(&env, "Groth16 verification for circuit {:?} — API binding pending", circuit_id);
+        let proof_a = Bn254G1Affine::from_bytes(proof.a);
+        let proof_b = Bn254G2Affine::from_bytes(proof.b);
+        let proof_c = Bn254G1Affine::from_bytes(proof.c);
 
-        // Placeholder return — will be replaced with actual pairing check
+        let alpha_g1 = Bn254G1Affine::from_bytes(vk.alpha_g1);
+        let beta_g2 = Bn254G2Affine::from_bytes(vk.beta_g2);
+        let gamma_g2 = Bn254G2Affine::from_bytes(vk.gamma_g2);
+        let delta_g2 = Bn254G2Affine::from_bytes(vk.delta_g2);
+
+        // Negate G1 points using the Neg trait: -P = (x, p - y)
+        let neg_alpha = alpha_g1.neg();
+        let neg_vk_x = vk_x.neg();
+        let neg_c = proof_c.neg();
+
+        // Build pairing check vectors
+        let mut g1_vec: Vec<Bn254G1Affine> = Vec::new(&env);
+        let mut g2_vec: Vec<Bn254G2Affine> = Vec::new(&env);
+
+        g1_vec.push_back(proof_a);       // A
+        g2_vec.push_back(proof_b);       // B
+
+        g1_vec.push_back(neg_alpha);     // -α
+        g2_vec.push_back(beta_g2);       // β
+
+        g1_vec.push_back(neg_vk_x);     // -vk_x
+        g2_vec.push_back(gamma_g2);      // γ
+
+        g1_vec.push_back(neg_c);         // -C
+        g2_vec.push_back(delta_g2);      // δ
+
+        // Step 3: Execute pairing check
+        let result = bn254.pairing_check(g1_vec, g2_vec);
+
+        if !result {
+            log!(&env, "Groth16 verification FAILED for circuit {:?}", circuit_id);
+            return Err(Error::ProofInvalid);
+        }
+
+        log!(&env, "Groth16 verification PASSED for circuit {:?}", circuit_id);
         Ok(true)
     }
 
@@ -282,5 +288,17 @@ mod test {
         // Should be rejected
         let result = client.try_set_vk(&CircuitId::Deposit, &vk);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_has_vk_false_initially() {
+        let env = Env::default();
+        let contract_id = env.register(Groth16VerifierContract, ());
+        let client = Groth16VerifierContractClient::new(&env, &contract_id);
+
+        let admin = Address::generate(&env);
+        client.initialize(&admin);
+
+        assert!(!client.has_vk(&CircuitId::Deposit));
     }
 }
