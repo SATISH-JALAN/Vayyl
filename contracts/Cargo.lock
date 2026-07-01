@@ -191,6 +191,7 @@ checksum = "f02882884d3e1bc524fb12c79f107f6ad0e1cfd498c536ffb494301740995dfe"
 name = "asp-membership"
 version = "0.1.0"
 dependencies = [
+ "soroban-poseidon",
  "soroban-sdk",
 ]
 
@@ -198,6 +199,7 @@ dependencies = [
 name = "asp-non-membership"
 version = "0.1.0"
 dependencies = [
+ "soroban-poseidon",
  "soroban-sdk",
 ]
 

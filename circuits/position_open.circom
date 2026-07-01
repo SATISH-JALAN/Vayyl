@@ -34,10 +34,10 @@ template PositionOpen(depth) {
     signal meta_hash_sq <== meta_hash * meta_hash;
     
     // 2. Validate Public Key derivation
-    component pubKeyDerivation = BabyPbk();
-    pubKeyDerivation.in <== privKey;
-    pubKeyDerivation.Ax === pubX;
-    pubKeyDerivation.Ay === pubY;
+    component pubKeyDerivation = DerivePublicKey();
+    pubKeyDerivation.privKey <== privKey;
+    pubKeyDerivation.pubX === pubX;
+    pubKeyDerivation.pubY === pubY;
 
     // 3. Note Commitment & Nullifier
     component note = NoteCommitment();

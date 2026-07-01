@@ -2,7 +2,7 @@
 
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype,
-    crypto::bn254::{Bn254G1Affine, Bn254G2Affine, Fr},
+    crypto::bn254::{Bn254G1Affine, Bn254G2Affine, Bn254Fr},
     log,
     Address, BytesN, Env, Vec,
 };
@@ -120,7 +120,7 @@ impl Groth16VerifierContract {
             let ic_point = Bn254G1Affine::from_bytes(
                 vk.ic.get(i + 1).ok_or(Error::PublicInputMismatch)?
             );
-            let scalar = Fr::from_bytes(
+            let scalar = Bn254Fr::from_bytes(
                 public_inputs.get(i).ok_or(Error::PublicInputMismatch)?
             );
 

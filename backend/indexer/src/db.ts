@@ -1,0 +1,88 @@
+import pg from 'pg';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const { Pool } = pg;
+
+export class Database {
+    private pool: pg.Pool;
+
+    constructor(connectionString: string) {
+        this.pool = new Pool({
+            connectionString,
+        });
+    }
+
+    async init() {
+        const __filename = fileURLToPath(import.meta.url);
+        const __dirname = path.dirname(__filename);
+        const schema = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
+        await this.pool.query(schema);
+        console.log('Database initialized with schema');
+    }
+
+    async getLastLedger(): Promise<number> {
+        const result = await this.pool.query(
+            'SELECT value FROM indexer_state WHERE key = $1',
+            ['last_ledger']
+        );
+        if (result.rows.length > 0) {
+            return parseInt(result.rows[0].value, 10);
+        }
+        return 0; // Or genesis ledger if known
+    }
+
+    async setLastLedger(ledger: number) {
+        await this.pool.query(
+            `INSERT INTO indexer_state (key, value) VALUES ('last_ledger', $1)
+             ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
+            [ledger.toString()]
+        );
+    }
+
+    async insertCommitment(
+        poolAddress: string,
+        commitmentHash: string,
+        leafIndex: number,
+        txHash: string,
+        ledgerSeq: number
+    ) {
+        await this.pool.query(
+            `INSERT INTO commitments (pool_address, commitment_hash, leaf_index, tx_hash, ledger_sequence)
+             VALUES ($1, $2, $3, $4, $5)
+             ON CONFLICT DO NOTHING`,
+            [poolAddress, commitmentHash, leafIndex, txHash, ledgerSeq]
+        );
+    }
+
+    async insertNullifier(
+        poolAddress: string,
+        nullifierHash: string,
+        txHash: string,
+        ledgerSeq: number
+    ) {
+        await this.pool.query(
+            `INSERT INTO nullifiers (pool_address, nullifier_hash, tx_hash, ledger_sequence)
+             VALUES ($1, $2, $3, $4)
+             ON CONFLICT DO NOTHING`,
+            [poolAddress, nullifierHash, txHash, ledgerSeq]
+        );
+    }
+
+    async getCommitments(poolAddress: string): Promise<string[]> {
+        const result = await this.pool.query(
+            'SELECT commitment_hash FROM commitments WHERE pool_address = $1 ORDER BY leaf_index ASC',
+            [poolAddress]
+        );
+        return result.rows.map(r => r.commitment_hash);
+    }
+
+    async getNullifiers(poolAddress: string): Promise<string[]> {
+        const result = await this.pool.query(
+            'SELECT nullifier_hash FROM nullifiers WHERE pool_address = $1',
+            [poolAddress]
+        );
+        return result.rows.map(r => r.nullifier_hash);
+    }
+}
