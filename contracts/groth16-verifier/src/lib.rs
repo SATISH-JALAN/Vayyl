@@ -8,23 +8,7 @@ use soroban_sdk::{
 };
 use core::ops::Neg;
 
-/// Circuit identifiers for different proof types
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum CircuitId {
-    Deposit,
-    Transfer,
-    Withdraw,
-    PositionOpen,
-    PositionHealth,
-    PositionClose,
-    LiquidationHeartbeat,
-    HiddenOrderTrigger,
-    MultiLegBasket,
-    AspMembership,
-    AspNonMembership,
-    SealedOrder,
-}
+use vayyl_types::{CircuitId, Groth16Proof, VerificationKey};
 
 /// Storage keys
 #[contracttype]
@@ -33,38 +17,6 @@ pub enum DataKey {
     Admin,
     /// Verification key for a specific circuit
     Vk(CircuitId),
-}
-
-/// Verification key components for Groth16/BN254
-/// Points stored as raw bytes in Ethereum-compatible uncompressed format:
-///   G1: 64 bytes = be(x) || be(y)
-///   G2: 128 bytes = be(x_c1) || be(x_c0) || be(y_c1) || be(y_c0)
-#[contracttype]
-#[derive(Clone, Debug)]
-pub struct VerificationKey {
-    /// α ∈ G1 (64 bytes)
-    pub alpha_g1: BytesN<64>,
-    /// β ∈ G2 (128 bytes)
-    pub beta_g2: BytesN<128>,
-    /// γ ∈ G2 (128 bytes)
-    pub gamma_g2: BytesN<128>,
-    /// δ ∈ G2 (128 bytes)
-    pub delta_g2: BytesN<128>,
-    /// IC points ∈ G1[] — one per public input + 1
-    /// Each is 64 bytes
-    pub ic: Vec<BytesN<64>>,
-}
-
-/// Proof components for Groth16/BN254
-#[contracttype]
-#[derive(Clone, Debug)]
-pub struct Groth16Proof {
-    /// A ∈ G1 (64 bytes)
-    pub a: BytesN<64>,
-    /// B ∈ G2 (128 bytes)
-    pub b: BytesN<128>,
-    /// C ∈ G1 (64 bytes)
-    pub c: BytesN<64>,
 }
 
 #[contracterror]

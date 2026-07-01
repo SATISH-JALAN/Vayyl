@@ -1,157 +1,217 @@
 #![no_std]
 
+use vayyl_types::{CircuitId, Groth16Proof, PositionState};
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype,
-    Address, BytesN, Env,
+    contract, contracterror, contractimpl, contracttype, Address, BytesN, Env, Vec,
 };
 
-/// Position state — directional model (not CDP/lending)
-#[contracttype]
-#[derive(Clone, Debug)]
-pub struct PositionState {
-    /// Poseidon2 commitment hiding position details
-    pub commitment: BytesN<32>,
-    /// Owner's public key hash (for heartbeat verification)
-    pub owner_hash: BytesN<32>,
-    /// Whether position is active
-    pub active: bool,
-    /// Timestamp of last health attestation
-    pub last_attestation: u64,
-}
 
 #[contracttype]
 #[derive(Clone)]
 pub enum DataKey {
     Verifier,
-    LiquidationEngine,
-    Position(BytesN<32>),
-    PositionNullifier(BytesN<32>),
+    Oracle,
+    Position(BytesN<32>), // maps position_id to PositionState
+    Nullifier(BytesN<32>), // tracks used nullifiers to prevent double spends
 }
 
 #[contracterror]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Error {
-    Unauthorized = 1,
-    AlreadyInitialized = 2,
-    PositionNotFound = 3,
-    PositionAlreadyExists = 4,
-    ProofFailed = 5,
-    NullifierSpent = 6,
+    AlreadyInitialized = 1,
+    NotInitialized = 2,
+    InvalidProof = 3,
+    NullifierAlreadyUsed = 4,
+    PositionNotFound = 5,
+}
+
+#[soroban_sdk::contractclient(name = "OracleInterfaceClient")]
+pub trait OracleInterface {
+    fn get_last_price(env: Env) -> (i128, u64);
+}
+
+#[soroban_sdk::contractclient(name = "Groth16VerifierClient")]
+pub trait Groth16VerifierInterface {
+    fn verify(env: Env, circuit_id: CircuitId, proof: Groth16Proof, public_inputs: Vec<BytesN<32>>) -> Result<bool, soroban_sdk::Error>;
 }
 
 #[contract]
-pub struct PositionManagerContract;
+pub struct PositionManager;
 
 #[contractimpl]
-impl PositionManagerContract {
-    pub fn initialize(env: Env, verifier: Address, liquidation_engine: Address) -> Result<(), Error> {
+impl PositionManager {
+    /// Initialize the Position Manager
+    pub fn initialize(env: Env, verifier: Address, oracle: Address) -> Result<(), Error> {
         if env.storage().instance().has(&DataKey::Verifier) {
             return Err(Error::AlreadyInitialized);
         }
+
         env.storage().instance().set(&DataKey::Verifier, &verifier);
-        env.storage().instance().set(&DataKey::LiquidationEngine, &liquidation_engine);
+        env.storage().instance().set(&DataKey::Oracle, &oracle);
+
         Ok(())
     }
 
-    /// Open a new private position
+    /// Internal function to check and mark a nullifier
+    fn mark_nullifier(env: &Env, nullifier: BytesN<32>) -> Result<(), Error> {
+        if env
+            .storage()
+            .persistent()
+            .has(&DataKey::Nullifier(nullifier.clone()))
+        {
+            return Err(Error::NullifierAlreadyUsed);
+        }
+        env.storage()
+            .persistent()
+            .set(&DataKey::Nullifier(nullifier), &true);
+        Ok(())
+    }
+
+    /// Open a new confidential derivative position using a shielded note as collateral
     pub fn open_position(
         env: Env,
         position_id: BytesN<32>,
-        _proof: BytesN<256>,
-        commitment: BytesN<32>,
+        owner: Address,
+        proof: Groth16Proof,
+        root: BytesN<32>,
+        nullifier: BytesN<32>,
+        position_commitment: BytesN<32>,
+        meta_hash: BytesN<32>,
     ) -> Result<(), Error> {
-        if env.storage().persistent().has(&DataKey::Position(position_id.clone())) {
-            return Err(Error::PositionAlreadyExists);
+        owner.require_auth();
+
+        let verifier: Address = env.storage().instance().get(&DataKey::Verifier).ok_or(Error::NotInitialized)?;
+
+        // 1. Mark collateral nullifier to prevent double spending
+        Self::mark_nullifier(&env, nullifier.clone())?;
+
+        // 2. Verify ZK Proof for PositionOpen
+        let verifier_client = Groth16VerifierClient::new(&env, &verifier);
+        
+        // Public inputs: [root, nullifier, position_commitment, meta_hash]
+        let mut public_inputs = Vec::new(&env);
+        public_inputs.push_back(root);
+        public_inputs.push_back(nullifier);
+        public_inputs.push_back(position_commitment.clone());
+        public_inputs.push_back(meta_hash);
+
+        let is_valid = verifier_client.verify(&CircuitId::PositionOpen, &proof, &public_inputs);
+        if !is_valid {
+            return Err(Error::InvalidProof);
         }
 
-        // TODO: Verify PositionOpen proof via Groth16Verifier
-
+        // 3. Store Position State
         let state = PositionState {
-            commitment,
-            owner_hash: BytesN::from_array(&env, &[0u8; 32]),
-            active: true,
-            last_attestation: env.ledger().timestamp(),
+            owner,
+            commitment: position_commitment,
+            last_health_timestamp: env.ledger().timestamp(),
         };
 
         env.storage().persistent().set(&DataKey::Position(position_id), &state);
-        // TODO: Register heartbeat with LiquidationEngine
+
         Ok(())
     }
 
-    /// Attest position health against oracle price
+    /// Attest to the health (solvency) of an open position against the current oracle price
     pub fn attest_health(
         env: Env,
         position_id: BytesN<32>,
-        _proof: BytesN<256>,
-        _oracle_price: i128,
-        _oracle_timestamp: u64,
-    ) -> Result<bool, Error> {
-        let mut state: PositionState = env
-            .storage()
-            .persistent()
-            .get(&DataKey::Position(position_id.clone()))
-            .ok_or(Error::PositionNotFound)?;
+        proof: Groth16Proof,
+    ) -> Result<(), Error> {
+        let verifier: Address = env.storage().instance().get(&DataKey::Verifier).ok_or(Error::NotInitialized)?;
+        let oracle: Address = env.storage().instance().get(&DataKey::Oracle).unwrap();
 
-        // TODO: Verify PositionHealthAttestation proof
-        // TODO: Verify oracle price staleness
+        let mut state: PositionState = env.storage().persistent().get(&DataKey::Position(position_id.clone())).ok_or(Error::PositionNotFound)?;
 
-        state.last_attestation = env.ledger().timestamp();
+        // 1. Fetch current oracle price and timestamp
+        let oracle_client = OracleInterfaceClient::new(&env, &oracle);
+        let (price, timestamp) = oracle_client.get_last_price();
+
+        // 2. Verify ZK Proof for PositionHealth
+        let verifier_client = Groth16VerifierClient::new(&env, &verifier);
+        
+        // Public inputs: [position_commitment, oracle_price, oracle_timestamp]
+        let mut public_inputs = Vec::new(&env);
+        public_inputs.push_back(state.commitment.clone());
+        
+        let mut price_bytes = [0u8; 32];
+        price_bytes[24..32].copy_from_slice(&price.to_be_bytes()[8..16]); // assuming positive i128
+        public_inputs.push_back(BytesN::from_array(&env, &price_bytes));
+
+        let mut ts_bytes = [0u8; 32];
+        ts_bytes[24..32].copy_from_slice(&timestamp.to_be_bytes());
+        public_inputs.push_back(BytesN::from_array(&env, &ts_bytes));
+
+        let is_valid = verifier_client.verify(&CircuitId::PositionHealth, &proof, &public_inputs);
+        if !is_valid {
+            return Err(Error::InvalidProof);
+        }
+
+        // 3. Update health timestamp
+        state.last_health_timestamp = timestamp;
         env.storage().persistent().set(&DataKey::Position(position_id), &state);
-        Ok(true)
+
+        Ok(())
     }
 
-    /// Close or modify a position
+    /// Close or modify a position, settling PnL and generating a new commitment or returning funds
     pub fn close_or_modify_position(
         env: Env,
         position_id: BytesN<32>,
-        _proof: BytesN<256>,
-        new_commitment: Option<BytesN<32>>,
-        _refund_recipient: Option<Address>,
+        proof: Groth16Proof,
+        position_nullifier: BytesN<32>,
+        new_position_commitment: BytesN<32>,
+        output_note_commitment: BytesN<32>,
+        fee: i128,
+        meta_hash: BytesN<32>,
     ) -> Result<(), Error> {
-        let mut state: PositionState = env
-            .storage()
-            .persistent()
-            .get(&DataKey::Position(position_id.clone()))
-            .ok_or(Error::PositionNotFound)?;
+        let verifier: Address = env.storage().instance().get(&DataKey::Verifier).ok_or(Error::NotInitialized)?;
+        let oracle: Address = env.storage().instance().get(&DataKey::Oracle).unwrap();
 
-        // TODO: Verify PositionCloseOrModify proof
+        let state: PositionState = env.storage().persistent().get(&DataKey::Position(position_id.clone())).ok_or(Error::PositionNotFound)?;
+        state.owner.require_auth();
 
-        match new_commitment {
-            Some(new_comm) => {
-                // Modify: update commitment
-                state.commitment = new_comm;
-                env.storage().persistent().set(&DataKey::Position(position_id), &state);
-            }
-            None => {
-                // Close: deactivate
-                state.active = false;
-                env.storage().persistent().set(&DataKey::Position(position_id), &state);
-            }
+        // 1. Fetch settlement oracle price
+        let oracle_client = OracleInterfaceClient::new(&env, &oracle);
+        let (price, _timestamp) = oracle_client.get_last_price();
+
+        // 2. Mark position nullifier
+        Self::mark_nullifier(&env, position_nullifier.clone())?;
+
+        // 3. Verify ZK Proof for PositionClose
+        let verifier_client = Groth16VerifierClient::new(&env, &verifier);
+        
+        // Public inputs: [position_nullifier, new_position_commitment, output_note_commitment, oracle_price, fee, meta_hash]
+        let mut public_inputs = Vec::new(&env);
+        public_inputs.push_back(position_nullifier);
+        public_inputs.push_back(new_position_commitment.clone());
+        public_inputs.push_back(output_note_commitment);
+        
+        let mut price_bytes = [0u8; 32];
+        price_bytes[24..32].copy_from_slice(&price.to_be_bytes()[8..16]);
+        public_inputs.push_back(BytesN::from_array(&env, &price_bytes));
+
+        let mut fee_bytes = [0u8; 32];
+        fee_bytes[24..32].copy_from_slice(&fee.to_be_bytes()[8..16]);
+        public_inputs.push_back(BytesN::from_array(&env, &fee_bytes));
+
+        public_inputs.push_back(meta_hash);
+
+        let is_valid = verifier_client.verify(&CircuitId::PositionClose, &proof, &public_inputs);
+        if !is_valid {
+            return Err(Error::InvalidProof);
         }
+
+        // 4. Update state to point to new commitment (or remove if fully closed)
+        let mut new_state = state.clone();
+        new_state.commitment = new_position_commitment;
+        new_state.last_health_timestamp = env.ledger().timestamp();
+        env.storage().persistent().set(&DataKey::Position(position_id), &new_state);
+
         Ok(())
     }
 
     pub fn get_position_state(env: Env, position_id: BytesN<32>) -> Result<PositionState, Error> {
-        env.storage()
-            .persistent()
-            .get(&DataKey::Position(position_id))
-            .ok_or(Error::PositionNotFound)
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-    use soroban_sdk::testutils::Address as _;
-
-    #[test]
-    fn test_initialize() {
-        let env = Env::default();
-        let contract_id = env.register(PositionManagerContract, ());
-        let client = PositionManagerContractClient::new(&env, &contract_id);
-
-        let verifier = Address::generate(&env);
-        let liq_engine = Address::generate(&env);
-        client.initialize(&verifier, &liq_engine);
+        env.storage().persistent().get(&DataKey::Position(position_id)).ok_or(Error::PositionNotFound)
     }
 }

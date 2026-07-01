@@ -9,11 +9,11 @@ members = [
     "position-manager",
     "liquidation-engine",
     "hidden-order-registry",
-    "agentic-settlement-hub",
+    "agentic-settlement-hub", "vayyl-types", "vayyl-mock-token", "vayyl-mock-oracle",
 ]
 
 [workspace.dependencies]
-soroban-sdk = "25.0.0"
+soroban-sdk = "26.1.0"
 
 [profile.release]
 opt-level = "z"
