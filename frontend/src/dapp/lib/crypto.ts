@@ -9,15 +9,40 @@ export function generateBlindness(): string {
     .join('');
 }
 
-export function computeMockCommitment(amount: string, blindness: string, pubKey: string): string {
-  // In a real implementation, this would use the Poseidon2 hash function
-  // matching the Circom circuit and Soroban contract exactly.
-  // For the UI demo, we return a mock hex string.
-  return '0x' + Array(64).fill(0).map(() => Math.floor(Math.random() * 16).toString(16)).join('');
+import * as snarkjs from 'snarkjs';
+
+export async function computeCommitment(amount: string, blindness: string, pubKey: string): Promise<string> {
+  // Use hash4.wasm to compute Poseidon2_4(amount, pubX, pubY, blindness)
+  // We assume pubKey is a single element for this demo (or pubX, pubY derived)
+  // For simplicity, we use pubKey as both X and Y or just pad
+  const inputs = {
+    in: [amount, pubKey, "0", blindness]
+  };
+  
+  // @ts-ignore - snarkjs types are inaccurate for browser memory files
+  const wtns = await snarkjs.wtns.calculate(inputs, "/circuits/hash4.wasm", { type: "mem" });
+  // @ts-ignore
+  const res: any = await snarkjs.wtns.exportJson(wtns);
+  
+  // The output is the second element in the witness (index 1)
+  // Return it as a hex string
+  const hash = BigInt(res[1]).toString(16);
+  return '0x' + hash;
 }
 
-export function computeMockNullifier(commitment: string, privKey: string): string {
-  return '0x' + Array(64).fill(0).map(() => Math.floor(Math.random() * 16).toString(16)).join('');
+export async function computeNullifier(commitment: string, privKey: string): Promise<string> {
+  // Use hash2.wasm to compute Poseidon2_2(commitment, privKey)
+  const inputs = {
+    in: [commitment, privKey]
+  };
+  
+  // @ts-ignore
+  const wtns = await snarkjs.wtns.calculate(inputs, "/circuits/hash2.wasm", { type: "mem" });
+  // @ts-ignore
+  const res: any = await snarkjs.wtns.exportJson(wtns);
+  
+  const hash = BigInt(res[1]).toString(16);
+  return '0x' + hash;
 }
 
 import { signMessage } from '@stellar/freighter-api';

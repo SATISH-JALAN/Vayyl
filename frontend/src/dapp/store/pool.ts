@@ -12,6 +12,7 @@ interface PoolState {
   shieldedBalance: number;
   notes: ShieldedNote[];
   isProving: boolean;
+  fetchState: (poolAddress: string) => Promise<void>;
   deposit: (amount: number, asset: string) => Promise<void>;
   withdraw: (amount: number, asset: string, destination: string) => Promise<void>;
   transfer: (amount: number, asset: string, recipient: string) => Promise<void>;
@@ -38,13 +39,31 @@ const runWorkerTask = (type: string, payload: any): Promise<any> => {
 };
 
 export const usePoolStore = create<PoolState>((set, get) => ({
-  // Initialize with some mock data so the UI isn't empty for the demo
-  shieldedBalance: 12500,
-  notes: [
-    { id: 'note_1x9f...', amount: 10000, asset: 'XLM', status: 'active' },
-    { id: 'note_2y7b...', amount: 2500, asset: 'XLM', status: 'active' },
-  ],
+  shieldedBalance: 0,
+  notes: [],
   isProving: false,
+
+  fetchState: async (poolAddress: string) => {
+    try {
+      const response = await fetch(`http://localhost:3001/commitments?pool=${poolAddress}`);
+      const data = await response.json();
+      if (data.commitments) {
+        // In a real implementation, attempt to decrypt these commitments using the viewing key
+        // For the demo, we just count them
+        set({
+          notes: data.commitments.map((c: any, i: number) => ({
+            id: c.commitment_hash,
+            amount: 1000, // mock decrypted amount
+            asset: 'XLM',
+            status: 'active'
+          })),
+          shieldedBalance: data.commitments.length * 1000 // mock sum
+        });
+      }
+    } catch (e) {
+      console.error("Failed to fetch state", e);
+    }
+  },
 
   deposit: async (amount: number, asset: string) => {
     set({ isProving: true });
@@ -54,6 +73,17 @@ export const usePoolStore = create<PoolState>((set, get) => ({
       const result = await runWorkerTask('PROVE_DEPOSIT', { amount, asset });
       console.log('Proof generated:', result);
 
+      // Submit to Relayer
+      const relayRes = await fetch('http://localhost:3002/relay', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tx: "mock_base64_xdr_containing_deposit_invocation_and_proof"
+        })
+      });
+      const relayData = await relayRes.json();
+      if (!relayData.success) throw new Error(relayData.error);
+
       set((state) => ({
         shieldedBalance: state.shieldedBalance + amount,
         notes: [
@@ -62,7 +92,7 @@ export const usePoolStore = create<PoolState>((set, get) => ({
         ],
       }));
     } catch (e) {
-      console.error("Proof failed", e);
+      console.error("Deposit failed", e);
     } finally {
       set({ isProving: false });
     }
@@ -77,18 +107,32 @@ export const usePoolStore = create<PoolState>((set, get) => ({
         throw new Error("Insufficient shielded balance");
       }
 
-      // Offload heavy ZK proving to Web Worker
-      const result = await runWorkerTask('PROVE_TRANSFER', { amount, asset, recipient });
+      const circuitInput = {
+         // This would gather real UXTO notes
+         in_amount: [amount, 0], 
+         out_amount: [amount, 0],
+         // ...
+      };
+
+      const result = await runWorkerTask('PROVE_TRANSFER', { amount, asset, recipient, circuitInput });
       console.log('Proof generated:', result);
 
-      // In a real implementation, transferring doesn't change total shielded balance
-      // because you just spend an old note and create a new one (and send to recipient)
-      // But for the local UI, the sender's balance decreases.
+      // Submit to Relayer
+      const relayRes = await fetch('http://localhost:3002/relay', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tx: "mock_base64_xdr_transfer"
+        })
+      });
+      const relayData = await relayRes.json();
+      if (!relayData.success) throw new Error(relayData.error);
+
       set((state) => ({
         shieldedBalance: state.shieldedBalance - amount,
       }));
     } catch (e) {
-      console.error("Proof failed", e);
+      console.error("Transfer failed", e);
       throw e;
     } finally {
       set({ isProving: false });
@@ -104,15 +148,29 @@ export const usePoolStore = create<PoolState>((set, get) => ({
         throw new Error("Insufficient shielded balance");
       }
 
-      // Offload heavy ZK proving to Web Worker
-      const result = await runWorkerTask('PROVE_WITHDRAW', { amount, asset, destination });
+      const circuitInput = {
+        // Real inputs
+      };
+
+      const result = await runWorkerTask('PROVE_WITHDRAW', { amount, asset, destination, circuitInput });
       console.log('Proof generated:', result);
+
+      // Submit to Relayer
+      const relayRes = await fetch('http://localhost:3002/relay', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tx: "mock_base64_xdr_withdraw"
+        })
+      });
+      const relayData = await relayRes.json();
+      if (!relayData.success) throw new Error(relayData.error);
 
       set((state) => ({
         shieldedBalance: state.shieldedBalance - amount,
       }));
     } catch (e) {
-      console.error("Proof failed", e);
+      console.error("Withdraw failed", e);
     } finally {
       set({ isProving: false });
     }
