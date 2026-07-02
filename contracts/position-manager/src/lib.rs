@@ -11,6 +11,7 @@ use soroban_sdk::{
 pub enum DataKey {
     Verifier,
     Oracle,
+    LiquidationEngine,
     Position(BytesN<32>), // maps position_id to PositionState
     Nullifier(BytesN<32>), // tracks used nullifiers to prevent double spends
 }
@@ -35,19 +36,25 @@ pub trait Groth16VerifierInterface {
     fn verify(env: Env, circuit_id: CircuitId, proof: Groth16Proof, public_inputs: Vec<BytesN<32>>) -> Result<bool, soroban_sdk::Error>;
 }
 
+#[soroban_sdk::contractclient(name = "LiquidationEngineClient")]
+pub trait LiquidationEngineInterface {
+    fn register_heartbeat(env: Env, position_id: BytesN<32>, timestamp: u64) -> Result<(), soroban_sdk::Error>;
+}
+
 #[contract]
 pub struct PositionManager;
 
 #[contractimpl]
 impl PositionManager {
     /// Initialize the Position Manager
-    pub fn initialize(env: Env, verifier: Address, oracle: Address) -> Result<(), Error> {
+    pub fn initialize(env: Env, verifier: Address, oracle: Address, liquidation_engine: Address) -> Result<(), Error> {
         if env.storage().instance().has(&DataKey::Verifier) {
             return Err(Error::AlreadyInitialized);
         }
 
         env.storage().instance().set(&DataKey::Verifier, &verifier);
         env.storage().instance().set(&DataKey::Oracle, &oracle);
+        env.storage().instance().set(&DataKey::LiquidationEngine, &liquidation_engine);
 
         Ok(())
     }
@@ -149,7 +156,13 @@ impl PositionManager {
 
         // 3. Update health timestamp
         state.last_health_timestamp = timestamp;
-        env.storage().persistent().set(&DataKey::Position(position_id), &state);
+        env.storage().persistent().set(&DataKey::Position(position_id.clone()), &state);
+
+        // 4. Register heartbeat with LiquidationEngine (prevents position from going stale)
+        if let Some(le_addr) = env.storage().instance().get::<DataKey, Address>(&DataKey::LiquidationEngine) {
+            let le_client = LiquidationEngineClient::new(&env, &le_addr);
+            let _ = le_client.register_heartbeat(&position_id, &timestamp);
+        }
 
         Ok(())
     }

@@ -1,6 +1,6 @@
 $ErrorActionPreference = "Stop"
 
-$CIRCUITS = @("position_health", "position_close")
+$CIRCUITS = @("position_open", "position_health", "position_close", "liquidation_heartbeat")
 
 New-Item -ItemType Directory -Force -Path "build\r1cs" | Out-Null
 New-Item -ItemType Directory -Force -Path "build\wasm" | Out-Null

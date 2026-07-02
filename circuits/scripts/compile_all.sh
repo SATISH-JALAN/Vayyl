@@ -4,7 +4,7 @@ set -e
 # Compile all Vayyl circuits
 # Note: Position circuits require a higher power of tau (e.g. 15 or 16) due to range checks and poseidon hashes.
 
-CIRCUITS=("deposit" "transfer" "withdraw" "asp_membership" "position_open" "position_health" "position_close")
+CIRCUITS=("deposit" "transfer" "withdraw" "asp_membership" "position_open" "position_health" "position_close" "liquidation_heartbeat")
 
 mkdir -p build/r1cs build/wasm build/zkey build/vkey
 

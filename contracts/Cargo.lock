@@ -956,6 +956,7 @@ name = "liquidation-engine"
 version = "0.1.0"
 dependencies = [
  "soroban-sdk",
+ "vayyl-types",
 ]
 
 [[package]]

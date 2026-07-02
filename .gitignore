@@ -5,11 +5,10 @@ target/
 # Build outputs
 dist/
 *.wasm
-*.r1cs
-
 # Environment
 .env
 .env.local
+
 
 # Agent customizations
 /.agents/
