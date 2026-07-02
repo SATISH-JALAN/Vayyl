@@ -1,0 +1,119 @@
+/* ── dApp Components (Premium Editorial) ── */
+
+.dapp-card {
+  background: rgba(26, 24, 22, 0.3);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(248, 246, 243, 0.08);
+  border-radius: var(--radius-m);
+  padding: var(--space-10);
+  transition: border-color var(--dur-normal) var(--ease-out),
+              box-shadow var(--dur-normal) var(--ease-out);
+}
+
+.dapp-card:hover {
+  border-color: rgba(244, 111, 115, 0.2);
+  box-shadow: 0 12px 40px rgba(0,0,0,0.4);
+}
+
+/* Forms & Inputs */
+.dapp-form-group {
+  margin-bottom: var(--space-8);
+  position: relative;
+}
+
+.dapp-label {
+  display: block;
+  font-family: var(--font-body);
+  font-size: var(--text-caption);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-caps);
+  margin-bottom: var(--space-3);
+}
+
+.dapp-input {
+  width: 100%;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid rgba(248, 246, 243, 0.2);
+  padding: var(--space-3) 0;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--text-body);
+  outline: none;
+  transition: border-color var(--dur-fast) var(--ease-out);
+  border-radius: 0;
+}
+
+.dapp-input:focus {
+  border-color: var(--coral);
+}
+
+.dapp-input::placeholder {
+  color: rgba(147, 139, 133, 0.3);
+}
+
+/* Page Headers */
+.dapp-page-header {
+  margin-bottom: var(--space-16);
+}
+
+.dapp-page-title {
+  font-family: var(--font-display);
+  font-size: var(--text-h1);
+  color: var(--text-primary);
+  margin-bottom: var(--space-2);
+  font-weight: 400;
+}
+
+.dapp-page-subtitle {
+  color: var(--text-muted);
+  font-size: var(--text-body);
+  max-width: 600px;
+}
+
+/* Custom Tabs */
+.dapp-tabs {
+  display: flex;
+  gap: var(--space-6);
+  margin-bottom: var(--space-10);
+  border-bottom: 1px solid rgba(248, 246, 243, 0.08);
+}
+
+.dapp-tab {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-family: var(--font-body);
+  font-size: var(--text-small);
+  letter-spacing: var(--tracking-wide);
+  padding: var(--space-4) 0;
+  cursor: pointer;
+  position: relative;
+  transition: color var(--dur-fast) var(--ease-out);
+}
+
+.dapp-tab::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background: var(--coral);
+  transform: scaleX(0);
+  transition: transform var(--dur-normal) var(--ease-out-expo);
+}
+
+.dapp-tab:hover {
+  color: var(--text-primary);
+}
+
+.dapp-tab.is-active {
+  color: var(--text-primary);
+}
+
+.dapp-tab.is-active::after {
+  transform: scaleX(1);
+}
