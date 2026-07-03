@@ -36,8 +36,15 @@ pub struct AspMembershipContract;
 fn hash2(env: &Env, left: &BytesN<32>, right: &BytesN<32>) -> BytesN<32> {
     let left_bytes: soroban_sdk::Bytes = left.clone().into();
     let right_bytes: soroban_sdk::Bytes = right.clone().into();
-    let left_u256 = soroban_sdk::U256::from_be_bytes(env, &left_bytes);
-    let right_u256 = soroban_sdk::U256::from_be_bytes(env, &right_bytes);
+    // Reduce to the canonical field representative (< BN254 modulus) before
+    // hashing. poseidon2_hash panics on any input >= the modulus, and ~1/8 of
+    // arbitrary 32-byte values (user commitments, SHA-256 outputs) exceed it.
+    // Bn254Fr::from_u256(..).to_u256() applies the field's own reduction, which
+    // matches how the Circom circuit interprets these signals (value mod p).
+    let left_u256 = soroban_sdk::crypto::bn254::Bn254Fr::from_u256(
+        soroban_sdk::U256::from_be_bytes(env, &left_bytes)).to_u256();
+    let right_u256 = soroban_sdk::crypto::bn254::Bn254Fr::from_u256(
+        soroban_sdk::U256::from_be_bytes(env, &right_bytes)).to_u256();
     
     let mut inputs = soroban_sdk::Vec::new(env);
     inputs.push_back(left_u256);

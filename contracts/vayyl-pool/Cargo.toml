@@ -10,3 +10,6 @@ crate-type = ["cdylib", "rlib"]
 soroban-sdk = { workspace = true }
 vayyl-types = { path = "../vayyl-types" }
 soroban-poseidon = { path = "../../rs-soroban-poseidon" }
+
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }

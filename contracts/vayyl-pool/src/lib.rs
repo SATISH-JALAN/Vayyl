@@ -3,8 +3,41 @@
 use vayyl_types::{CircuitId, Groth16Proof};
 use soroban_poseidon::poseidon2_hash;
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, log, token, Address, BytesN, Env, Vec,
+    contract, contracterror, contractevent, contractimpl, contracttype, log, token, Address,
+    BytesN, Env, Vec,
 };
+
+/// C4: deposit event — topic `deposit` + the commitment; data carries the
+/// leaf index (for Merkle-path reconstruction) and the public amount.
+#[contractevent]
+pub struct Deposit {
+    #[topic]
+    pub commitment: BytesN<32>,
+    pub leaf_index: u32,
+    pub amount: i128,
+}
+
+/// C4: transfer event — both spent nullifiers as topics, both new commitments
+/// as data (so the client note-scan sees the fresh outputs).
+#[contractevent]
+pub struct Transfer {
+    #[topic]
+    pub nullifier1: BytesN<32>,
+    #[topic]
+    pub nullifier2: BytesN<32>,
+    pub commitment1: BytesN<32>,
+    pub commitment2: BytesN<32>,
+}
+
+/// C4: withdraw event — topic `withdraw` + the spent nullifier; data carries
+/// the public recipient and amount.
+#[contractevent]
+pub struct Withdraw {
+    #[topic]
+    pub nullifier: BytesN<32>,
+    pub recipient: Address,
+    pub amount: i128,
+}
 
 #[soroban_sdk::contractclient(name = "Groth16VerifierClient")]
 pub trait Groth16VerifierInterface {
@@ -12,6 +45,23 @@ pub trait Groth16VerifierInterface {
 }
 
 pub const TREE_DEPTH: u32 = 20;
+
+/// H4: how many recent Merkle roots stay valid for in-flight proofs.
+/// A withdraw/transfer proof is accepted if the root it was built against is
+/// the current root or any of the last `ROOT_HISTORY_SIZE` roots. This absorbs
+/// concurrent deposits landing between proof-generation and submission.
+pub const ROOT_HISTORY_SIZE: u32 = 32;
+
+/// H3: nullifier / tree persistence TTL. We extend to `PERSISTENT_TTL_EXTEND`
+/// whenever the remaining TTL drops below `PERSISTENT_TTL_THRESHOLD`, on every
+/// touch, so a spent-nullifier entry survives far past the old ~100k window.
+/// `PERSISTENT_TTL_EXTEND` is kept under the mainnet `max_entry_ttl`
+/// (~3.11M ledgers ≈ 6 months); the host traps if we exceed the network max.
+/// NOTE: Soroban has no truly-infinite TTL — genuine permanence requires either
+/// a keeper that re-extends, or the archived-entry restore proof on spend. This
+/// maximises the window; full permanence is tracked in §7 (client hardening).
+pub const PERSISTENT_TTL_THRESHOLD: u32 = 1_000_000;
+pub const PERSISTENT_TTL_EXTEND: u32 = 3_000_000;
 
 #[contracttype]
 #[derive(Clone)]
@@ -24,6 +74,8 @@ pub enum DataKey {
     TreeFrontier,
     TreeRoot,
     TreeZeros,
+    /// H4: ring buffer of the last `ROOT_HISTORY_SIZE` roots (oldest first).
+    RootHistory,
     Nullifier(BytesN<32>),
 }
 
@@ -35,6 +87,10 @@ pub enum Error {
     InvalidProof = 3,
     NullifierAlreadyUsed = 4,
     TreeFull = 5,
+    /// H4: proof was built against a root no longer in the historical window.
+    UnknownRoot = 6,
+    /// M2: amount/fee is negative (non-encodable as a field element).
+    InvalidAmount = 7,
 }
 
 #[contract]
@@ -45,8 +101,15 @@ pub struct VayylPool;
 fn hash2(env: &Env, left: &BytesN<32>, right: &BytesN<32>) -> BytesN<32> {
     let left_bytes: soroban_sdk::Bytes = left.clone().into();
     let right_bytes: soroban_sdk::Bytes = right.clone().into();
-    let left_u256 = soroban_sdk::U256::from_be_bytes(env, &left_bytes);
-    let right_u256 = soroban_sdk::U256::from_be_bytes(env, &right_bytes);
+    // Reduce to the canonical field representative (< BN254 modulus) before
+    // hashing. poseidon2_hash panics on any input >= the modulus, and ~1/8 of
+    // arbitrary 32-byte values (user commitments, SHA-256 outputs) exceed it.
+    // Bn254Fr::from_u256(..).to_u256() applies the field's own reduction, which
+    // matches how the Circom circuit interprets these signals (value mod p).
+    let left_u256 = soroban_sdk::crypto::bn254::Bn254Fr::from_u256(
+        soroban_sdk::U256::from_be_bytes(env, &left_bytes)).to_u256();
+    let right_u256 = soroban_sdk::crypto::bn254::Bn254Fr::from_u256(
+        soroban_sdk::U256::from_be_bytes(env, &right_bytes)).to_u256();
     
     let mut inputs = soroban_sdk::Vec::new(env);
     inputs.push_back(left_u256);
@@ -60,6 +123,23 @@ fn hash2(env: &Env, left: &BytesN<32>, right: &BytesN<32>) -> BytesN<32> {
     bytes.slice(0..copy_len as u32).copy_into_slice(&mut array[32 - copy_len..]);
     
     BytesN::from_array(env, &array)
+}
+
+/// M2: encode a full i128 amount/fee as a 32-byte big-endian field element.
+///
+/// The old code copied only `to_be_bytes()[8..16]` — the low 64 bits — so any
+/// value ≥ 2^64 was silently truncated and its commitment/binding never matched
+/// the circuit. Amounts and fees are non-negative by protocol; a negative value
+/// here is nonsensical and would mis-encode (two's-complement ≠ field-negative),
+/// so we reject it rather than encode it wrongly. i128::MAX < BN254 prime, so a
+/// non-negative i128 is always a canonical field element in the low 16 bytes.
+fn i128_to_field_bytes(value: i128) -> Result<[u8; 32], Error> {
+    if value < 0 {
+        return Err(Error::InvalidAmount);
+    }
+    let mut out = [0u8; 32];
+    out[16..32].copy_from_slice(&value.to_be_bytes());
+    Ok(out)
 }
 
 #[contractimpl]
@@ -183,16 +263,37 @@ impl VayylPool {
             .instance()
             .set(&DataKey::TreeRoot, &new_root);
 
+        // H4: append the new root to the historical-roots ring buffer, keeping
+        // at most ROOT_HISTORY_SIZE entries (drop the oldest). In-flight
+        // withdraw/transfer proofs bound to any of these roots stay valid.
+        let mut history: Vec<BytesN<32>> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::RootHistory)
+            .unwrap_or_else(|| Vec::new(env));
+        history.push_back(new_root.clone());
+        while history.len() > ROOT_HISTORY_SIZE {
+            history.pop_front();
+        }
+        env.storage()
+            .persistent()
+            .set(&DataKey::RootHistory, &history);
+
         // Extend TTL for persistent data
         env.storage().persistent().extend_ttl(
             &DataKey::TreeFrontier,
-            50000,
-            100000,
+            PERSISTENT_TTL_THRESHOLD,
+            PERSISTENT_TTL_EXTEND,
         );
         env.storage().persistent().extend_ttl(
             &DataKey::TreeZeros,
-            50000,
-            100000,
+            PERSISTENT_TTL_THRESHOLD,
+            PERSISTENT_TTL_EXTEND,
+        );
+        env.storage().persistent().extend_ttl(
+            &DataKey::RootHistory,
+            PERSISTENT_TTL_THRESHOLD,
+            PERSISTENT_TTL_EXTEND,
         );
 
         log!(env, "Leaf inserted at index {}. New root computed.", index);
@@ -200,16 +301,44 @@ impl VayylPool {
         Ok(new_root)
     }
 
-    /// Internal function to check and mark a nullifier
+    /// Internal function to check and mark a nullifier.
+    ///
+    /// H3: a spent nullifier must outlive the note it spends, or the note
+    /// becomes re-spendable once its entry archives. We extend to the maximum
+    /// practical persistent TTL on every write and re-extend on every touch.
     fn mark_nullifier(env: &Env, nullifier: BytesN<32>) -> Result<(), Error> {
         let key = DataKey::Nullifier(nullifier.clone());
         if env.storage().persistent().has(&key) {
             return Err(Error::NullifierAlreadyUsed);
         }
         env.storage().persistent().set(&key, &true);
-        // Extend TTL — nullifiers must persist forever to prevent double-spend
-        env.storage().persistent().extend_ttl(&key, 50000, 100000);
+        env.storage().persistent().extend_ttl(
+            &key,
+            PERSISTENT_TTL_THRESHOLD,
+            PERSISTENT_TTL_EXTEND,
+        );
         Ok(())
+    }
+
+    /// H4: true if `root` is the current root or any root still inside the
+    /// historical-roots window. Withdraw/transfer proofs bind a root; accepting
+    /// any recent root keeps in-flight proofs valid across concurrent deposits.
+    fn is_known_root(env: &Env, root: &BytesN<32>) -> bool {
+        if let Some(current) = env
+            .storage()
+            .instance()
+            .get::<DataKey, BytesN<32>>(&DataKey::TreeRoot)
+        {
+            if &current == root {
+                return true;
+            }
+        }
+        let history: Vec<BytesN<32>> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::RootHistory)
+            .unwrap_or_else(|| Vec::new(env));
+        history.iter().any(|r| &r == root)
     }
 
     /// Compute a binding hash for metadata (relayer address, etc.)
@@ -268,18 +397,13 @@ impl VayylPool {
         let asset: Address = env.storage().instance().get(&DataKey::Asset).ok_or(Error::NotInitialized)?;
         let verifier: Address = env.storage().instance().get(&DataKey::Verifier).unwrap();
 
-        // 1. Transfer tokens from depositor to the pool
-        let token_client = token::Client::new(&env, &asset);
-        token_client.transfer(&depositor, &env.current_contract_address(), &public_amount);
-
-        // 2. Verify ZK Proof for Deposit
+        // M6: verify the ZK proof BEFORE moving any tokens. The previous order
+        // transferred first, so an invalid-proof deposit still pulled funds.
         let verifier_client = Groth16VerifierClient::new(&env, &verifier);
-        
-        // Build public inputs: [amount, commitment, asp_root]
+
+        // Build public inputs: [amount, commitment, asp_root]  (M2: full i128)
         let mut public_inputs = Vec::new(&env);
-        let mut amount_bytes = [0u8; 32];
-        amount_bytes[24..32].copy_from_slice(&public_amount.to_be_bytes()[8..16]);
-        public_inputs.push_back(BytesN::from_array(&env, &amount_bytes));
+        public_inputs.push_back(BytesN::from_array(&env, &i128_to_field_bytes(public_amount)?));
         public_inputs.push_back(commitment.clone());
         public_inputs.push_back(asp_root);
 
@@ -288,8 +412,25 @@ impl VayylPool {
             return Err(Error::InvalidProof);
         }
 
-        // 3. Insert commitment into the Merkle tree
-        Self::insert_leaf(&env, commitment)?;
+        // 1. Transfer tokens from depositor to the pool (only after verify).
+        let token_client = token::Client::new(&env, &asset);
+        token_client.transfer(&depositor, &env.current_contract_address(), &public_amount);
+
+        // 2. Insert commitment into the Merkle tree
+        let leaf_index = env
+            .storage()
+            .instance()
+            .get::<DataKey, u32>(&DataKey::TreeNextIndex)
+            .unwrap_or(0);
+        Self::insert_leaf(&env, commitment.clone())?;
+
+        // C4: emit a structured deposit event for the indexer / client note scan.
+        Deposit {
+            commitment,
+            leaf_index,
+            amount: public_amount,
+        }
+        .publish(&env);
 
         log!(&env, "Deposit of {} completed successfully", public_amount);
 
@@ -304,12 +445,18 @@ impl VayylPool {
         nullifier2: BytesN<32>,
         commitment1: BytesN<32>,
         commitment2: BytesN<32>,
+        root: BytesN<32>,
         fee: i128,
         relayer: Address,
     ) -> Result<(), Error> {
         let asset: Address = env.storage().instance().get(&DataKey::Asset).ok_or(Error::NotInitialized)?;
         let verifier: Address = env.storage().instance().get(&DataKey::Verifier).unwrap();
-        let root: BytesN<32> = env.storage().instance().get(&DataKey::TreeRoot).unwrap();
+
+        // H4: accept the caller-supplied root only if it is the current root or
+        // still inside the historical-roots window (survives concurrent deposits).
+        if !Self::is_known_root(&env, &root) {
+            return Err(Error::UnknownRoot);
+        }
 
         // 1. Mark Nullifiers (prevents double-spend)
         Self::mark_nullifier(&env, nullifier1.clone())?;
@@ -320,18 +467,16 @@ impl VayylPool {
 
         // 3. Verify ZK Proof for Transfer
         let verifier_client = Groth16VerifierClient::new(&env, &verifier);
-        
+
         // Build public inputs: [root, nullifier1, nullifier2, commitment1, commitment2, fee, meta_hash]
         let mut public_inputs = Vec::new(&env);
         public_inputs.push_back(root);
-        public_inputs.push_back(nullifier1);
-        public_inputs.push_back(nullifier2);
+        public_inputs.push_back(nullifier1.clone());
+        public_inputs.push_back(nullifier2.clone());
         public_inputs.push_back(commitment1.clone());
         public_inputs.push_back(commitment2.clone());
-        
-        let mut fee_bytes = [0u8; 32];
-        fee_bytes[24..32].copy_from_slice(&fee.to_be_bytes()[8..16]);
-        public_inputs.push_back(BytesN::from_array(&env, &fee_bytes));
+
+        public_inputs.push_back(BytesN::from_array(&env, &i128_to_field_bytes(fee)?)); // M2
 
         public_inputs.push_back(meta_hash);
 
@@ -341,14 +486,23 @@ impl VayylPool {
         }
 
         // 4. Insert new commitments into the Merkle tree
-        Self::insert_leaf(&env, commitment1)?;
-        Self::insert_leaf(&env, commitment2)?;
+        Self::insert_leaf(&env, commitment1.clone())?;
+        Self::insert_leaf(&env, commitment2.clone())?;
 
         // 5. Pay Relayer fee from the pool's held tokens
         if fee > 0 {
             let token_client = token::Client::new(&env, &asset);
             token_client.transfer(&env.current_contract_address(), &relayer, &fee);
         }
+
+        // C4: emit a transfer event (both spent nullifiers + both new commitments).
+        Transfer {
+            nullifier1,
+            nullifier2,
+            commitment1,
+            commitment2,
+        }
+        .publish(&env);
 
         log!(&env, "Transfer completed. 2 new commitments inserted.");
 
@@ -362,12 +516,17 @@ impl VayylPool {
         nullifier: BytesN<32>,
         public_amount: i128,
         recipient: Address,
+        root: BytesN<32>,
         fee: i128,
         relayer: Address,
     ) -> Result<(), Error> {
         let asset: Address = env.storage().instance().get(&DataKey::Asset).ok_or(Error::NotInitialized)?;
         let verifier: Address = env.storage().instance().get(&DataKey::Verifier).unwrap();
-        let root: BytesN<32> = env.storage().instance().get(&DataKey::TreeRoot).unwrap();
+
+        // H4: accept the proof's bound root if it is current or still in-window.
+        if !Self::is_known_root(&env, &root) {
+            return Err(Error::UnknownRoot);
+        }
 
         // 1. Mark Nullifier (prevents double-spend)
         Self::mark_nullifier(&env, nullifier.clone())?;
@@ -377,19 +536,14 @@ impl VayylPool {
 
         // 3. Verify ZK Proof for Withdraw
         let verifier_client = Groth16VerifierClient::new(&env, &verifier);
-        
+
         // Build public inputs: [root, nullifier, public_amount, fee, withdraw_binding]
         let mut public_inputs = Vec::new(&env);
         public_inputs.push_back(root);
-        public_inputs.push_back(nullifier);
-        
-        let mut amt_bytes = [0u8; 32];
-        amt_bytes[24..32].copy_from_slice(&public_amount.to_be_bytes()[8..16]);
-        public_inputs.push_back(BytesN::from_array(&env, &amt_bytes));
+        public_inputs.push_back(nullifier.clone());
 
-        let mut fee_bytes = [0u8; 32];
-        fee_bytes[24..32].copy_from_slice(&fee.to_be_bytes()[8..16]);
-        public_inputs.push_back(BytesN::from_array(&env, &fee_bytes));
+        public_inputs.push_back(BytesN::from_array(&env, &i128_to_field_bytes(public_amount)?)); // M2
+        public_inputs.push_back(BytesN::from_array(&env, &i128_to_field_bytes(fee)?)); // M2
 
         public_inputs.push_back(withdraw_binding);
 
@@ -398,7 +552,7 @@ impl VayylPool {
             return Err(Error::InvalidProof);
         }
 
-        // 4. Transfer tokens to recipient and relayer
+        // 4. Transfer tokens to recipient and relayer (only after verify).
         let token_client = token::Client::new(&env, &asset);
         if public_amount > 0 {
             token_client.transfer(&env.current_contract_address(), &recipient, &public_amount);
@@ -406,6 +560,14 @@ impl VayylPool {
         if fee > 0 {
             token_client.transfer(&env.current_contract_address(), &relayer, &fee);
         }
+
+        // C4: emit a withdraw event (nullifier, recipient, amount) for the indexer.
+        Withdraw {
+            nullifier,
+            recipient,
+            amount: public_amount,
+        }
+        .publish(&env);
 
         log!(&env, "Withdraw of {} completed to recipient.", public_amount);
 
@@ -428,3 +590,6 @@ impl VayylPool {
             .unwrap_or(0)
     }
 }
+
+#[cfg(test)]
+mod test;

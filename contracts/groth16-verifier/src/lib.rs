@@ -166,9 +166,13 @@ impl Groth16VerifierContract {
         // Step 3: Execute pairing check
         let result = bn254.pairing_check(g1_vec, g2_vec);
 
+        // M1: return Ok(false) instead of trapping so callers using the non-`try`
+        // client get a boolean they can branch on. A failed pairing is a normal
+        // "this proof is invalid" outcome, not a contract error — trapping here
+        // would abort the whole tx and make the pool's `if !is_valid` dead code.
         if !result {
             log!(&env, "Groth16 verification FAILED for circuit {:?}", circuit_id);
-            return Err(Error::ProofInvalid);
+            return Ok(false);
         }
 
         log!(&env, "Groth16 verification PASSED for circuit {:?}", circuit_id);

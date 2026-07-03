@@ -1,9 +1,60 @@
 const { execSync } = require('child_process');
 const fs = require('fs');
+const path = require('path');
 
-const NETWORK = "testnet";
-const SOURCE = "deployer";
-const VERIFIER_ID = "CAITE7BPXCMYW2I5GKJIV5PKYFNYUBZOJX2PS467EPXSTJO45YFQZIBQ";
+const NETWORK = process.env.STELLAR_NETWORK || "testnet";
+const SOURCE = process.env.STELLAR_SOURCE || "deployer";
+
+// When set, print the invoke commands instead of running them — lets you (and CI)
+// sanity-check the exact registration calls without a live CLI/network.
+const DRY_RUN = process.env.DRY_RUN === "1";
+
+// A fresh `stellar contract deploy` mints a NEW verifier id, so a hardcoded
+// constant is a footgun — it silently registers VKs against a stale contract.
+// Resolve in priority order: explicit env → deployments file written by
+// deploy_testnet.ps1 → baked-in fallback (last resort only).
+function resolveVerifierId() {
+    if (process.env.VERIFIER_ID) return process.env.VERIFIER_ID.trim();
+    const deployFile = path.join(__dirname, "..", "deployments", `${NETWORK}.json`);
+    if (fs.existsSync(deployFile)) {
+        try {
+            const d = JSON.parse(fs.readFileSync(deployFile, "utf8"));
+            if (d.verifier) return d.verifier;
+        } catch (e) {
+            console.warn(`Could not parse ${deployFile}: ${e.message}`);
+        }
+    }
+    return "CAITE7BPXCMYW2I5GKJIV5PKYFNYUBZOJX2PS467EPXSTJO45YFQZIBQ"; // stale fallback
+}
+const VERIFIER_ID = resolveVerifierId();
+
+// Pull the raw hex bytes out of a Groth16 G2 point in the Stellar VK format,
+// which encodes each point as { "bytes": "<hex>" }. Tolerates a few shapes so
+// the guard never silently no-ops on a format tweak.
+function g2Bytes(point) {
+    if (point == null) return null;
+    if (typeof point === "string") return point;
+    if (typeof point.bytes === "string") return point.bytes;
+    return JSON.stringify(point); // fall back to structural comparison
+}
+
+// The Groth16 verifier MUST reject any VK where gamma == delta (the Veil Cash /
+// FoomCash bug: it lets a forged proof verify). The on-chain verifier already
+// enforces this (Error::GammaEqualsDelta), but registering such a VK wastes a
+// testnet round-trip and would be a silent footgun if that on-chain check ever
+// regressed. Catch it here, before submission.
+function assertGammaNeDelta(vkeyObj, name) {
+    const gamma = g2Bytes(vkeyObj.gamma_g2);
+    const delta = g2Bytes(vkeyObj.delta_g2);
+    if (gamma == null || delta == null) {
+        console.error(`Refusing to register ${name}: VK is missing gamma_g2/delta_g2.`);
+        process.exit(1);
+    }
+    if (gamma.replace(/^0x/i, "").toLowerCase() === delta.replace(/^0x/i, "").toLowerCase()) {
+        console.error(`Refusing to register ${name}: gamma_g2 == delta_g2 (Veil Cash / FoomCash bug). Regenerate this VK.`);
+        process.exit(1);
+    }
+}
 
 const CIRCUITS = {
     "Deposit": { id: 0, file: "deposit" },
@@ -14,7 +65,19 @@ const CIRCUITS = {
     "PositionClose": { id: 5, file: "position_close" }
 };
 
+// V1 scope: only the proven payment-core circuits register by default. The
+// position/derivative circuits carry unfixed soundness work (Bug 2 in
+// position_health) — set REGISTER_ALL=1 to include them once audited.
+const V1_CIRCUITS = new Set(["Deposit", "Transfer", "Withdraw"]);
+const registerAll = process.env.REGISTER_ALL === "1";
+
+console.log(`Target verifier: ${VERIFIER_ID} (network=${NETWORK}${DRY_RUN ? ", DRY_RUN" : ""})`);
+
 for (const [name, config] of Object.entries(CIRCUITS)) {
+    if (!registerAll && !V1_CIRCUITS.has(name)) {
+        console.log(`Skipping ${name}: outside V1 scope (set REGISTER_ALL=1 to include).`);
+        continue;
+    }
     const vkeyPath = `circuits/build/vkey/${config.file}_stellar_vkey.json`;
     if (!fs.existsSync(vkeyPath)) {
         console.warn(`Skipping ${name}: vkey not found at ${vkeyPath}`);
@@ -33,19 +96,28 @@ for (const [name, config] of Object.entries(CIRCUITS)) {
     }
 
     let vkeyStr;
+    let vkeyObj;
     try {
-        const vkeyObj = JSON.parse(vkeyStrRaw);
+        vkeyObj = JSON.parse(vkeyStrRaw);
         vkeyStr = JSON.stringify(vkeyObj);
     } catch (e) {
         console.error(`Failed to parse ${vkeyPath}:`, e);
         process.exit(1);
     }
 
+    // Pre-registration safety gate: never submit a gamma == delta VK.
+    assertGammaNeDelta(vkeyObj, name);
+
     console.log(`Registering VK for ${name}...`);
     // Escape double quotes for cmd.exe
     const escapedVkey = vkeyStr.replace(/"/g, '\\"');
     const cmd = `stellar contract invoke --id ${VERIFIER_ID} --network ${NETWORK} --source ${SOURCE} -- set_vk --circuit_id "{\\"${name}\\": []}" --vk "${escapedVkey}"`;
-    
+
+    if (DRY_RUN) {
+        console.log(`[dry-run] ${cmd.slice(0, 160)}… (${escapedVkey.length} bytes VK)`);
+        continue;
+    }
+
     try {
         execSync(cmd, { stdio: 'inherit' });
     } catch (error) {

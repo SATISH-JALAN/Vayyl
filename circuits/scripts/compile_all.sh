@@ -41,8 +41,11 @@ for circuit in "${CIRCUITS[@]}"; do
     snarkjs zkey export verificationkey "build/zkey/${circuit}_final.zkey" "build/vkey/${circuit}_vkey.json"
 
     # 5. Format vkey for Soroban contract
+    # NOTE: use format_stellar_vk.js (emits the {alpha_g1,beta_g2,gamma_g2,delta_g2,ic}
+    # JSON that register_vks.js consumes). format_stellar_args.js is a different,
+    # 3-arg tool that prints CLI invoke commands — do NOT use it here.
     echo "Formatting vkey for Soroban..."
-    node scripts/format_stellar_args.js "build/vkey/${circuit}_vkey.json" > "build/vkey/${circuit}_stellar_vkey.json"
+    node scripts/format_stellar_vk.js "build/vkey/${circuit}_vkey.json" > "build/vkey/${circuit}_stellar_vkey.json"
 
     echo "$circuit successfully compiled and formatted!"
 done
