@@ -38,8 +38,15 @@ pub struct AspNonMembershipContract;
 fn hash2(env: &Env, left: &BytesN<32>, right: &BytesN<32>) -> BytesN<32> {
     let left_bytes: soroban_sdk::Bytes = left.clone().into();
     let right_bytes: soroban_sdk::Bytes = right.clone().into();
-    let left_u256 = soroban_sdk::U256::from_be_bytes(env, &left_bytes);
-    let right_u256 = soroban_sdk::U256::from_be_bytes(env, &right_bytes);
+    // Reduce to the canonical field representative (< BN254 modulus) before
+    // hashing. poseidon2_hash panics on any input >= the modulus, and ~1/8 of
+    // arbitrary 32-byte values (user commitments, SHA-256 outputs) exceed it.
+    // Bn254Fr::from_u256(..).to_u256() applies the field's own reduction, which
+    // matches how the Circom circuit interprets these signals (value mod p).
+    let left_u256 = soroban_sdk::crypto::bn254::Bn254Fr::from_u256(
+        soroban_sdk::U256::from_be_bytes(env, &left_bytes)).to_u256();
+    let right_u256 = soroban_sdk::crypto::bn254::Bn254Fr::from_u256(
+        soroban_sdk::U256::from_be_bytes(env, &right_bytes)).to_u256();
     
     let mut inputs = soroban_sdk::Vec::new(env);
     inputs.push_back(left_u256);
@@ -201,5 +208,28 @@ mod test {
         // Bad leaf should fail
         assert!(!client.is_not_blocked(&bad_leaf));
         assert_eq!(client.blocked_count(), 1);
+    }
+
+    // C2 regression: a leaf whose 32-byte value is >= the BN254 field modulus
+    // must hash without panicking. [0xFF; 32] = 2^256 - 1, well above the prime;
+    // before field reduction was added to hash2() this trapped the whole tx
+    // ("input exceeds field modulus"). ~1/8 of arbitrary 32-byte values hit this.
+    #[test]
+    fn test_block_leaf_above_field_modulus() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(AspNonMembershipContract, ());
+        let client = AspNonMembershipContractClient::new(&env, &contract_id);
+
+        let admin = Address::generate(&env);
+        client.initialize(&admin);
+
+        // Value strictly greater than the BN254 scalar modulus.
+        let over_modulus_leaf = BytesN::from_array(&env, &[0xFFu8; 32]);
+
+        // Must not panic; must update the root and mark the leaf blocked.
+        client.block_leaf(&over_modulus_leaf);
+        assert_eq!(client.blocked_count(), 1);
+        assert!(!client.is_not_blocked(&over_modulus_leaf));
     }
 }

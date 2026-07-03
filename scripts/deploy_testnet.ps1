@@ -7,6 +7,12 @@ Write-Host "Deploying Groth16 Verifier..."
 $VERIFIER_ID = stellar contract deploy --wasm contracts/target/wasm32v1-none/release/groth16_verifier.wasm --network $NETWORK --source $SOURCE
 Write-Host "Groth16 Verifier ID: $VERIFIER_ID"
 
+# The verifier's set_vk is admin-gated (require_auth). It MUST be initialized with
+# an admin before register_vks runs, or every VK registration fails Unauthorized.
+Write-Host "Initializing verifier admin ($SOURCE)..."
+$ADMIN = stellar keys address $SOURCE
+stellar contract invoke --id $VERIFIER_ID --network $NETWORK --source $SOURCE -- initialize --admin $ADMIN
+
 Write-Host "Deploying Mock Oracle..."
 $ORACLE_ID = stellar contract deploy --wasm contracts/target/wasm32v1-none/release/vayyl_mock_oracle.wasm --network $NETWORK --source $SOURCE
 Write-Host "Mock Oracle ID: $ORACLE_ID"
@@ -29,10 +35,36 @@ $TOKEN_ID = "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
 Write-Host "Token ID (XLM): $TOKEN_ID"
 
 Write-Host "Initializing Vayyl Pool..."
+# NOTE (V1): the pool stores membership/non_membership addresses but never calls
+# them in deposit/transfer/withdraw (verified against contracts/vayyl-pool/src/lib.rs) —
+# the ASP root is a caller-supplied public input. So passing $VERIFIER_ID here is an
+# inert placeholder for V1; wire the real ASPMembership/ASPNonMembership contracts
+# before enabling ASP-gated flows.
 stellar contract invoke --id $POOL_ID --network $NETWORK --source $SOURCE -- initialize --asset $TOKEN_ID --verifier $VERIFIER_ID --membership $VERIFIER_ID --non_membership $VERIFIER_ID
 
 Write-Host "Initializing Position Manager..."
 # Assuming manager needs to be initialized with Verifier, Oracle
 stellar contract invoke --id $MANAGER_ID --network $NETWORK --source $SOURCE -- initialize --verifier $VERIFIER_ID --oracle $ORACLE_ID
+
+# Persist the freshly-minted contract IDs so register_vks.js (and the frontend/
+# indexer) target THIS deploy's verifier instead of a stale hardcoded id.
+Write-Host "Writing deployments/$NETWORK.json..."
+New-Item -ItemType Directory -Force -Path "deployments" | Out-Null
+$deployment = [ordered]@{
+    network  = $NETWORK
+    verifier = "$VERIFIER_ID".Trim()
+    oracle   = "$ORACLE_ID".Trim()
+    pool     = "$POOL_ID".Trim()
+    manager  = "$MANAGER_ID".Trim()
+    token    = "$TOKEN_ID".Trim()
+}
+$deployment | ConvertTo-Json | Set-Content -Path "deployments/$NETWORK.json" -Encoding utf8
+
+# Register the V1 payment-core verification keys against the new verifier.
+Write-Host "Registering V1 verification keys..."
+$env:VERIFIER_ID = "$VERIFIER_ID".Trim()
+$env:STELLAR_NETWORK = $NETWORK
+$env:STELLAR_SOURCE = $SOURCE
+node scripts/register_vks.js
 
 Write-Host "Deployment completed successfully!"

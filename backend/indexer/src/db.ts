@@ -9,8 +9,16 @@ export class Database {
     private pool: pg.Pool;
 
     constructor(connectionString: string) {
+        // Managed Postgres (Neon, Supabase, etc.) requires TLS. Depending on the
+        // `pg` version, `?sslmode=require` in the URL isn't always honored, so
+        // enable SSL explicitly when the target looks like a managed/SSL endpoint.
+        // rejectUnauthorized:false avoids CA-chain friction; fine for a testnet indexer.
+        const needsSsl =
+            /sslmode=require/i.test(connectionString) ||
+            /neon\.tech|supabase\.|render\.com|amazonaws\.com/i.test(connectionString);
         this.pool = new Pool({
             connectionString,
+            ...(needsSsl ? { ssl: { rejectUnauthorized: false } } : {}),
         });
     }
 

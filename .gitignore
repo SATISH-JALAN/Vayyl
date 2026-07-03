@@ -5,13 +5,13 @@ target/
 # Build outputs
 dist/
 *.wasm
-# Environment
+# Environment (contains secrets: DB passwords, connection strings, keys)
 .env
-.env.local
-
+.env.*
+!.env.example
+!.env.testnet
 
 # Agent customizations
-/.agents/
 
 # Circom build artifacts
 circuits/build/
@@ -49,5 +49,7 @@ yarn.lock
 rs-soroban-poseidon/
 
 # Internal project documentation
-docs/
-
+/docs
+/.claude
+/.agents
+/CLAUDE.md

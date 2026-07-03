@@ -87,49 +87,21 @@ template ExternalMatrixT4() {
     signal input in[4];
     signal output out[4];
 
-    // Poseidon2 t=4 external matrix M4 = circ(5, 7, 1, 3)
-    // Efficient computation from the paper:
-    // t0 = state[0] + state[1]
-    // t1 = state[2] + state[3]
-    // t2 = 2*state[1] + t1
-    // t3 = 2*state[3] + t0
-    // t4 = 4*t1 + t3
-    // t5 = 4*t0 + t2
-    // state[0] = t3 + t5
-    // state[1] = t5 + ...
-    // Actually let's use the direct circulant approach for clarity and correctness:
-    
-    // For a circulant matrix circ(c0, c1, c2, c3) = circ(5, 7, 1, 3):
-    // out[0] = 5*in[0] + 7*in[1] + 1*in[2] + 3*in[3]
-    // out[1] = 3*in[0] + 5*in[1] + 7*in[2] + 1*in[3]
-    // out[2] = 1*in[0] + 3*in[1] + 5*in[2] + 7*in[3]
-    // out[3] = 7*in[0] + 1*in[1] + 3*in[2] + 5*in[3]
-    
-    // Optimized implementation using the Poseidon2 paper's method:
-    // Step 1: compute pair-wise operations
-    signal t0, t1, t2, t3;
-    t0 <== in[0] + in[1];   // a + b
-    t1 <== in[2] + in[3];   // c + d
-    t2 <== 2 * in[1] + t1;  // 2b + c + d
-    t3 <== 2 * in[3] + t0;  // a + b + 2d
-    
-    // Step 2: scale and combine
-    signal t4, t5;
-    t4 <== 4 * t1 + t3;     // a + b + 4c + 4d + 2d = a + b + 4c + 6d ... 
-    t5 <== 4 * t0 + t2;     // 4a + 4b + 2b + c + d = 4a + 6b + c + d
-    
-    // Step 3: final outputs
-    // out[0] <== t3 + t5;     // (a + b + 2d) + (4a + 6b + c + d) = 5a + 7b + c + 3d ✓
-    // out[1] <== t5 + t2;     // (4a + 6b + c + d) + (2b + c + d) = ... wait, need to recheck
-    // Let me recalculate properly:
-    // t5 = 4*t0 + t2 = 4*(a+b) + (2b + c + d) = 4a + 4b + 2b + c + d = 4a + 6b + c + d
-    // out[1] = t5 + t2 won't work. Let me use the clean circulant approach:
-    
-    // Clean circulant circ(5,7,1,3) directly:
-    out[0] <== 5*in[0] + 7*in[1] + in[2] + 3*in[3];
-    out[1] <== 3*in[0] + 5*in[1] + 7*in[2] + in[3];
-    out[2] <== in[0] + 3*in[1] + 5*in[2] + 7*in[3];
-    out[3] <== 7*in[0] + in[1] + 3*in[2] + 5*in[3];
+    // Poseidon2 t=4 external matrix M4 (matmul_external / matmul_M4 in the
+    // HorizenLabs reference). This matrix is NOT circulant — only rows 0 and 2
+    // coincide with circ(5,7,1,3); rows 1 and 3 differ. Using a circulant here
+    // is the C1 bug: it produces proofs that never verify against the on-chain
+    // poseidon2_permutation (which hardcodes this exact M4). Verified against
+    // the pinned rs-soroban-poseidon test vectors via scripts/poseidon2_diff.mjs.
+    //
+    // M4 = [ [5, 7, 1, 3],
+    //        [4, 6, 1, 1],
+    //        [1, 3, 5, 7],
+    //        [1, 1, 4, 6] ]
+    out[0] <== 5*in[0] + 7*in[1] +   in[2] + 3*in[3];
+    out[1] <== 4*in[0] + 6*in[1] +   in[2] +   in[3];
+    out[2] <==   in[0] + 3*in[1] + 5*in[2] + 7*in[3];
+    out[3] <==   in[0] +   in[1] + 4*in[2] + 6*in[3];
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -200,14 +172,18 @@ template Poseidon2Perm_t2() {
     // State after each round
     signal state[65][2];
 
-    // Initial state
-    state[0][0] <== in[0];
-    state[0][1] <== in[1];
-
     component sbox_full[8][2];   // 8 full rounds, each applies sbox to all 2 elements
     component sbox_partial[56];  // 56 partial rounds, each applies sbox to element 0 only
     component ext_matrix[8];     // 8 external matrix applications
     component int_matrix[56];    // 56 internal matrix applications
+
+    // Initial external linear layer: Poseidon2 applies M_E to the input state
+    // BEFORE the first round (matmul_external in the HorizenLabs reference).
+    component ext_init = ExternalMatrixT2();
+    ext_init.in[0] <== in[0];
+    ext_init.in[1] <== in[1];
+    state[0][0] <== ext_init.out[0];
+    state[0][1] <== ext_init.out[1];
 
     var round = 0;
 
@@ -292,14 +268,19 @@ template Poseidon2Perm_t3() {
 
     signal state[65][3];
 
-    state[0][0] <== in[0];
-    state[0][1] <== in[1];
-    state[0][2] <== in[2];
-
     component sbox_full[8][3];
     component sbox_partial[56];
     component ext_matrix[8];
     component int_matrix[56];
+
+    // Initial external linear layer (M_E applied before the first round).
+    component ext_init = ExternalMatrixT3();
+    ext_init.in[0] <== in[0];
+    ext_init.in[1] <== in[1];
+    ext_init.in[2] <== in[2];
+    state[0][0] <== ext_init.out[0];
+    state[0][1] <== ext_init.out[1];
+    state[0][2] <== ext_init.out[2];
 
     var round = 0;
     
@@ -387,14 +368,19 @@ template Poseidon2Perm_t4() {
 
     signal state[65][4];
 
-    for (var j = 0; j < 4; j++) {
-        state[0][j] <== in[j];
-    }
-
     component sbox_full[8][4];
     component sbox_partial[56];
     component ext_matrix[8];
     component int_matrix[56];
+
+    // Initial external linear layer (M_E applied before the first round).
+    component ext_init = ExternalMatrixT4();
+    for (var j = 0; j < 4; j++) {
+        ext_init.in[j] <== in[j];
+    }
+    for (var j = 0; j < 4; j++) {
+        state[0][j] <== ext_init.out[j];
+    }
 
     var round = 0;
     
