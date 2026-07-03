@@ -1,12 +1,19 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import Card from '../components/common/Card';
 import ActivityFeed from '../components/dashboard/ActivityFeed';
 import { usePoolStore } from '../store/pool';
 import { useWalletStore } from '../store/wallet';
 
 export default function Dashboard() {
-  const { shieldedBalance, notes } = usePoolStore();
-  const { address } = useWalletStore();
+  const { shieldedBalance, notes, fetchState } = usePoolStore();
+  const { address, keys } = useWalletStore();
+
+  // Refresh notes + activity when the dashboard opens. Guarded on `keys` so we
+  // never trigger a Freighter signature just by visiting; fetchState also
+  // no-ops without keys.
+  useEffect(() => {
+    if (address && keys) void fetchState();
+  }, [address, keys, fetchState]);
 
   return (
     <div>

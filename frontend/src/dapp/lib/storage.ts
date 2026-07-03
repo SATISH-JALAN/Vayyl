@@ -26,6 +26,35 @@ export interface ShieldedNote {
 
 const key = (viewingKey: string) => `vayyl_notes_${viewingKey}`;
 
+// ---- activity log ----------------------------------------------------------
+// Deposits are recoverable from notes, but a spend only flips `isSpent` — the
+// withdraw's tx hash and time are otherwise lost. Record non-deposit events
+// (withdraw / transfer) here so the dashboard can show real recent activity.
+
+export type ActivityType = 'Deposit' | 'Withdraw' | 'Transfer';
+
+export interface ActivityEvent {
+  id: string; // tx hash (or a unique fallback)
+  type: ActivityType;
+  amount: number;
+  asset: string;
+  txHash?: string;
+  timestamp: number; // ms epoch
+}
+
+const activityKey = (viewingKey: string) => `vayyl_activity_${viewingKey}`;
+
+export const getActivity = async (viewingKey: string): Promise<ActivityEvent[]> => {
+  const events = await get(activityKey(viewingKey));
+  return events || [];
+};
+
+export const addActivity = async (viewingKey: string, event: ActivityEvent) => {
+  const events = await getActivity(viewingKey);
+  events.push(event);
+  await set(activityKey(viewingKey), events);
+};
+
 export const saveNotes = async (viewingKey: string, notes: ShieldedNote[]) => {
   await set(key(viewingKey), notes);
 };
@@ -66,4 +95,5 @@ export const setNoteLeafIndex = async (viewingKey: string, id: string, leafIndex
 
 export const clearNotes = async (viewingKey: string) => {
   await del(key(viewingKey));
+  await del(activityKey(viewingKey));
 };
