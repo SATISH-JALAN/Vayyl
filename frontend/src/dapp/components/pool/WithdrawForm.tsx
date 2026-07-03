@@ -7,20 +7,23 @@ import { usePoolStore } from '../../store/pool';
 export default function WithdrawForm() {
   const [amount, setAmount] = useState('');
   const [destination, setDestination] = useState('');
-  const { withdraw, isProving, shieldedBalance } = usePoolStore();
+  const { withdraw, isProving, shieldedBalance, status } = usePoolStore();
 
   const handleWithdraw = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!amount || !destination) return;
-    
+
     try {
       await withdraw(Number(amount), 'XLM', destination);
       setAmount('');
       setDestination('');
     } catch (e) {
+      // The store sets a human-readable `status`; surface it below.
       console.error(e);
     }
   };
+
+  const isError = !!status && /failed|error/i.test(status);
 
   return (
     <Card>
@@ -39,10 +42,10 @@ export default function WithdrawForm() {
         />
         
         <div style={{ marginTop: '1.5rem', marginBottom: '2rem' }}>
-          <Input 
-            label="Amount (Max: {shieldedBalance} XLM)" 
-            type="number" 
-            placeholder="0.00" 
+          <Input
+            label={`Amount (Max: ${shieldedBalance} XLM)`}
+            type="number"
+            placeholder="0.00"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
             disabled={isProving}
@@ -52,6 +55,19 @@ export default function WithdrawForm() {
         <Button type="submit" disabled={isProving || !amount || !destination} style={{ width: '100%', justifyContent: 'center' }}>
           {isProving ? 'Generating ZK Proof...' : 'Unshield Assets'}
         </Button>
+
+        {status && (
+          <p
+            style={{
+              marginTop: '1rem',
+              fontSize: 'var(--text-small, 0.85rem)',
+              wordBreak: 'break-word',
+              color: isError ? 'var(--error, #ff6b6b)' : 'var(--text-muted)',
+            }}
+          >
+            {status}
+          </p>
+        )}
       </form>
     </Card>
   );
