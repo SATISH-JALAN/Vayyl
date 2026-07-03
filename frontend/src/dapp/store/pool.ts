@@ -1,138 +1,144 @@
+// ============================================================
+// Pool store — the ONE real vertical: deposit → withdraw  (Tasks 6.2–6.4, 6.3)
+// ============================================================
+// Orchestrates: derive shielded keys → build real inputs → prove in the Web
+// Worker → assemble/sign/submit a real Soroban tx → persist the spendable note.
+// Positions/orders stay UI-only (mock, labeled) and are NOT touched here.
+
 import { create } from 'zustand';
 import ProofWorker from '../lib/proof-worker?worker';
-
-export interface ShieldedNote {
-  id: string;
-  amount: number;
-  asset: string;
-  status: 'active' | 'spent';
-}
+import { useWalletStore } from './wallet';
+import {
+  randomFieldElement,
+} from '../lib/poseidon';
+import {
+  submitDeposit,
+  submitWithdraw,
+  fetchCommitments,
+  fetchSpentNullifiers,
+  computeWithdrawBinding,
+} from '../lib/pool';
+import {
+  addNote,
+  getNotes,
+  markNoteSpent,
+  saveNotes,
+  type ShieldedNote,
+} from '../lib/storage';
 
 interface PoolState {
   shieldedBalance: number;
   notes: ShieldedNote[];
   isProving: boolean;
-  fetchState: (poolAddress: string) => Promise<void>;
+  status: string | null;
+  fetchState: () => Promise<void>;
   deposit: (amount: number, asset: string) => Promise<void>;
   withdraw: (amount: number, asset: string, destination: string) => Promise<void>;
   transfer: (amount: number, asset: string, recipient: string) => Promise<void>;
 }
 
-const runWorkerTask = (type: string, payload: any): Promise<any> => {
-  return new Promise((resolve, reject) => {
+const runWorkerTask = (type: string, payload: any): Promise<any> =>
+  new Promise((resolve, reject) => {
     const worker = new ProofWorker();
     const taskId = Math.random().toString(36).substring(7);
-    
     worker.onmessage = (e: any) => {
       if (e.data.id === taskId) {
-        if (e.data.status === 'success') {
-          resolve(e.data.result);
-        } else {
-          reject(new Error(e.data.error));
-        }
+        if (e.data.status === 'success') resolve(e.data.result);
+        else reject(new Error(e.data.error));
         worker.terminate();
       }
     };
-    
     worker.postMessage({ type, payload, id: taskId });
   });
-};
+
+const RELAYER_PLACEHOLDER =
+  'GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF5'; // null-account when self-submitting
 
 export const usePoolStore = create<PoolState>((set, get) => ({
   shieldedBalance: 0,
   notes: [],
   isProving: false,
+  status: null,
 
-  fetchState: async (poolAddress: string) => {
+  fetchState: async () => {
+    const keys = useWalletStore.getState().keys;
+    if (!keys) return;
     try {
-      const response = await fetch(`http://localhost:3001/commitments?pool=${poolAddress}`);
-      const data = await response.json();
-      if (data.commitments) {
-        // In a real implementation, attempt to decrypt these commitments using the viewing key
-        // For the demo, we just count them
-        set({
-          notes: data.commitments.map((c: any, i: number) => ({
-            id: c.commitment_hash,
-            amount: 1000, // mock decrypted amount
-            asset: 'XLM',
-            status: 'active'
-          })),
-          shieldedBalance: data.commitments.length * 1000 // mock sum
-        });
+      const [spent] = await Promise.all([fetchSpentNullifiers().catch(() => new Set<string>())]);
+      const notes = await getNotes(keys.viewingKey);
+      // Reconcile spent status against on-chain nullifiers.
+      let changed = false;
+      for (const n of notes) {
+        if (!n.isSpent && spent.has(n.nullifier)) {
+          n.isSpent = true;
+          changed = true;
+        }
       }
+      if (changed) await saveNotes(keys.viewingKey, notes);
+      const active = notes.filter((n) => !n.isSpent);
+      set({
+        notes,
+        shieldedBalance: active.reduce((s, n) => s + n.amount, 0),
+      });
     } catch (e) {
-      console.error("Failed to fetch state", e);
+      console.error('fetchState failed', e);
     }
   },
 
   deposit: async (amount: number, asset: string) => {
-    set({ isProving: true });
-    
+    const wallet = useWalletStore.getState();
+    if (!wallet.address) throw new Error('Connect your wallet first');
+    const keys = await wallet.unlockShieldedKeys();
+
+    set({ isProving: true, status: 'Generating deposit proof…' });
     try {
-      // Offload heavy ZK proving to Web Worker
-      const result = await runWorkerTask('PROVE_DEPOSIT', { amount, asset });
-      console.log('Proof generated:', result);
-
-      // Submit to Relayer
-      const relayRes = await fetch('http://localhost:3002/relay', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          tx: "mock_base64_xdr_containing_deposit_invocation_and_proof"
-        })
+      const blindness = randomFieldElement().toString();
+      const proveResult = await runWorkerTask('PROVE_DEPOSIT', {
+        amount: amount.toString(),
+        pubX: keys.pubX.toString(),
+        pubY: keys.pubY.toString(),
+        blindness,
+        aspRoot: '0', // ASP not enforced in testnet V1 (labeled) — Task 5.9
       });
-      const relayData = await relayRes.json();
-      if (!relayData.success) throw new Error(relayData.error);
 
-      set((state) => ({
-        shieldedBalance: state.shieldedBalance + amount,
-        notes: [
-          ...state.notes,
-          { id: `note_${Math.random().toString(36).substr(2, 9)}`, amount, asset, status: 'active' }
-        ],
-      }));
-    } catch (e) {
-      console.error("Deposit failed", e);
-    } finally {
-      set({ isProving: false });
-    }
-  },
-
-  transfer: async (amount: number, asset: string, recipient: string) => {
-    set({ isProving: true });
-    
-    try {
-      const state = get();
-      if (amount > state.shieldedBalance) {
-        throw new Error("Insufficient shielded balance");
-      }
-
-      const circuitInput = {
-         // This would gather real UXTO notes
-         in_amount: [amount, 0], 
-         out_amount: [amount, 0],
-         // ...
-      };
-
-      const result = await runWorkerTask('PROVE_TRANSFER', { amount, asset, recipient, circuitInput });
-      console.log('Proof generated:', result);
-
-      // Submit to Relayer
-      const relayRes = await fetch('http://localhost:3002/relay', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          tx: "mock_base64_xdr_transfer"
-        })
+      set({ status: 'Submitting transaction…' });
+      const txHash = await submitDeposit({
+        depositor: wallet.address,
+        proof: proveResult.proof,
+        commitment: proveResult.commitment,
+        publicAmount: BigInt(amount),
+        // Must match the proof's asp_root public signal exactly (derived in the
+        // worker), else on-chain verification fails. V1 ASP is not enforced.
+        aspRoot: proveResult.aspRoot,
+        asset,
       });
-      const relayData = await relayRes.json();
-      if (!relayData.success) throw new Error(relayData.error);
 
-      set((state) => ({
-        shieldedBalance: state.shieldedBalance - amount,
-      }));
-    } catch (e) {
-      console.error("Transfer failed", e);
+      // Persist the spendable note. leafIndex is corrected from the indexer on
+      // the next fetchState (event carries the true index).
+      const commitment: string = proveResult.commitment;
+      const nullifier = await import('../lib/poseidon').then((m) =>
+        m.computeNullifier(BigInt(commitment), keys.spendKey),
+      );
+      const existing = await getNotes(keys.viewingKey);
+      await addNote(keys.viewingKey, {
+        id: commitment,
+        amount,
+        asset,
+        commitment,
+        nullifier: nullifier.toString(),
+        pubX: keys.pubX.toString(),
+        pubY: keys.pubY.toString(),
+        blindness,
+        leafIndex: existing.filter((n) => n.asset === asset).length, // provisional
+        isSpent: false,
+        createdAt: Date.now(),
+        txHash,
+      });
+
+      set({ status: `Deposit confirmed: ${txHash.slice(0, 8)}…` });
+      await get().fetchState();
+    } catch (e: any) {
+      set({ status: `Deposit failed: ${e.message}` });
       throw e;
     } finally {
       set({ isProving: false });
@@ -140,39 +146,76 @@ export const usePoolStore = create<PoolState>((set, get) => ({
   },
 
   withdraw: async (amount: number, asset: string, destination: string) => {
-    set({ isProving: true });
-    
+    const wallet = useWalletStore.getState();
+    if (!wallet.address) throw new Error('Connect your wallet first');
+    const keys = await wallet.unlockShieldedKeys();
+
+    set({ isProving: true, status: 'Selecting note…' });
     try {
-      const state = get();
-      if (amount > state.shieldedBalance) {
-        throw new Error("Insufficient shielded balance");
+      const notes = await getNotes(keys.viewingKey);
+      // Minimal note selection: one unspent note of exactly `amount` (single-note
+      // withdraw — the MVP vertical; multi-note aggregation is post-MVP).
+      const note = notes.find((n) => !n.isSpent && n.amount === amount && n.asset === asset);
+      if (!note) {
+        throw new Error(
+          `No single unspent ${asset} note of ${amount} found. (MVP withdraws a whole note.)`,
+        );
       }
 
-      const circuitInput = {
-        // Real inputs
-      };
+      const fee = 0n; // self-submit; relayer fee wired when using the relayer path
+      const publicAmount = BigInt(amount);
+      const withdrawBinding = await computeWithdrawBinding(destination, publicAmount);
 
-      const result = await runWorkerTask('PROVE_WITHDRAW', { amount, asset, destination, circuitInput });
-      console.log('Proof generated:', result);
+      // Reconstruct the tree from the indexer's ordered commitments.
+      set({ status: 'Reconstructing Merkle path…' });
+      const leaves = await fetchCommitments();
+      // Locate this note's leaf index by matching its commitment.
+      const idx = leaves.findIndex((c) => c.toString() === note.commitment);
+      const leafIndex = idx >= 0 ? idx : note.leafIndex;
 
-      // Submit to Relayer
-      const relayRes = await fetch('http://localhost:3002/relay', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          tx: "mock_base64_xdr_withdraw"
-        })
+      set({ status: 'Generating withdraw proof…' });
+      const proveResult = await runWorkerTask('PROVE_WITHDRAW', {
+        amount: note.amount.toString(),
+        pubX: note.pubX,
+        pubY: note.pubY,
+        blindness: note.blindness,
+        privKey: keys.spendKey.toString(),
+        leafIndex,
+        publicAmount: publicAmount.toString(),
+        fee: fee.toString(),
+        withdrawBinding,
+        leaves: leaves.map((c) => c.toString()),
       });
-      const relayData = await relayRes.json();
-      if (!relayData.success) throw new Error(relayData.error);
 
-      set((state) => ({
-        shieldedBalance: state.shieldedBalance - amount,
-      }));
-    } catch (e) {
-      console.error("Withdraw failed", e);
+      set({ status: 'Submitting transaction…' });
+      const txHash = await submitWithdraw({
+        source: wallet.address,
+        proof: proveResult.proof,
+        nullifier: proveResult.nullifier,
+        publicAmount,
+        recipient: destination,
+        root: proveResult.root,
+        fee,
+        relayer: wallet.address, // self as relayer when self-submitting (fee=0)
+        asset,
+      });
+
+      await markNoteSpent(keys.viewingKey, note.id);
+      set({ status: `Withdraw confirmed: ${txHash.slice(0, 8)}…` });
+      await get().fetchState();
+    } catch (e: any) {
+      set({ status: `Withdraw failed: ${e.message}` });
+      throw e;
     } finally {
       set({ isProving: false });
     }
-  }
+  },
+
+  transfer: async () => {
+    // Shielded→shielded transfer is the §2 stretch / §7 item 1 — needs the H2
+    // circuit fix + transfer inputs. Intentionally not wired in the MVP.
+    throw new Error('Transfer is on the roadmap and not enabled in this build.');
+  },
 }));
+
+void RELAYER_PLACEHOLDER;

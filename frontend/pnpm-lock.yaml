@@ -17,6 +17,9 @@ importers:
       '@stellar/stellar-sdk':
         specifier: ^16.0.1
         version: 16.0.1
+      buffer:
+        specifier: ^6.0.3
+        version: 6.0.3
       gsap:
         specifier: ^3.15.0
         version: 3.15.0

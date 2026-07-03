@@ -1,3 +1,10 @@
+// @stellar/stellar-sdk builds ScVals with Node's `Buffer`, which the browser
+// doesn't provide. Polyfill it globally before any SDK code runs.
+import { Buffer } from 'buffer';
+if (!(globalThis as { Buffer?: unknown }).Buffer) {
+  (globalThis as { Buffer?: unknown }).Buffer = Buffer;
+}
+
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { HashRouter } from 'react-router-dom';

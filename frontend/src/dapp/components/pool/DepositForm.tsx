@@ -7,19 +7,23 @@ import { usePoolStore } from '../../store/pool';
 export default function DepositForm() {
   const [amount, setAmount] = useState('');
   const [asset, setAsset] = useState('XLM');
-  const { deposit, isProving } = usePoolStore();
+  const { deposit, isProving, status } = usePoolStore();
 
   const handleDeposit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!amount) return;
-    
+
     try {
       await deposit(Number(amount), asset);
       setAmount('');
     } catch (e) {
+      // The store already sets a human-readable `status`; surface it below and
+      // keep the full error in the console for debugging.
       console.error(e);
     }
   };
+
+  const isError = !!status && /failed|error/i.test(status);
 
   return (
     <Card>
@@ -52,6 +56,19 @@ export default function DepositForm() {
         <Button type="submit" disabled={isProving || !amount} style={{ width: '100%', justifyContent: 'center' }}>
           {isProving ? 'Generating ZK Proof...' : 'Shield Assets'}
         </Button>
+
+        {status && (
+          <p
+            style={{
+              marginTop: '1rem',
+              fontSize: 'var(--text-small, 0.85rem)',
+              wordBreak: 'break-word',
+              color: isError ? 'var(--error, #ff6b6b)' : 'var(--text-muted)',
+            }}
+          >
+            {status}
+          </p>
+        )}
       </form>
     </Card>
   );
