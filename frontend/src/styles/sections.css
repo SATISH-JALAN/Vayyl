@@ -91,6 +91,7 @@
   position: relative;
   z-index: 2;
   max-width: 900px;
+  visibility: hidden; /* Prevent FOUC */
 }
 
 .hero__badge {

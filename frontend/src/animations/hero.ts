@@ -13,13 +13,8 @@ import { ScrollTrigger } from 'gsap/ScrollTrigger';
 export function initHeroAnimations(): gsap.core.Timeline {
   const tl = gsap.timeline({ delay: 0.2 });
 
-  // ── Badge fade in ──
-  tl.from('.hero__badge', {
-    autoAlpha: 0,
-    y: 16,
-    duration: 0.7,
-    ease: 'power2.out',
-  });
+  // ── Reveal content wrapper to prevent FOUC ──
+  gsap.set('.hero__content', { autoAlpha: 1 });
 
   // ── Orb reveal and continuous rotation ──
   tl.to(
@@ -56,7 +51,7 @@ export function initHeroAnimations(): gsap.core.Timeline {
         ease: 'power4.out',
         stagger: 0.05,
       },
-      '-=0.2'
+      0
     );
   }
 
