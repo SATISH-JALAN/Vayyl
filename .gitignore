@@ -13,6 +13,9 @@ dist/
 
 # Agent customizations
 
+# Docs
+docs/
+CLAUDE.md
 # Circom build artifacts
 circuits/build/
 *.sym
@@ -49,7 +52,4 @@ yarn.lock
 rs-soroban-poseidon/
 
 # Internal project documentation
-/docs
-/.claude
 /.agents
-/CLAUDE.md

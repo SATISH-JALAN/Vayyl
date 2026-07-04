@@ -44,7 +44,6 @@ export function initHeroAnimations(): gsap.core.Timeline {
   if (heroTitle) {
     const split = SplitText.create(heroTitle, {
       type: 'chars',
-      mask: 'chars',
     });
 
     tl.from(
@@ -100,17 +99,6 @@ export function initHeroAnimations(): gsap.core.Timeline {
     );
   }
 
-  // ── Scroll indicator fade ──
-  tl.from(
-    '.scroll-indicator',
-    {
-      autoAlpha: 0,
-      duration: 0.5,
-      ease: 'power2.out',
-    },
-    '-=0.5'
-  );
-
   // ── Hero parallax on scroll ──
   gsap.to('.hero__content', {
     y: -80,
@@ -146,17 +134,6 @@ export function initHeroAnimations(): gsap.core.Timeline {
       start: 'top top',
       end: 'bottom top',
       scrub: 1,
-    },
-  });
-
-  // ── Hide scroll indicator on scroll ──
-  gsap.to('.scroll-indicator', {
-    autoAlpha: 0,
-    scrollTrigger: {
-      trigger: '.hero',
-      start: 'top top',
-      end: '+=100',
-      scrub: true,
     },
   });
 
