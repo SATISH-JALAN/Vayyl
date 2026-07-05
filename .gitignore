@@ -14,8 +14,8 @@ dist/
 # Agent customizations
 
 # Docs
-docs/
 CLAUDE.md
+docs/
 # Circom build artifacts
 circuits/build/
 *.sym
