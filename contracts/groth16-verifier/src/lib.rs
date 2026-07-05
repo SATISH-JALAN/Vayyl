@@ -203,6 +203,22 @@ impl Groth16VerifierContract {
             .get(&DataKey::Admin)
             .ok_or(Error::Unauthorized)
     }
+
+    /// Upgrade the contract's WASM code in place (admin-gated).
+    ///
+    /// Swaps the code this same address runs while keeping all stored state
+    /// (admin + every registered VK). Without this, a verifier bug fix would
+    /// require a fresh deploy and re-registration of every circuit's VK.
+    pub fn upgrade(env: Env, new_wasm_hash: BytesN<32>) -> Result<(), Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::Unauthorized)?;
+        admin.require_auth();
+        env.deployer().update_current_contract_wasm(new_wasm_hash);
+        Ok(())
+    }
 }
 
 #[cfg(test)]

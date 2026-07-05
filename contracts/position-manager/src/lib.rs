@@ -9,6 +9,8 @@ use soroban_sdk::{
 #[contracttype]
 #[derive(Clone)]
 pub enum DataKey {
+    /// Admin authorized to `upgrade()` this contract in place.
+    Admin,
     Verifier,
     Oracle,
     LiquidationEngine,
@@ -24,6 +26,31 @@ pub enum Error {
     InvalidProof = 3,
     NullifierAlreadyUsed = 4,
     PositionNotFound = 5,
+    /// A price/fee value is negative — non-encodable as a BN254 field element.
+    InvalidAmount = 6,
+}
+
+/// H3: nullifier persistence TTL (kept in sync with the pool's policy). A spent
+/// position nullifier must outlive the note/position it spends, or that note
+/// becomes re-spendable once its entry archives.
+pub const PERSISTENT_TTL_THRESHOLD: u32 = 1_000_000;
+pub const PERSISTENT_TTL_EXTEND: u32 = 3_000_000;
+
+/// Encode a full i128 price/fee as a 32-byte big-endian field element.
+///
+/// The previous code copied only `to_be_bytes()[8..16]` — the low 64 bits — so
+/// any value >= 2^64 was silently truncated and the resulting public input no
+/// longer matched what the circuit hashed, so a valid proof would fail to verify
+/// (or, worse, a crafted value could alias a different one mod 2^64). Prices and
+/// fees are non-negative by protocol; i128::MAX < BN254 prime, so a non-negative
+/// i128 is always a canonical field element in the low 16 bytes.
+fn i128_to_field_bytes(value: i128) -> Result<[u8; 32], Error> {
+    if value < 0 {
+        return Err(Error::InvalidAmount);
+    }
+    let mut out = [0u8; 32];
+    out[16..32].copy_from_slice(&value.to_be_bytes());
+    Ok(out)
 }
 
 #[soroban_sdk::contractclient(name = "OracleInterfaceClient")]
@@ -47,11 +74,12 @@ pub struct PositionManager;
 #[contractimpl]
 impl PositionManager {
     /// Initialize the Position Manager
-    pub fn initialize(env: Env, verifier: Address, oracle: Address, liquidation_engine: Address) -> Result<(), Error> {
+    pub fn initialize(env: Env, admin: Address, verifier: Address, oracle: Address, liquidation_engine: Address) -> Result<(), Error> {
         if env.storage().instance().has(&DataKey::Verifier) {
             return Err(Error::AlreadyInitialized);
         }
 
+        env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::Verifier, &verifier);
         env.storage().instance().set(&DataKey::Oracle, &oracle);
         env.storage().instance().set(&DataKey::LiquidationEngine, &liquidation_engine);
@@ -68,9 +96,15 @@ impl PositionManager {
         {
             return Err(Error::NullifierAlreadyUsed);
         }
-        env.storage()
-            .persistent()
-            .set(&DataKey::Nullifier(nullifier), &true);
+        let key = DataKey::Nullifier(nullifier);
+        env.storage().persistent().set(&key, &true);
+        // H3: extend to the maximum practical persistent TTL so a spent nullifier
+        // survives far past the default ~100k-ledger window.
+        env.storage().persistent().extend_ttl(
+            &key,
+            PERSISTENT_TTL_THRESHOLD,
+            PERSISTENT_TTL_EXTEND,
+        );
         Ok(())
     }
 
@@ -140,10 +174,9 @@ impl PositionManager {
         // Public inputs: [position_commitment, oracle_price, oracle_timestamp]
         let mut public_inputs = Vec::new(&env);
         public_inputs.push_back(state.commitment.clone());
-        
-        let mut price_bytes = [0u8; 32];
-        price_bytes[24..32].copy_from_slice(&price.to_be_bytes()[8..16]); // assuming positive i128
-        public_inputs.push_back(BytesN::from_array(&env, &price_bytes));
+
+        // Full-i128 field encoding (no low-64-bit truncation).
+        public_inputs.push_back(BytesN::from_array(&env, &i128_to_field_bytes(price)?));
 
         let mut ts_bytes = [0u8; 32];
         ts_bytes[24..32].copy_from_slice(&timestamp.to_be_bytes());
@@ -200,13 +233,9 @@ impl PositionManager {
         public_inputs.push_back(new_position_commitment.clone());
         public_inputs.push_back(output_note_commitment);
         
-        let mut price_bytes = [0u8; 32];
-        price_bytes[24..32].copy_from_slice(&price.to_be_bytes()[8..16]);
-        public_inputs.push_back(BytesN::from_array(&env, &price_bytes));
-
-        let mut fee_bytes = [0u8; 32];
-        fee_bytes[24..32].copy_from_slice(&fee.to_be_bytes()[8..16]);
-        public_inputs.push_back(BytesN::from_array(&env, &fee_bytes));
+        // Full-i128 field encoding for both price and fee (no truncation).
+        public_inputs.push_back(BytesN::from_array(&env, &i128_to_field_bytes(price)?));
+        public_inputs.push_back(BytesN::from_array(&env, &i128_to_field_bytes(fee)?));
 
         public_inputs.push_back(meta_hash);
 
@@ -226,5 +255,85 @@ impl PositionManager {
 
     pub fn get_position_state(env: Env, position_id: BytesN<32>) -> Result<PositionState, Error> {
         env.storage().persistent().get(&DataKey::Position(position_id)).ok_or(Error::PositionNotFound)
+    }
+
+    /// Get the admin authorized to upgrade this contract.
+    pub fn admin(env: Env) -> Result<Address, Error> {
+        env.storage().instance().get(&DataKey::Admin).ok_or(Error::NotInitialized)
+    }
+
+    /// Upgrade the contract's WASM code in place (admin-gated).
+    /// Keeps every open position and spent nullifier intact.
+    pub fn upgrade(env: Env, new_wasm_hash: BytesN<32>) -> Result<(), Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+        env.deployer().update_current_contract_wasm(new_wasm_hash);
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use soroban_sdk::testutils::Address as _;
+
+    fn setup(env: &Env) -> (PositionManagerClient<'static>, Address) {
+        let contract_id = env.register(PositionManager, ());
+        let client = PositionManagerClient::new(env, &contract_id);
+        let admin = Address::generate(env);
+        let verifier = Address::generate(env);
+        let oracle = Address::generate(env);
+        let le = Address::generate(env);
+        client.initialize(&admin, &verifier, &oracle, &le);
+        (client, admin)
+    }
+
+    #[test]
+    fn test_initialize_and_admin() {
+        let env = Env::default();
+        let (client, admin) = setup(&env);
+        assert_eq!(client.admin(), admin);
+    }
+
+    #[test]
+    fn test_double_init_fails() {
+        let env = Env::default();
+        let (client, _admin) = setup(&env);
+        let a = Address::generate(&env);
+        let result = client.try_initialize(&a, &a, &a, &a);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_get_missing_position_errors() {
+        let env = Env::default();
+        let (client, _admin) = setup(&env);
+        let pid = BytesN::from_array(&env, &[7u8; 32]);
+        let result = client.try_get_position_state(&pid);
+        assert!(result.is_err());
+    }
+
+    // The i128 field encoding must round-trip a value above 2^64 without
+    // truncation (the old `to_be_bytes()[8..16]` slice dropped the high 64 bits).
+    #[test]
+    fn test_i128_field_encoding_no_truncation() {
+        // 2^64 + 1 — high bits are non-zero, so a low-64-bit copy would lose them.
+        let value: i128 = (1i128 << 64) + 1;
+        let bytes = i128_to_field_bytes(value).unwrap();
+        // Reconstruct the low-16-byte big-endian region and compare.
+        let mut recon = [0u8; 16];
+        recon.copy_from_slice(&bytes[16..32]);
+        assert_eq!(i128::from_be_bytes(recon), value);
+        // The top 16 bytes stay zero (canonical field element).
+        assert_eq!(&bytes[0..16], &[0u8; 16]);
+    }
+
+    #[test]
+    fn test_i128_field_encoding_rejects_negative() {
+        assert_eq!(i128_to_field_bytes(-1), Err(Error::InvalidAmount));
     }
 }

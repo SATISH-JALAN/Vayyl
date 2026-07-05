@@ -40,11 +40,17 @@ Write-Host "Initializing Vayyl Pool..."
 # the ASP root is a caller-supplied public input. So passing $VERIFIER_ID here is an
 # inert placeholder for V1; wire the real ASPMembership/ASPNonMembership contracts
 # before enabling ASP-gated flows.
-stellar contract invoke --id $POOL_ID --network $NETWORK --source $SOURCE -- initialize --asset $TOKEN_ID --verifier $VERIFIER_ID --membership $VERIFIER_ID --non_membership $VERIFIER_ID
+# $ADMIN (the deployer) is now also the pool's upgrade admin — it can `upgrade()`
+# the pool in place later to add ASP enforcement / execute_settlement without a
+# new address or state migration.
+stellar contract invoke --id $POOL_ID --network $NETWORK --source $SOURCE -- initialize --admin $ADMIN --asset $TOKEN_ID --verifier $VERIFIER_ID --membership $VERIFIER_ID --non_membership $VERIFIER_ID
 
 Write-Host "Initializing Position Manager..."
-# Assuming manager needs to be initialized with Verifier, Oracle
-stellar contract invoke --id $MANAGER_ID --network $NETWORK --source $SOURCE -- initialize --verifier $VERIFIER_ID --oracle $ORACLE_ID
+# Manager init now takes: admin, verifier, oracle, liquidation_engine.
+# No LiquidationEngine is deployed in this payment-vertical script yet, so its
+# address is an inert placeholder ($VERIFIER_ID), mirroring the pool's ASP
+# placeholders above. Wire the real LiquidationEngine before enabling positions.
+stellar contract invoke --id $MANAGER_ID --network $NETWORK --source $SOURCE -- initialize --admin $ADMIN --verifier $VERIFIER_ID --oracle $ORACLE_ID --liquidation_engine $VERIFIER_ID
 
 # Persist the freshly-minted contract IDs so register_vks.js (and the frontend/
 # indexer) target THIS deploy's verifier instead of a stale hardcoded id.

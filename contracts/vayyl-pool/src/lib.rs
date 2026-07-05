@@ -66,6 +66,8 @@ pub const PERSISTENT_TTL_EXTEND: u32 = 3_000_000;
 #[contracttype]
 #[derive(Clone)]
 pub enum DataKey {
+    /// Admin authorized to `upgrade()` this pool in place.
+    Admin,
     Asset,
     Verifier,
     Membership,
@@ -147,6 +149,7 @@ impl VayylPool {
     /// Initialize the Vayyl Pool with the underlying asset and external contract references
     pub fn initialize(
         env: Env,
+        admin: Address,
         asset: Address,
         verifier: Address,
         membership: Address,
@@ -156,6 +159,7 @@ impl VayylPool {
             return Err(Error::AlreadyInitialized);
         }
 
+        env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::Asset, &asset);
         env.storage().instance().set(&DataKey::Verifier, &verifier);
         env.storage().instance().set(&DataKey::Membership, &membership);
@@ -588,6 +592,32 @@ impl VayylPool {
             .instance()
             .get(&DataKey::TreeNextIndex)
             .unwrap_or(0)
+    }
+
+    /// Get the admin authorized to upgrade this pool.
+    pub fn admin(env: Env) -> Result<Address, Error> {
+        env.storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)
+    }
+
+    /// Upgrade the pool's WASM code in place (admin-gated).
+    ///
+    /// This is the single most important mainnet safety valve: it lets a bug fix
+    /// or feature addition (ASP enforcement, `execute_settlement`) reuse the SAME
+    /// pool address, so the Merkle tree, nullifier set, and root history all
+    /// survive and every user note stays valid. Without it, a fix means a new
+    /// address with empty state and stranded funds.
+    pub fn upgrade(env: Env, new_wasm_hash: BytesN<32>) -> Result<(), Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+        env.deployer().update_current_contract_wasm(new_wasm_hash);
+        Ok(())
     }
 }
 

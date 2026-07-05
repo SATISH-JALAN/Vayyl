@@ -9,6 +9,8 @@ use soroban_sdk::{
 #[contracttype]
 #[derive(Clone)]
 pub enum DataKey {
+    /// Admin authorized to `upgrade()` this contract in place.
+    Admin,
     PositionManager,
     Verifier,
     GracePeriod,
@@ -48,6 +50,7 @@ impl LiquidationEngineContract {
     /// Initialize the Liquidation Engine with references to PositionManager and Groth16Verifier
     pub fn initialize(
         env: Env,
+        admin: Address,
         position_manager: Address,
         verifier: Address,
         grace_period: u64,
@@ -55,6 +58,7 @@ impl LiquidationEngineContract {
         if env.storage().instance().has(&DataKey::PositionManager) {
             return Err(Error::AlreadyInitialized);
         }
+        env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::PositionManager, &position_manager);
         env.storage().instance().set(&DataKey::Verifier, &verifier);
         env.storage().instance().set(&DataKey::GracePeriod, &grace_period);
@@ -63,14 +67,23 @@ impl LiquidationEngineContract {
 
     /// Register a heartbeat for a position.
     /// Called by PositionManager after a successful attest_health().
+    ///
+    /// H5: gated on the PositionManager's authorization. Previously anyone could
+    /// call this and reset any position's heartbeat, indefinitely blocking
+    /// legitimate liquidations (a griefing / DoS hole). A contract automatically
+    /// authorizes the direct sub-calls it makes, so PositionManager's invocation
+    /// passes this check while any other caller is rejected.
     pub fn register_heartbeat(
         env: Env,
         position_id: BytesN<32>,
         timestamp: u64,
     ) -> Result<(), Error> {
-        // In production, verify caller is PositionManager:
-        // let pm: Address = env.storage().instance().get(&DataKey::PositionManager).unwrap();
-        // pm.require_auth();
+        let pm: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::PositionManager)
+            .ok_or(Error::Unauthorized)?;
+        pm.require_auth();
         env.storage().persistent().set(&DataKey::Heartbeat(position_id), &timestamp);
         Ok(())
     }
@@ -95,7 +108,10 @@ impl LiquidationEngineContract {
             .get(&DataKey::Heartbeat(position_id.clone()))
             .ok_or(Error::HeartbeatNotFound)?;
 
-        if env.ledger().timestamp() < last_heartbeat + grace {
+        // Saturating add: a heartbeat near u64::MAX plus grace would otherwise
+        // overflow and trap (overflow-checks are on in release), turning a normal
+        // "not stale yet" path into an aborted transaction.
+        if env.ledger().timestamp() < last_heartbeat.saturating_add(grace) {
             return Err(Error::PositionNotStale);
         }
 
@@ -190,12 +206,30 @@ impl LiquidationEngineContract {
             .persistent()
             .get(&DataKey::Heartbeat(position_id))
             .unwrap_or(0);
-        env.ledger().timestamp() > last_heartbeat + grace
+        env.ledger().timestamp() > last_heartbeat.saturating_add(grace)
     }
 
     /// Check if a position has been liquidated
     pub fn is_liquidated(env: Env, position_id: BytesN<32>) -> bool {
         env.storage().persistent().has(&DataKey::Liquidated(position_id))
+    }
+
+    /// Get the admin authorized to upgrade this contract.
+    pub fn admin(env: Env) -> Result<Address, Error> {
+        env.storage().instance().get(&DataKey::Admin).ok_or(Error::Unauthorized)
+    }
+
+    /// Upgrade the contract's WASM code in place (admin-gated).
+    /// Keeps heartbeats, escrows, and liquidation flags intact.
+    pub fn upgrade(env: Env, new_wasm_hash: BytesN<32>) -> Result<(), Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::Unauthorized)?;
+        admin.require_auth();
+        env.deployer().update_current_contract_wasm(new_wasm_hash);
+        Ok(())
     }
 }
 
@@ -204,101 +238,101 @@ mod test {
     use super::*;
     use soroban_sdk::testutils::{Address as _, Ledger as _};
 
-    #[test]
-    fn test_initialize() {
-        let env = Env::default();
+    fn setup(env: &Env) -> (LiquidationEngineContractClient<'static>, Address, Address) {
         let contract_id = env.register(LiquidationEngineContract, ());
-        let client = LiquidationEngineContractClient::new(&env, &contract_id);
+        let client = LiquidationEngineContractClient::new(env, &contract_id);
+        let admin = Address::generate(env);
+        let pm = Address::generate(env);
+        let verifier = Address::generate(env);
+        client.initialize(&admin, &pm, &verifier, &3600u64);
+        (client, admin, pm)
+    }
 
-        let pm = Address::generate(&env);
-        let verifier = Address::generate(&env);
-        client.initialize(&pm, &verifier, &3600u64);
+    #[test]
+    fn test_initialize_and_admin() {
+        let env = Env::default();
+        let (client, admin, _pm) = setup(&env);
+        assert_eq!(client.admin(), admin);
     }
 
     #[test]
     fn test_double_init_fails() {
         let env = Env::default();
-        let contract_id = env.register(LiquidationEngineContract, ());
-        let client = LiquidationEngineContractClient::new(&env, &contract_id);
-
-        let pm = Address::generate(&env);
+        let (client, admin, pm) = setup(&env);
         let verifier = Address::generate(&env);
-        client.initialize(&pm, &verifier, &3600u64);
-
-        // Second init should fail
-        let result = client.try_initialize(&pm, &verifier, &3600u64);
+        let result = client.try_initialize(&admin, &pm, &verifier, &3600u64);
         assert!(result.is_err());
     }
 
     #[test]
-    fn test_register_heartbeat() {
+    fn test_register_heartbeat_with_auth() {
         let env = Env::default();
-        let contract_id = env.register(LiquidationEngineContract, ());
-        let client = LiquidationEngineContractClient::new(&env, &contract_id);
-
-        let pm = Address::generate(&env);
-        let verifier = Address::generate(&env);
-        client.initialize(&pm, &verifier, &3600u64);
+        env.mock_all_auths(); // stands in for the PositionManager authorizing the sub-call
+        let (client, _admin, _pm) = setup(&env);
 
         let position_id = BytesN::from_array(&env, &[1u8; 32]);
         client.register_heartbeat(&position_id, &1000u64);
-
-        // Position should not be stale (timestamp is recent)
         assert!(!client.is_stale(&position_id));
+    }
+
+    // H5: without the PositionManager's authorization, register_heartbeat is
+    // rejected — this is the DoS fix (nobody can reset another position's clock).
+    #[test]
+    fn test_register_heartbeat_requires_auth() {
+        let env = Env::default();
+        let (client, _admin, _pm) = setup(&env);
+        let position_id = BytesN::from_array(&env, &[1u8; 32]);
+        let result = client.try_register_heartbeat(&position_id, &1000u64);
+        assert!(result.is_err());
     }
 
     #[test]
     fn test_is_stale_without_heartbeat() {
         let env = Env::default();
-        let contract_id = env.register(LiquidationEngineContract, ());
-        let client = LiquidationEngineContractClient::new(&env, &contract_id);
+        let (client, _admin, _pm) = setup(&env);
 
-        let pm = Address::generate(&env);
-        let verifier = Address::generate(&env);
-        client.initialize(&pm, &verifier, &3600u64);
-
-        // Advance ledger timestamp past grace period (3600s)
         env.ledger().with_mut(|li| {
-            li.timestamp = 7200; // Well past grace period for a heartbeat at t=0
+            li.timestamp = 7200; // well past a 3600s grace for a heartbeat at t=0
         });
 
         let position_id = BytesN::from_array(&env, &[2u8; 32]);
-        // No heartbeat registered — defaults to 0, which is stale at t=7200
         assert!(client.is_stale(&position_id));
     }
 
     #[test]
     fn test_initiate_liquidation_not_stale_fails() {
         let env = Env::default();
-        let contract_id = env.register(LiquidationEngineContract, ());
-        let client = LiquidationEngineContractClient::new(&env, &contract_id);
-
-        let pm = Address::generate(&env);
-        let verifier = Address::generate(&env);
-        // Grace period of 3600 seconds
-        client.initialize(&pm, &verifier, &3600u64);
+        env.mock_all_auths();
+        let (client, _admin, _pm) = setup(&env);
 
         let position_id = BytesN::from_array(&env, &[3u8; 32]);
-        // Register a heartbeat at the current ledger timestamp
         let now = env.ledger().timestamp();
         client.register_heartbeat(&position_id, &now);
 
-        // Try to liquidate — should fail because it's not stale yet
         let keeper_commitment = BytesN::from_array(&env, &[99u8; 32]);
         let result = client.try_initiate_liquidation(&position_id, &keeper_commitment);
         assert!(result.is_err());
     }
 
+    // Saturating staleness math: a heartbeat near u64::MAX must not overflow-trap
+    // when grace is added. `is_stale` should simply return false, not panic.
+    #[test]
+    fn test_is_stale_saturates_near_u64_max() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, _admin, _pm) = setup(&env);
+
+        let position_id = BytesN::from_array(&env, &[5u8; 32]);
+        client.register_heartbeat(&position_id, &u64::MAX);
+        // last_heartbeat + grace would overflow; saturating_add clamps to u64::MAX,
+        // and now (small) < MAX, so the position is not stale — and no trap.
+        assert!(!client.is_stale(&position_id));
+    }
+
     #[test]
     fn test_is_liquidated_default_false() {
         let env = Env::default();
-        let contract_id = env.register(LiquidationEngineContract, ());
-        let client = LiquidationEngineContractClient::new(&env, &contract_id);
-
-        let pm = Address::generate(&env);
-        let verifier = Address::generate(&env);
-        client.initialize(&pm, &verifier, &3600u64);
-
+        let (client, _admin, _pm) = setup(&env);
         let position_id = BytesN::from_array(&env, &[4u8; 32]);
         assert!(!client.is_liquidated(&position_id));
     }

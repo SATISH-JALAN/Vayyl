@@ -17,6 +17,8 @@ pub struct QuestState {
 #[contracttype]
 #[derive(Clone)]
 pub enum DataKey {
+    /// Admin authorized to `upgrade()` this contract in place.
+    Admin,
     Verifier,
     Quest(BytesN<32>),
     AgentNullifier(BytesN<32>),
@@ -38,11 +40,27 @@ pub struct AgenticSettlementHubContract;
 
 #[contractimpl]
 impl AgenticSettlementHubContract {
-    pub fn initialize(env: Env, verifier: Address) -> Result<(), Error> {
+    pub fn initialize(env: Env, admin: Address, verifier: Address) -> Result<(), Error> {
         if env.storage().instance().has(&DataKey::Verifier) {
             return Err(Error::AlreadyInitialized);
         }
+        env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::Verifier, &verifier);
+        Ok(())
+    }
+
+    /// Upgrade the contract's WASM code in place (admin-gated).
+    /// Keeps every quest and spent agent-nullifier intact. Like the order
+    /// registry, this contract's settlement logic is still a stub; `upgrade()`
+    /// lets it be completed later at the same address.
+    pub fn upgrade(env: Env, new_wasm_hash: BytesN<32>) -> Result<(), Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::Unauthorized)?;
+        admin.require_auth();
+        env.deployer().update_current_contract_wasm(new_wasm_hash);
         Ok(())
     }
 
@@ -109,7 +127,8 @@ mod test {
         let contract_id = env.register(AgenticSettlementHubContract, ());
         let client = AgenticSettlementHubContractClient::new(&env, &contract_id);
 
+        let admin = Address::generate(&env);
         let verifier = Address::generate(&env);
-        client.initialize(&verifier);
+        client.initialize(&admin, &verifier);
     }
 }

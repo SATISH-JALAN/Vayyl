@@ -58,6 +58,7 @@ struct Fixture {
     pool: VayylPoolClient<'static>,
     verifier: MockVerifierClient<'static>,
     asset: Address,
+    admin: Address,
 }
 
 fn dummy_proof(env: &Env) -> Groth16Proof {
@@ -90,7 +91,8 @@ fn setup() -> Fixture {
 
     let membership = Address::generate(&env);
     let non_membership = Address::generate(&env);
-    pool.initialize(&asset, &verifier_id, &membership, &non_membership);
+    let admin = Address::generate(&env);
+    pool.initialize(&admin, &asset, &verifier_id, &membership, &non_membership);
     let _ = asset_admin; // SAC admin auth is covered by mock_all_auths.
 
     Fixture {
@@ -98,6 +100,7 @@ fn setup() -> Fixture {
         pool,
         verifier,
         asset,
+        admin,
     }
 }
 
@@ -108,6 +111,34 @@ fn fund(f: &Fixture, to: &Address, amount: i128) {
 
 fn balance(f: &Fixture, who: &Address) -> i128 {
     token::Client::new(&f.env, &f.asset).balance(who)
+}
+
+// ---- upgrade(): admin-gated ---------------------------------------------
+
+#[test]
+fn test_admin_getter() {
+    let f = setup();
+    assert_eq!(f.pool.admin(), f.admin);
+}
+
+#[test]
+fn test_upgrade_requires_admin_auth() {
+    // Fresh env with NO mocked auths: `initialize` takes no auth, but `upgrade`
+    // must fail the admin `require_auth` before it ever touches the WASM store.
+    let env = Env::default();
+    let pool_id = env.register(VayylPool, ());
+    let pool = VayylPoolClient::new(&env, &pool_id);
+
+    let admin = Address::generate(&env);
+    let asset = Address::generate(&env);
+    let verifier = Address::generate(&env);
+    let membership = Address::generate(&env);
+    let non_membership = Address::generate(&env);
+    pool.initialize(&admin, &asset, &verifier, &membership, &non_membership);
+
+    let bogus_hash = BytesN::from_array(&env, &[0u8; 32]);
+    let res = pool.try_upgrade(&bogus_hash);
+    assert!(res.is_err(), "upgrade without admin auth must be rejected");
 }
 
 // ---- M6: verify-then-transfer -------------------------------------------

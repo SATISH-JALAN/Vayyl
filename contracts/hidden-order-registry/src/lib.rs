@@ -17,6 +17,8 @@ pub struct OrderState {
 #[contracttype]
 #[derive(Clone)]
 pub enum DataKey {
+    /// Admin authorized to `upgrade()` this contract in place.
+    Admin,
     Verifier,
     SealedOrder(BytesN<32>),
 }
@@ -36,11 +38,27 @@ pub struct HiddenOrderRegistryContract;
 
 #[contractimpl]
 impl HiddenOrderRegistryContract {
-    pub fn initialize(env: Env, verifier: Address) -> Result<(), Error> {
+    pub fn initialize(env: Env, admin: Address, verifier: Address) -> Result<(), Error> {
         if env.storage().instance().has(&DataKey::Verifier) {
             return Err(Error::AlreadyInitialized);
         }
+        env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::Verifier, &verifier);
+        Ok(())
+    }
+
+    /// Upgrade the contract's WASM code in place (admin-gated).
+    /// Keeps every committed order intact. This contract's real logic
+    /// (`reveal_and_execute`) is still a stub — `upgrade()` is what lets it be
+    /// filled in later at the same address once `execute_settlement` exists.
+    pub fn upgrade(env: Env, new_wasm_hash: BytesN<32>) -> Result<(), Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::Unauthorized)?;
+        admin.require_auth();
+        env.deployer().update_current_contract_wasm(new_wasm_hash);
         Ok(())
     }
 
@@ -93,7 +111,8 @@ mod test {
         let contract_id = env.register(HiddenOrderRegistryContract, ());
         let client = HiddenOrderRegistryContractClient::new(&env, &contract_id);
 
+        let admin = Address::generate(&env);
         let verifier = Address::generate(&env);
-        client.initialize(&verifier);
+        client.initialize(&admin, &verifier);
     }
 }

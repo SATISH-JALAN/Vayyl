@@ -166,6 +166,19 @@ impl AspNonMembershipContract {
             .get(&DataKey::BlockedCount)
             .unwrap_or(0)
     }
+
+    /// Upgrade the contract's WASM code in place (admin-gated).
+    /// Keeps the blocklist and sparse-tree root intact.
+    pub fn upgrade(env: Env, new_wasm_hash: BytesN<32>) -> Result<(), Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::Unauthorized)?;
+        admin.require_auth();
+        env.deployer().update_current_contract_wasm(new_wasm_hash);
+        Ok(())
+    }
 }
 
 #[cfg(test)]

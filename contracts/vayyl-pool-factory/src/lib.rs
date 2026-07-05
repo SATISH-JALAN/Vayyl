@@ -94,6 +94,9 @@ impl VayylPoolFactoryContract {
         let verifier: Address = env.storage().instance().get(&DataKey::Verifier).unwrap();
         let membership: Address = env.storage().instance().get(&DataKey::Membership).unwrap();
         let non_membership: Address = env.storage().instance().get(&DataKey::NonMembership).unwrap();
+        // The factory's admin also governs `upgrade()` on every pool it deploys,
+        // so one key can push a fix to all pools without redeploying them.
+        let pool_admin: Address = admin.clone();
 
         use soroban_sdk::xdr::ToXdr;
         let mut salt_bytes = soroban_sdk::Bytes::new(&env);
@@ -109,6 +112,7 @@ impl VayylPoolFactoryContract {
         // Initialize the deployed pool
         let init_args: soroban_sdk::Vec<soroban_sdk::Val> = soroban_sdk::vec![
             &env,
+            pool_admin.into_val(&env),
             asset.clone().into_val(&env),
             verifier.into_val(&env),
             membership.into_val(&env),
@@ -175,6 +179,20 @@ impl VayylPoolFactoryContract {
             .instance()
             .get(&DataKey::PoolCount)
             .unwrap_or(0)
+    }
+
+    /// Upgrade the factory's WASM code in place (admin-gated).
+    /// Keeps the deployed-pool registry and config intact. Note: this upgrades
+    /// only the factory; each pool is upgraded via its own `upgrade()`.
+    pub fn upgrade(env: Env, new_wasm_hash: BytesN<32>) -> Result<(), Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::Unauthorized)?;
+        admin.require_auth();
+        env.deployer().update_current_contract_wasm(new_wasm_hash);
+        Ok(())
     }
 }
 
