@@ -39,9 +39,31 @@ pub struct Withdraw {
     pub amount: i128,
 }
 
+/// D1: settlement event — topic `authority` (the settlement contract that drove
+/// it); data carries how many output commitments were inserted and the public
+/// payout amount (0 for a pure re-shield). Lets the indexer / client note-scan
+/// pick up notes created by position close, liquidation seizure, orders, etc.
+#[contractevent]
+pub struct Settlement {
+    #[topic]
+    pub authority: Address,
+    pub num_commitments: u32,
+    pub payout_amount: i128,
+}
+
 #[soroban_sdk::contractclient(name = "Groth16VerifierClient")]
 pub trait Groth16VerifierInterface {
     fn verify(env: Env, circuit_id: CircuitId, proof: Groth16Proof, public_inputs: Vec<BytesN<32>>) -> Result<bool, soroban_sdk::Error>;
+}
+
+/// Decoupled client for the trusted `AspMembership` contract. The pool binds a
+/// deposit's caller-supplied `asp_root` to a real, admin-maintained ASP root via
+/// `is_known_root` — the deposit circuit proves membership *against* `asp_root`,
+/// and this call guarantees `asp_root` is the trusted set's root (current or
+/// recent), not one the depositor invented. Mirrors `Groth16VerifierInterface`.
+#[soroban_sdk::contractclient(name = "AspMembershipClient")]
+pub trait AspMembershipInterface {
+    fn is_known_root(env: Env, root: BytesN<32>) -> bool;
 }
 
 pub const TREE_DEPTH: u32 = 20;
@@ -79,6 +101,10 @@ pub enum DataKey {
     /// H4: ring buffer of the last `ROOT_HISTORY_SIZE` roots (oldest first).
     RootHistory,
     Nullifier(BytesN<32>),
+    /// D1: allowlist of contracts permitted to call `execute_settlement`
+    /// (position-manager, liquidation-engine, and later the order/agentic hubs).
+    /// Admin-managed. Presence of the key = authorized.
+    SettlementAuthority(Address),
 }
 
 #[contracterror]
@@ -93,6 +119,12 @@ pub enum Error {
     UnknownRoot = 6,
     /// M2: amount/fee is negative (non-encodable as a field element).
     InvalidAmount = 7,
+    /// C3: deposit `asp_root` is not the trusted AspMembership root (current or
+    /// in-window). The depositor supplied a root the ASP contract never produced.
+    InvalidAspRoot = 8,
+    /// D1: `execute_settlement` caller is not on the admin-managed settlement
+    /// authority allowlist.
+    NotSettlementAuthority = 9,
 }
 
 #[contract]
@@ -401,6 +433,18 @@ impl VayylPool {
         let asset: Address = env.storage().instance().get(&DataKey::Asset).ok_or(Error::NotInitialized)?;
         let verifier: Address = env.storage().instance().get(&DataKey::Verifier).unwrap();
 
+        // C3: bind `asp_root` to the trusted ASP set BEFORE the expensive Groth16
+        // verify (fail fast, cheapest check first) and before any token move (M6).
+        // The circuit proves the depositor's key is a member of the tree with root
+        // `asp_root`; without this check the depositor could prove membership in a
+        // tree they built themselves. Requiring the ASP contract to recognise
+        // `asp_root` (current or in its recent-root window) makes compliance real.
+        let membership: Address = env.storage().instance().get(&DataKey::Membership).unwrap();
+        let membership_client = AspMembershipClient::new(&env, &membership);
+        if !membership_client.is_known_root(&asp_root) {
+            return Err(Error::InvalidAspRoot);
+        }
+
         // M6: verify the ZK proof BEFORE moving any tokens. The previous order
         // transferred first, so an invalid-proof deposit still pulled funds.
         let verifier_client = Groth16VerifierClient::new(&env, &verifier);
@@ -578,6 +622,126 @@ impl VayylPool {
         Ok(())
     }
 
+    /// D1: generic settlement primitive — the shared fund-movement entrypoint
+    /// for position close, liquidation seizure, hidden orders, and agentic
+    /// settlement. The **calling contract** (an allowlisted settlement authority)
+    /// has already verified its own circuit-specific proof; this entrypoint
+    /// performs the pool-level effects that only the custody contract can do:
+    ///
+    ///   1. spend `spent_nullifiers` in the pool's nullifier set (double-spend
+    ///      protection for any pool notes consumed by the settlement),
+    ///   2. insert `output_commitments` into the pool Merkle tree (re-shielded
+    ///      notes / new positions become withdrawable via the normal circuits),
+    ///   3. optionally pay `payout_amount` of the pool asset to `payout_recipient`
+    ///      (funds leaving the shield — e.g. seized collateral to a keeper).
+    ///
+    /// Trust model: the pool trusts an allowlisted authority to have verified the
+    /// settlement (amounts, nullifiers, commitments) against its circuit. The
+    /// allowlist is the security boundary — only admin-approved contracts can move
+    /// funds this way. A contract auto-authorizes the sub-calls it makes, so an
+    /// authority's own invocation passes `require_auth` while any other caller is
+    /// rejected (same pattern as the liquidation-engine H5 heartbeat gate).
+    pub fn execute_settlement(
+        env: Env,
+        authority: Address,
+        spent_nullifiers: Vec<BytesN<32>>,
+        output_commitments: Vec<BytesN<32>>,
+        payout_recipient: Option<Address>,
+        payout_amount: i128,
+    ) -> Result<(), Error> {
+        // The authority contract authorizes its own sub-call into the pool.
+        authority.require_auth();
+
+        // Only admin-approved settlement contracts may move funds this way.
+        if !env
+            .storage()
+            .instance()
+            .has(&DataKey::SettlementAuthority(authority.clone()))
+        {
+            return Err(Error::NotSettlementAuthority);
+        }
+
+        // A negative payout is nonsensical (and would mis-encode); reject up front.
+        if payout_amount < 0 {
+            return Err(Error::InvalidAmount);
+        }
+
+        let asset: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Asset)
+            .ok_or(Error::NotInitialized)?;
+
+        // 1. Spend nullifiers (rejects reuse — double-close / double-seize guard).
+        for nf in spent_nullifiers.iter() {
+            Self::mark_nullifier(&env, nf)?;
+        }
+
+        // 2. Insert output commitments into the pool tree (withdrawable notes).
+        let num_commitments = output_commitments.len();
+        for c in output_commitments.iter() {
+            Self::insert_leaf(&env, c)?;
+        }
+
+        // 3. Optional public payout (funds leaving the shield). Only pays when a
+        //    recipient is given AND the amount is positive; the SAC transfer itself
+        //    fails if the pool lacks the balance (natural solvency guard).
+        if payout_amount > 0 {
+            if let Some(recipient) = payout_recipient {
+                let token_client = token::Client::new(&env, &asset);
+                token_client.transfer(
+                    &env.current_contract_address(),
+                    &recipient,
+                    &payout_amount,
+                );
+            }
+        }
+
+        Settlement {
+            authority,
+            num_commitments,
+            payout_amount,
+        }
+        .publish(&env);
+
+        Ok(())
+    }
+
+    /// Admin: add a contract to the settlement-authority allowlist.
+    pub fn add_settlement_authority(env: Env, authority: Address) -> Result<(), Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+        env.storage()
+            .instance()
+            .set(&DataKey::SettlementAuthority(authority), &true);
+        Ok(())
+    }
+
+    /// Admin: remove a contract from the settlement-authority allowlist.
+    pub fn remove_settlement_authority(env: Env, authority: Address) -> Result<(), Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+        env.storage()
+            .instance()
+            .remove(&DataKey::SettlementAuthority(authority));
+        Ok(())
+    }
+
+    /// True if `authority` is on the settlement-authority allowlist.
+    pub fn is_settlement_authority(env: Env, authority: Address) -> bool {
+        env.storage()
+            .instance()
+            .has(&DataKey::SettlementAuthority(authority))
+    }
+
     /// Get the current Merkle root
     pub fn get_root(env: Env) -> BytesN<32> {
         env.storage()
@@ -605,7 +769,8 @@ impl VayylPool {
     /// Upgrade the pool's WASM code in place (admin-gated).
     ///
     /// This is the single most important mainnet safety valve: it lets a bug fix
-    /// or feature addition (ASP enforcement, `execute_settlement`) reuse the SAME
+    /// or feature addition (deposit ASP membership is now enforced; still to come:
+    /// non-membership on transfer/withdraw, `execute_settlement`) reuse the SAME
     /// pool address, so the Merkle tree, nullifier set, and root history all
     /// survive and every user note stays valid. Without it, a fix means a new
     /// address with empty state and stranded funds.

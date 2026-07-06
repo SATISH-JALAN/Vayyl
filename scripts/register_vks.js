@@ -62,7 +62,13 @@ const CIRCUITS = {
     "Withdraw": { id: 2, file: "withdraw" },
     "PositionOpen": { id: 3, file: "position_open" },
     "PositionHealth": { id: 4, file: "position_health" },
-    "PositionClose": { id: 5, file: "position_close" }
+    "PositionClose": { id: 5, file: "position_close" },
+    // Sprint E order circuits. IDs match the CircuitId enum order in
+    // vayyl-types (HiddenOrderTrigger=7, SealedOrder=11); the on-chain call
+    // keys off the variant NAME, so the id here is documentation/ordering only.
+    // Outside V1 scope — register with REGISTER_ALL=1 only.
+    "HiddenOrderTrigger": { id: 7, file: "hidden_order_trigger" },
+    "SealedOrder": { id: 11, file: "sealed_order" }
 };
 
 // V1 scope: only the proven payment-core circuits register by default. The

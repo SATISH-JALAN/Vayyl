@@ -14,6 +14,9 @@ pub enum DataKey {
     Verifier,
     Oracle,
     LiquidationEngine,
+    /// D2: the VayylPool this manager settles through. Position close inserts the
+    /// withdrawable output note into the pool tree via `execute_settlement`.
+    Pool,
     Position(BytesN<32>), // maps position_id to PositionState
     Nullifier(BytesN<32>), // tracks used nullifiers to prevent double spends
 }
@@ -35,6 +38,16 @@ pub enum Error {
 /// becomes re-spendable once its entry archives.
 pub const PERSISTENT_TTL_THRESHOLD: u32 = 1_000_000;
 pub const PERSISTENT_TTL_EXTEND: u32 = 3_000_000;
+
+/// Maintenance-margin ratio in HEALTH_SCALE (= 10000) units, matching
+/// `position_health.circom`'s `health_threshold` public input. 500 = 5% of
+/// notional required as equity buffer. A position that can no longer prove
+/// health at this threshold cannot attest, so its heartbeat goes stale and it
+/// becomes liquidatable — the threshold IS the liquidation trigger. This is a
+/// PUBLIC input bound into the proof, so the prover cannot use a softer margin.
+/// Tunable via `upgrade()` (changing it re-defines the on-chain policy; the
+/// circuit reads whatever value the contract supplies).
+pub const HEALTH_THRESHOLD: u64 = 500;
 
 /// Encode a full i128 price/fee as a 32-byte big-endian field element.
 ///
@@ -68,13 +81,28 @@ pub trait LiquidationEngineInterface {
     fn register_heartbeat(env: Env, position_id: BytesN<32>, timestamp: u64) -> Result<(), soroban_sdk::Error>;
 }
 
+/// D2: decoupled client for the pool's settlement primitive (mirrors the
+/// verifier client). Position close routes the withdrawable output note through
+/// `execute_settlement` so it lands in the pool's Merkle tree.
+#[soroban_sdk::contractclient(name = "VayylPoolClient")]
+pub trait VayylPoolInterface {
+    fn execute_settlement(
+        env: Env,
+        authority: Address,
+        spent_nullifiers: Vec<BytesN<32>>,
+        output_commitments: Vec<BytesN<32>>,
+        payout_recipient: Option<Address>,
+        payout_amount: i128,
+    ) -> Result<(), soroban_sdk::Error>;
+}
+
 #[contract]
 pub struct PositionManager;
 
 #[contractimpl]
 impl PositionManager {
     /// Initialize the Position Manager
-    pub fn initialize(env: Env, admin: Address, verifier: Address, oracle: Address, liquidation_engine: Address) -> Result<(), Error> {
+    pub fn initialize(env: Env, admin: Address, verifier: Address, oracle: Address, liquidation_engine: Address, pool: Address) -> Result<(), Error> {
         if env.storage().instance().has(&DataKey::Verifier) {
             return Err(Error::AlreadyInitialized);
         }
@@ -83,6 +111,7 @@ impl PositionManager {
         env.storage().instance().set(&DataKey::Verifier, &verifier);
         env.storage().instance().set(&DataKey::Oracle, &oracle);
         env.storage().instance().set(&DataKey::LiquidationEngine, &liquidation_engine);
+        env.storage().instance().set(&DataKey::Pool, &pool);
 
         Ok(())
     }
@@ -171,7 +200,7 @@ impl PositionManager {
         // 2. Verify ZK Proof for PositionHealth
         let verifier_client = Groth16VerifierClient::new(&env, &verifier);
         
-        // Public inputs: [position_commitment, oracle_price, oracle_timestamp]
+        // Public inputs: [position_commitment, oracle_price, oracle_timestamp, health_threshold]
         let mut public_inputs = Vec::new(&env);
         public_inputs.push_back(state.commitment.clone());
 
@@ -181,6 +210,13 @@ impl PositionManager {
         let mut ts_bytes = [0u8; 32];
         ts_bytes[24..32].copy_from_slice(&timestamp.to_be_bytes());
         public_inputs.push_back(BytesN::from_array(&env, &ts_bytes));
+
+        // Maintenance-margin threshold — bound into the proof so the owner must
+        // prove solvency WITH margin, not bare break-even. Encoded as a canonical
+        // field element (small value in the low 8 bytes), matching the circuit.
+        let mut th_bytes = [0u8; 32];
+        th_bytes[24..32].copy_from_slice(&HEALTH_THRESHOLD.to_be_bytes());
+        public_inputs.push_back(BytesN::from_array(&env, &th_bytes));
 
         let is_valid = verifier_client.verify(&CircuitId::PositionHealth, &proof, &public_inputs);
         if !is_valid {
@@ -231,7 +267,7 @@ impl PositionManager {
         let mut public_inputs = Vec::new(&env);
         public_inputs.push_back(position_nullifier);
         public_inputs.push_back(new_position_commitment.clone());
-        public_inputs.push_back(output_note_commitment);
+        public_inputs.push_back(output_note_commitment.clone());
         
         // Full-i128 field encoding for both price and fee (no truncation).
         public_inputs.push_back(BytesN::from_array(&env, &i128_to_field_bytes(price)?));
@@ -244,7 +280,33 @@ impl PositionManager {
             return Err(Error::InvalidProof);
         }
 
-        // 4. Update state to point to new commitment (or remove if fully closed)
+        // 4. Real settlement (D2): insert the withdrawable output note into the
+        //    pool's Merkle tree via `execute_settlement`. This is the fund movement
+        //    that was previously missing — the settled collateral/PnL becomes a
+        //    real shielded note the owner can later withdraw. The PositionClose
+        //    circuit already enforced the balance equation
+        //      old_collateral + old_size·asset = new_collateral + note_amount + fee + old_size·debt,
+        //    so `output_note_commitment` is a sound note. The position nullifier is
+        //    tracked here in the manager (step 2); no pool payout on close (the
+        //    value stays shielded as the output note).
+        let pool_addr: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Pool)
+            .ok_or(Error::NotInitialized)?;
+        let pool_client = VayylPoolClient::new(&env, &pool_addr);
+        let no_nullifiers: Vec<BytesN<32>> = Vec::new(&env);
+        let mut out_commitments: Vec<BytesN<32>> = Vec::new(&env);
+        out_commitments.push_back(output_note_commitment);
+        pool_client.execute_settlement(
+            &env.current_contract_address(),
+            &no_nullifiers,
+            &out_commitments,
+            &None,
+            &0i128,
+        );
+
+        // 5. Update state to point to new commitment (or remove if fully closed)
         let mut new_state = state.clone();
         new_state.commitment = new_position_commitment;
         new_state.last_health_timestamp = env.ledger().timestamp();
@@ -260,6 +322,13 @@ impl PositionManager {
     /// Get the admin authorized to upgrade this contract.
     pub fn admin(env: Env) -> Result<Address, Error> {
         env.storage().instance().get(&DataKey::Admin).ok_or(Error::NotInitialized)
+    }
+
+    /// The maintenance-margin ratio (HEALTH_SCALE = 10000 units) that
+    /// `attest_health` binds into every health proof. Exposed for transparency
+    /// so clients build the health witness against the same public value.
+    pub fn health_threshold(_env: Env) -> u64 {
+        HEALTH_THRESHOLD
     }
 
     /// Upgrade the contract's WASM code in place (admin-gated).
@@ -288,7 +357,8 @@ mod test {
         let verifier = Address::generate(env);
         let oracle = Address::generate(env);
         let le = Address::generate(env);
-        client.initialize(&admin, &verifier, &oracle, &le);
+        let pool = Address::generate(env);
+        client.initialize(&admin, &verifier, &oracle, &le, &pool);
         (client, admin)
     }
 
@@ -304,7 +374,7 @@ mod test {
         let env = Env::default();
         let (client, _admin) = setup(&env);
         let a = Address::generate(&env);
-        let result = client.try_initialize(&a, &a, &a, &a);
+        let result = client.try_initialize(&a, &a, &a, &a, &a);
         assert!(result.is_err());
     }
 
@@ -335,5 +405,130 @@ mod test {
     #[test]
     fn test_i128_field_encoding_rejects_negative() {
         assert_eq!(i128_to_field_bytes(-1), Err(Error::InvalidAmount));
+    }
+
+    // The maintenance-margin threshold is a fixed on-chain policy value that
+    // attest_health binds into the proof; clients must read it to build a
+    // witness the circuit will accept.
+    #[test]
+    fn test_health_threshold_getter_matches_const() {
+        let env = Env::default();
+        let (client, _admin) = setup(&env);
+        assert_eq!(client.health_threshold(), HEALTH_THRESHOLD);
+        // Non-zero: bare break-even (threshold 0) would defeat the liquidation
+        // trigger — a real maintenance margin must be enforced.
+        assert!(HEALTH_THRESHOLD > 0);
+    }
+
+    // The threshold must encode to the SAME canonical field element the circuit
+    // reads: a small value in the low 8 bytes, high bytes zero. A mismatch here
+    // silently makes every health proof fail to verify on-chain.
+    #[test]
+    fn test_health_threshold_field_encoding() {
+        let mut th_bytes = [0u8; 32];
+        th_bytes[24..32].copy_from_slice(&HEALTH_THRESHOLD.to_be_bytes());
+        // Low 8 bytes reconstruct the value.
+        let mut recon = [0u8; 8];
+        recon.copy_from_slice(&th_bytes[24..32]);
+        assert_eq!(u64::from_be_bytes(recon), HEALTH_THRESHOLD);
+        // Everything above the low 8 bytes is zero (canonical field element).
+        assert_eq!(&th_bytes[0..24], &[0u8; 24]);
+    }
+
+    // ---- D2/D4: close settles a real note into the pool tree -------------
+
+    use soroban_sdk::{contract as sdk_contract, contractimpl as sdk_contractimpl};
+
+    /// Stand-in verifier that always accepts.
+    #[sdk_contract]
+    pub struct MockVerifier;
+    #[sdk_contractimpl]
+    impl MockVerifier {
+        pub fn verify(
+            _env: Env,
+            _circuit_id: CircuitId,
+            _proof: Groth16Proof,
+            _public_inputs: Vec<BytesN<32>>,
+        ) -> Result<bool, soroban_sdk::Error> {
+            Ok(true)
+        }
+    }
+
+    /// Stand-in oracle returning a fixed (price, timestamp).
+    #[sdk_contract]
+    pub struct MockOracle;
+    #[sdk_contractimpl]
+    impl MockOracle {
+        pub fn get_last_price(_env: Env) -> (i128, u64) {
+            (1000i128, 0u64)
+        }
+    }
+
+    fn dummy_proof(env: &Env) -> Groth16Proof {
+        Groth16Proof {
+            a: BytesN::from_array(env, &[0u8; 64]),
+            b: BytesN::from_array(env, &[0u8; 128]),
+            c: BytesN::from_array(env, &[0u8; 64]),
+        }
+    }
+
+    #[test]
+    fn test_close_inserts_output_note_into_pool() {
+        use vayyl_pool::{VayylPool, VayylPoolClient};
+
+        let env = Env::default();
+        env.mock_all_auths();
+
+        // SAC asset for the pool; mock verifier + oracle for the manager.
+        let sac_admin = Address::generate(&env);
+        let sac = env.register_stellar_asset_contract_v2(sac_admin);
+        let asset = sac.address();
+        let verifier_id = env.register(MockVerifier, ());
+        let oracle_id = env.register(MockOracle, ());
+
+        // Real pool.
+        let admin = Address::generate(&env);
+        let dummy = Address::generate(&env);
+        let pool_id = env.register(VayylPool, ());
+        let pool = VayylPoolClient::new(&env, &pool_id);
+        pool.initialize(&admin, &asset, &verifier_id, &dummy, &dummy);
+
+        // Real position manager wired to the pool.
+        let pm_id = env.register(PositionManager, ());
+        let pm = PositionManagerClient::new(&env, &pm_id);
+        pm.initialize(&admin, &verifier_id, &oracle_id, &dummy, &pool_id);
+
+        // The manager must be an allowlisted settlement authority to insert notes.
+        pool.add_settlement_authority(&pm_id);
+
+        // Open a position (records PM state; nothing enters the pool tree yet).
+        let owner = Address::generate(&env);
+        let position_id = BytesN::from_array(&env, &[0x01; 32]);
+        let pos_commitment = BytesN::from_array(&env, &[0xC1; 32]);
+        pm.open_position(
+            &position_id,
+            &owner,
+            &dummy_proof(&env),
+            &BytesN::from_array(&env, &[0x00; 32]), // root
+            &BytesN::from_array(&env, &[0x0A; 32]), // collateral nullifier
+            &pos_commitment,
+            &BytesN::from_array(&env, &[0x0F; 32]), // meta_hash
+        );
+        assert_eq!(pool.get_leaf_count(), 0, "open alone inserts no pool leaf");
+
+        // Close: the settled output note must be inserted into the pool tree.
+        let output_note = BytesN::from_array(&env, &[0x0E; 32]);
+        pm.close_or_modify_position(
+            &position_id,
+            &dummy_proof(&env),
+            &BytesN::from_array(&env, &[0x0B; 32]), // position nullifier
+            &BytesN::from_array(&env, &[0xC2; 32]), // new position commitment
+            &output_note,
+            &0i128,                                  // fee
+            &BytesN::from_array(&env, &[0x0F; 32]),  // meta_hash
+        );
+
+        // The real fund movement: exactly one withdrawable note now exists.
+        assert_eq!(pool.get_leaf_count(), 1, "close must insert the output note");
     }
 }

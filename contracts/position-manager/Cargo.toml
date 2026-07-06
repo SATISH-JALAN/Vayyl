@@ -9,3 +9,8 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 soroban-sdk = { workspace = true }
 vayyl-types = { path = "../vayyl-types" }
+
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }
+# Real VayylPool to prove close_or_modify_position inserts the output note.
+vayyl-pool = { path = "../vayyl-pool" }

@@ -44,6 +44,12 @@ template PositionClose(depth) {
     // 1. Dummy constraint for meta_hash
     signal meta_hash_sq <== meta_hash * meta_hash;
 
+    // 1b. Old direction must be boolean.
+    // old_direction drives the settlement selector (2*old_direction - 1); if it
+    // is left as an arbitrary field element the settled PnL — and hence the
+    // extractable note_amount — becomes attacker-chosen (audit H1, 2nd forge).
+    old_direction * (old_direction - 1) === 0;
+
     // 2. Old Position Nullifier
     component old_pos = PositionCommitment();
     old_pos.collateral_amount <== old_collateral;
@@ -81,14 +87,37 @@ template PositionClose(depth) {
     out_note.blindness <== note_blindness;
     out_note.commitment === output_note_commitment;
 
-    // 5. Range checks for outputs
-    component rc_new_col = Num2Bits(64);
+    // 5. Range checks.
+    // Load-bearing: old_size/old_entry_price/oracle_price feed the settlement
+    // multiplications (old_size * asset_val, old_size * debt_val); without a
+    // 64-bit bound their products can wrap mod p and forge a balanced
+    // settlement (audit H1). old_collateral bounds the lhs additively. The
+    // new-position and output-note amounts are bounded as before.
+    component rc_old_col = RangeCheck64();
+    rc_old_col.in <== old_collateral;
+
+    component rc_old_size = RangeCheck64();
+    rc_old_size.in <== old_size;
+
+    component rc_old_entry = RangeCheck64();
+    rc_old_entry.in <== old_entry_price;
+
+    component rc_oracle = RangeCheck64();
+    rc_oracle.in <== oracle_price;
+
+    component rc_new_size = RangeCheck64();
+    rc_new_size.in <== new_size;
+
+    component rc_new_entry = RangeCheck64();
+    rc_new_entry.in <== new_entry_price;
+
+    component rc_new_col = RangeCheck64();
     rc_new_col.in <== new_collateral;
 
-    component rc_note_amt = Num2Bits(64);
+    component rc_note_amt = RangeCheck64();
     rc_note_amt.in <== note_amount;
 
-    component rc_fee = Num2Bits(64);
+    component rc_fee = RangeCheck64();
     rc_fee.in <== fee;
 
     // 6. Balance & PnL Settlement

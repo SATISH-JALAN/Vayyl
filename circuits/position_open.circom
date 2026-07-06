@@ -63,6 +63,17 @@ template PositionOpen(depth) {
     // 5. Direction Boolean Constraint
     direction * (direction - 1) === 0;
 
+    // 5b. Range-check position magnitudes (hardening).
+    // The solvency arithmetic lives in position_health/close, but bounding
+    // amount/size/entry_price at open time keeps every value that will later
+    // feed a multiplication within [0, 2^64) from the moment it is committed.
+    component rc_amount = RangeCheck64();
+    rc_amount.in <== amount;
+    component rc_size = RangeCheck64();
+    rc_size.in <== size;
+    component rc_entry = RangeCheck64();
+    rc_entry.in <== entry_price;
+
     // 6. Generate Position Commitment
     component pos_commit = PositionCommitment();
     pos_commit.collateral_amount <== amount;

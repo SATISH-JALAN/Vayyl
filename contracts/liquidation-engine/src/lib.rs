@@ -13,6 +13,8 @@ pub enum DataKey {
     Admin,
     PositionManager,
     Verifier,
+    /// D3: the VayylPool custody contract seizure is paid out from.
+    Pool,
     GracePeriod,
     Heartbeat(BytesN<32>),
     KeeperEscrow(BytesN<32>),
@@ -42,6 +44,20 @@ pub trait PositionManagerInterface {
     fn get_position_state(env: Env, position_id: BytesN<32>) -> Result<PositionState, soroban_sdk::Error>;
 }
 
+/// D3: decoupled client for the pool's settlement primitive. A seizure pays the
+/// collateral out of the pool to the keeper via `execute_settlement`.
+#[soroban_sdk::contractclient(name = "VayylPoolClient")]
+pub trait VayylPoolInterface {
+    fn execute_settlement(
+        env: Env,
+        authority: Address,
+        spent_nullifiers: Vec<BytesN<32>>,
+        output_commitments: Vec<BytesN<32>>,
+        payout_recipient: Option<Address>,
+        payout_amount: i128,
+    ) -> Result<(), soroban_sdk::Error>;
+}
+
 #[contract]
 pub struct LiquidationEngineContract;
 
@@ -53,6 +69,7 @@ impl LiquidationEngineContract {
         admin: Address,
         position_manager: Address,
         verifier: Address,
+        pool: Address,
         grace_period: u64,
     ) -> Result<(), Error> {
         if env.storage().instance().has(&DataKey::PositionManager) {
@@ -61,6 +78,7 @@ impl LiquidationEngineContract {
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::PositionManager, &position_manager);
         env.storage().instance().set(&DataKey::Verifier, &verifier);
+        env.storage().instance().set(&DataKey::Pool, &pool);
         env.storage().instance().set(&DataKey::GracePeriod, &grace_period);
         Ok(())
     }
@@ -139,6 +157,7 @@ impl LiquidationEngineContract {
         keeper_public_commitment: BytesN<32>,
         timestamp: BytesN<32>,
         receiver: Address,
+        seize_amount: i128,
     ) -> Result<(), Error> {
         // 1. Check position hasn't already been liquidated
         if env.storage().persistent().has(&DataKey::Liquidated(position_id.clone())) {
@@ -185,15 +204,44 @@ impl LiquidationEngineContract {
             return Err(Error::InvalidProof);
         }
 
-        // 6. Mark position as liquidated
+        // 6. Mark position as liquidated (before the external payout — reentrancy /
+        //    double-seize guard: a re-entered call sees Liquidated and aborts at step 1).
         env.storage().persistent().set(&DataKey::Liquidated(position_id.clone()), &true);
 
         // 7. Clean up escrow
         env.storage().persistent().remove(&DataKey::KeeperEscrow(position_id));
 
-        // TODO: In production, transfer collateral SAC tokens to receiver
-        // For now, the position is marked as liquidated and the receiver is recorded.
-        let _ = receiver;
+        // 8. Real seizure (D3): pay the collateral out of the pool to the keeper via
+        //    `execute_settlement`. This is the fund movement that was previously a
+        //    `let _ = receiver` no-op. The liquidation-engine must be an allowlisted
+        //    settlement authority on the pool; its own sub-call auto-authorizes.
+        //
+        //    HONEST-SCOPE CAVEAT: `seize_amount` is NOT yet bound by the
+        //    LiquidationHeartbeat circuit (its public inputs are only
+        //    [position_commitment, keeper_public_commitment, timestamp] — the private
+        //    collateral_amount is proven-known but never exposed). So on testnet the
+        //    amount is keeper-asserted and trusted; the allowlist + escrow + proof +
+        //    grace-window checks are the gate. Binding the seized amount trustlessly
+        //    needs a seize circuit that exposes collateral (the "forced-reveal
+        //    threshold decryption" HARD roadmap item). The pool's own balance is the
+        //    hard cap (the SAC transfer fails if the pool can't cover it).
+        if seize_amount > 0 {
+            let pool_addr: Address = env
+                .storage()
+                .instance()
+                .get(&DataKey::Pool)
+                .ok_or(Error::EscrowNotFound)?;
+            let pool_client = VayylPoolClient::new(&env, &pool_addr);
+            let no_nullifiers: Vec<BytesN<32>> = Vec::new(&env);
+            let no_commitments: Vec<BytesN<32>> = Vec::new(&env);
+            pool_client.execute_settlement(
+                &env.current_contract_address(),
+                &no_nullifiers,
+                &no_commitments,
+                &Some(receiver),
+                &seize_amount,
+            );
+        }
 
         Ok(())
     }
@@ -244,7 +292,8 @@ mod test {
         let admin = Address::generate(env);
         let pm = Address::generate(env);
         let verifier = Address::generate(env);
-        client.initialize(&admin, &pm, &verifier, &3600u64);
+        let pool = Address::generate(env);
+        client.initialize(&admin, &pm, &verifier, &pool, &3600u64);
         (client, admin, pm)
     }
 
@@ -260,7 +309,8 @@ mod test {
         let env = Env::default();
         let (client, admin, pm) = setup(&env);
         let verifier = Address::generate(&env);
-        let result = client.try_initialize(&admin, &pm, &verifier, &3600u64);
+        let pool = Address::generate(&env);
+        let result = client.try_initialize(&admin, &pm, &verifier, &pool, &3600u64);
         assert!(result.is_err());
     }
 
@@ -335,5 +385,169 @@ mod test {
         let (client, _admin, _pm) = setup(&env);
         let position_id = BytesN::from_array(&env, &[4u8; 32]);
         assert!(!client.is_liquidated(&position_id));
+    }
+
+    // ---- D3/D4: real seizure moves collateral end-to-end -----------------
+
+    use soroban_sdk::{contract as sdk_contract, contractimpl as sdk_contractimpl, token};
+
+    /// Stand-in verifier that always accepts (real proofs need registered VKs).
+    #[sdk_contract]
+    pub struct MockVerifier;
+    #[sdk_contractimpl]
+    impl MockVerifier {
+        pub fn verify(
+            _env: Env,
+            _circuit_id: CircuitId,
+            _proof: Groth16Proof,
+            _public_inputs: Vec<BytesN<32>>,
+        ) -> Result<bool, soroban_sdk::Error> {
+            Ok(true)
+        }
+    }
+
+    #[contracttype]
+    enum PmKey {
+        Owner,
+        Commit,
+    }
+
+    /// Stand-in PositionManager exposing exactly the getter the engine calls.
+    #[sdk_contract]
+    pub struct MockPM;
+    #[sdk_contractimpl]
+    impl MockPM {
+        pub fn init(env: Env, owner: Address, commitment: BytesN<32>) {
+            env.storage().instance().set(&PmKey::Owner, &owner);
+            env.storage().instance().set(&PmKey::Commit, &commitment);
+        }
+        pub fn get_position_state(env: Env, _position_id: BytesN<32>) -> PositionState {
+            PositionState {
+                owner: env.storage().instance().get(&PmKey::Owner).unwrap(),
+                commitment: env.storage().instance().get(&PmKey::Commit).unwrap(),
+                last_health_timestamp: 0,
+            }
+        }
+    }
+
+    fn dummy_proof(env: &Env) -> Groth16Proof {
+        Groth16Proof {
+            a: BytesN::from_array(env, &[0u8; 64]),
+            b: BytesN::from_array(env, &[0u8; 128]),
+            c: BytesN::from_array(env, &[0u8; 64]),
+        }
+    }
+
+    #[test]
+    fn test_reveal_and_seize_moves_collateral_e2e() {
+        use vayyl_pool::{VayylPool, VayylPoolClient};
+
+        let env = Env::default();
+        env.mock_all_auths();
+
+        // SAC asset; the pool will custody the collateral.
+        let sac_admin = Address::generate(&env);
+        let sac = env.register_stellar_asset_contract_v2(sac_admin);
+        let asset = sac.address();
+
+        // Mock verifier (accepts) + mock PM returning a known position commitment.
+        let verifier_id = env.register(MockVerifier, ());
+        let position_commitment = BytesN::from_array(&env, &[0xC1; 32]);
+        let owner = Address::generate(&env);
+        let pm_id = env.register(MockPM, ());
+        MockPMClient::new(&env, &pm_id).init(&owner, &position_commitment);
+
+        // Real pool, funded with collateral liquidity.
+        let admin = Address::generate(&env);
+        let dummy = Address::generate(&env);
+        let pool_id = env.register(VayylPool, ());
+        let pool = VayylPoolClient::new(&env, &pool_id);
+        pool.initialize(&admin, &asset, &verifier_id, &dummy, &dummy);
+        token::StellarAssetClient::new(&env, &asset).mint(&pool_id, &10_000);
+
+        // Real liquidation engine wired to pool + mock PM + mock verifier.
+        let le_id = env.register(LiquidationEngineContract, ());
+        let le = LiquidationEngineContractClient::new(&env, &le_id);
+        le.initialize(&admin, &pm_id, &verifier_id, &pool_id, &3600u64);
+
+        // The engine must be an allowlisted settlement authority to move funds.
+        pool.add_settlement_authority(&le_id);
+
+        let position_id = BytesN::from_array(&env, &[0x01; 32]);
+        let keeper_commitment = BytesN::from_array(&env, &[0x0C; 32]);
+
+        // Heartbeat at t=0, then jump past the 3600s grace so the position is stale.
+        le.register_heartbeat(&position_id, &0u64);
+        env.ledger().with_mut(|li| li.timestamp = 7200);
+        le.initiate_liquidation(&position_id, &keeper_commitment);
+
+        // Reveal + seize 600 collateral to the keeper.
+        let keeper = Address::generate(&env);
+        let ts_bytes = BytesN::from_array(&env, &[0u8; 32]);
+        le.reveal_and_seize(
+            &position_id,
+            &dummy_proof(&env),
+            &position_commitment,
+            &keeper_commitment,
+            &ts_bytes,
+            &keeper,
+            &600i128,
+        );
+
+        // The seizure genuinely moved SAC: keeper credited, pool debited, flagged.
+        assert!(le.is_liquidated(&position_id));
+        assert_eq!(token::Client::new(&env, &asset).balance(&keeper), 600);
+        assert_eq!(token::Client::new(&env, &asset).balance(&pool_id), 9_400);
+    }
+
+    // A seizure by a non-allowlisted engine must fail at the pool boundary — the
+    // pool never pays out to an authority the admin didn't approve.
+    #[test]
+    fn test_seize_without_pool_allowlist_fails() {
+        use vayyl_pool::{VayylPool, VayylPoolClient};
+
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let sac_admin = Address::generate(&env);
+        let sac = env.register_stellar_asset_contract_v2(sac_admin);
+        let asset = sac.address();
+        let verifier_id = env.register(MockVerifier, ());
+        let position_commitment = BytesN::from_array(&env, &[0xC1; 32]);
+        let owner = Address::generate(&env);
+        let pm_id = env.register(MockPM, ());
+        MockPMClient::new(&env, &pm_id).init(&owner, &position_commitment);
+
+        let admin = Address::generate(&env);
+        let dummy = Address::generate(&env);
+        let pool_id = env.register(VayylPool, ());
+        let pool = VayylPoolClient::new(&env, &pool_id);
+        pool.initialize(&admin, &asset, &verifier_id, &dummy, &dummy);
+        token::StellarAssetClient::new(&env, &asset).mint(&pool_id, &10_000);
+
+        let le_id = env.register(LiquidationEngineContract, ());
+        let le = LiquidationEngineContractClient::new(&env, &le_id);
+        le.initialize(&admin, &pm_id, &verifier_id, &pool_id, &3600u64);
+        // NOTE: deliberately NOT allowlisted on the pool.
+
+        let position_id = BytesN::from_array(&env, &[0x01; 32]);
+        let keeper_commitment = BytesN::from_array(&env, &[0x0C; 32]);
+        le.register_heartbeat(&position_id, &0u64);
+        env.ledger().with_mut(|li| li.timestamp = 7200);
+        le.initiate_liquidation(&position_id, &keeper_commitment);
+
+        let keeper = Address::generate(&env);
+        let ts_bytes = BytesN::from_array(&env, &[0u8; 32]);
+        let res = le.try_reveal_and_seize(
+            &position_id,
+            &dummy_proof(&env),
+            &position_commitment,
+            &keeper_commitment,
+            &ts_bytes,
+            &keeper,
+            &600i128,
+        );
+        assert!(res.is_err(), "seizure without pool allowlist must fail");
+        assert_eq!(token::Client::new(&env, &asset).balance(&keeper), 0);
     }
 }

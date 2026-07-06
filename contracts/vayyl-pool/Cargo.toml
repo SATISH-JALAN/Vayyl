@@ -13,3 +13,5 @@ soroban-poseidon = { path = "../../rs-soroban-poseidon" }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
+# Real AspMembership contract for exercising deposit ASP root-binding end to end.
+asp-membership = { path = "../asp-membership" }

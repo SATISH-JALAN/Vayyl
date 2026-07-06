@@ -2,6 +2,7 @@ pragma circom 2.1.0;
 
 include "lib/position_primitives.circom";
 include "lib/poseidon2.circom";
+include "lib/range_check.circom";
 
 // Liquidation Heartbeat Circuit (Section 2.8)
 //
@@ -45,6 +46,15 @@ template LiquidationHeartbeat() {
 
     // 2. Direction boolean constraint
     direction * (direction - 1) === 0;
+
+    // 2b. Range-check position magnitudes (hardening) — keeps the revealed
+    // position opening consistent with the [0, 2^64) domain enforced elsewhere.
+    component rc_collateral = RangeCheck64();
+    rc_collateral.in <== collateral_amount;
+    component rc_size = RangeCheck64();
+    rc_size.in <== size;
+    component rc_entry = RangeCheck64();
+    rc_entry.in <== entry_price;
 
     // 3. Keeper Public Commitment
     // keeper_public_commitment ≡ Poseidon2(keeper_secret)

@@ -7,6 +7,8 @@ name = "agentic-settlement-hub"
 version = "0.1.0"
 dependencies = [
  "soroban-sdk",
+ "vayyl-pool",
+ "vayyl-types",
 ]
 
 [[package]]
@@ -822,6 +824,8 @@ name = "hidden-order-registry"
 version = "0.1.0"
 dependencies = [
  "soroban-sdk",
+ "vayyl-pool",
+ "vayyl-types",
 ]
 
 [[package]]
@@ -956,6 +960,7 @@ name = "liquidation-engine"
 version = "0.1.0"
 dependencies = [
  "soroban-sdk",
+ "vayyl-pool",
  "vayyl-types",
 ]
 
@@ -1072,6 +1077,7 @@ name = "position-manager"
 version = "0.1.0"
 dependencies = [
  "soroban-sdk",
+ "vayyl-pool",
  "vayyl-types",
 ]
 
@@ -1767,6 +1773,7 @@ dependencies = [
 name = "vayyl-pool"
 version = "0.1.0"
 dependencies = [
+ "asp-membership",
  "soroban-poseidon",
  "soroban-sdk",
  "vayyl-types",

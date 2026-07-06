@@ -11,6 +11,7 @@
 extern crate std;
 
 use super::*;
+use asp_membership::{AspMembershipContract, AspMembershipContractClient};
 use soroban_sdk::{
     contract as sdk_contract, contractimpl as sdk_contractimpl, symbol_short,
     testutils::{Address as _, Events as _},
@@ -57,8 +58,16 @@ struct Fixture {
     env: Env,
     pool: VayylPoolClient<'static>,
     verifier: MockVerifierClient<'static>,
+    asp: AspMembershipContractClient<'static>,
     asset: Address,
     admin: Address,
+}
+
+impl Fixture {
+    /// Current trusted ASP root — the value a legitimate deposit must supply.
+    fn asp_root(&self) -> BytesN<32> {
+        self.asp.root()
+    }
 }
 
 fn dummy_proof(env: &Env) -> Groth16Proof {
@@ -89,16 +98,23 @@ fn setup() -> Fixture {
     let pool_id = env.register(VayylPool, ());
     let pool = VayylPoolClient::new(&env, &pool_id);
 
-    let membership = Address::generate(&env);
-    let non_membership = Address::generate(&env);
+    // Real AspMembership contract so deposit root-binding is exercised for real.
     let admin = Address::generate(&env);
-    pool.initialize(&admin, &asset, &verifier_id, &membership, &non_membership);
+    let asp_id = env.register(AspMembershipContract, ());
+    let asp = AspMembershipContractClient::new(&env, &asp_id);
+    asp.initialize(&admin);
+    // Seed one approved member so the tree (and its root) is non-trivial.
+    asp.insert_leaf(&BytesN::from_array(&env, &[0xA1; 32]));
+
+    let non_membership = Address::generate(&env);
+    pool.initialize(&admin, &asset, &verifier_id, &asp_id, &non_membership);
     let _ = asset_admin; // SAC admin auth is covered by mock_all_auths.
 
     Fixture {
         env,
         pool,
         verifier,
+        asp,
         asset,
         admin,
     }
@@ -149,7 +165,7 @@ fn test_deposit_happy_path_moves_tokens_and_inserts_leaf() {
     let depositor = Address::generate(&f.env);
     fund(&f, &depositor, 1_000);
 
-    let asp_root = BytesN::from_array(&f.env, &[0u8; 32]);
+    let asp_root = f.asp_root();
     f.pool.deposit(
         &depositor,
         &dummy_proof(&f.env),
@@ -171,7 +187,7 @@ fn test_deposit_invalid_proof_moves_no_tokens_m6() {
     fund(&f, &depositor, 1_000);
     f.verifier.set_result(&false); // proof will be rejected
 
-    let asp_root = BytesN::from_array(&f.env, &[0u8; 32]);
+    let asp_root = f.asp_root();
     let res = f.pool.try_deposit(
         &depositor,
         &dummy_proof(&f.env),
@@ -187,6 +203,80 @@ fn test_deposit_invalid_proof_moves_no_tokens_m6() {
     assert_eq!(f.pool.get_leaf_count(), 0);
 }
 
+// ---- C3: ASP membership root-binding ------------------------------------
+
+#[test]
+fn test_deposit_rejects_bogus_asp_root_c3() {
+    // The Sprint B gate: a deposit whose asp_root the ASP contract never produced
+    // is rejected on-chain, before any token moves or leaf is inserted.
+    let f = setup();
+    let depositor = Address::generate(&f.env);
+    fund(&f, &depositor, 1_000);
+
+    let bogus_asp_root = BytesN::from_array(&f.env, &[0xEE; 32]);
+    let res = f.pool.try_deposit(
+        &depositor,
+        &dummy_proof(&f.env),
+        &commitment(&f.env, 7),
+        &500i128,
+        &bogus_asp_root,
+    );
+
+    assert_eq!(res, Err(Ok(Error::InvalidAspRoot)));
+    // Nothing moved, nothing inserted — compliance rejection is total.
+    assert_eq!(balance(&f, &depositor), 1_000);
+    assert_eq!(balance(&f, &f.pool.address), 0);
+    assert_eq!(f.pool.get_leaf_count(), 0);
+}
+
+#[test]
+fn test_deposit_accepts_stale_but_in_window_asp_root_c3() {
+    // A deposit proven against an earlier ASP root must still pass after the admin
+    // adds another approved member (root advances but stays in the history window).
+    let f = setup();
+    let depositor = Address::generate(&f.env);
+    fund(&f, &depositor, 1_000);
+
+    // Root the depositor bound their proof to.
+    let stale_root = f.asp_root();
+
+    // Admin approves another member → current ASP root advances.
+    f.asp.insert_leaf(&BytesN::from_array(&f.env, &[0xB2; 32]));
+    assert_ne!(f.asp.root(), stale_root, "ASP root should have advanced");
+
+    // Deposit against the stale-but-in-window root is accepted.
+    f.pool.deposit(
+        &depositor,
+        &dummy_proof(&f.env),
+        &commitment(&f.env, 7),
+        &500i128,
+        &stale_root,
+    );
+    assert_eq!(f.pool.get_leaf_count(), 1);
+    assert_eq!(balance(&f, &f.pool.address), 500);
+}
+
+#[test]
+fn test_asp_check_precedes_proof_verify_c3() {
+    // Ordering guarantee: the ASP root-binding is checked BEFORE the Groth16
+    // verify (cheapest-fail-first). With both a bad root AND a failing proof, the
+    // surfaced error must be InvalidAspRoot, not InvalidProof.
+    let f = setup();
+    let depositor = Address::generate(&f.env);
+    fund(&f, &depositor, 1_000);
+    f.verifier.set_result(&false); // proof would also fail
+
+    let bogus_asp_root = BytesN::from_array(&f.env, &[0xEE; 32]);
+    let res = f.pool.try_deposit(
+        &depositor,
+        &dummy_proof(&f.env),
+        &commitment(&f.env, 7),
+        &500i128,
+        &bogus_asp_root,
+    );
+    assert_eq!(res, Err(Ok(Error::InvalidAspRoot)));
+}
+
 // ---- C4: events ----------------------------------------------------------
 
 #[test]
@@ -196,7 +286,7 @@ fn test_deposit_emits_event_c4() {
     fund(&f, &depositor, 1_000);
 
     let c = commitment(&f.env, 9);
-    let asp_root = BytesN::from_array(&f.env, &[0u8; 32]);
+    let asp_root = f.asp_root();
     f.pool
         .deposit(&depositor, &dummy_proof(&f.env), &c, &750i128, &asp_root);
 
@@ -233,7 +323,7 @@ fn test_deposit_rejects_negative_amount_m2() {
     let depositor = Address::generate(&f.env);
     fund(&f, &depositor, 1_000);
 
-    let asp_root = BytesN::from_array(&f.env, &[0u8; 32]);
+    let asp_root = f.asp_root();
     let res = f.pool.try_deposit(
         &depositor,
         &dummy_proof(&f.env),
@@ -290,7 +380,7 @@ fn test_withdraw_accepts_stale_but_in_window_root_h4() {
     // Pool needs liquidity to pay out the withdraw.
     fund(&f, &f.pool.address, 10_000);
 
-    let asp_root = BytesN::from_array(&f.env, &[0u8; 32]);
+    let asp_root = f.asp_root();
 
     // Deposit A → capture the root the "withdraw proof" would bind to.
     f.pool.deposit(
@@ -334,7 +424,7 @@ fn test_double_spend_rejected() {
     let f = setup();
     fund(&f, &f.pool.address, 10_000);
 
-    let asp_root = BytesN::from_array(&f.env, &[0u8; 32]);
+    let asp_root = f.asp_root();
     let depositor = Address::generate(&f.env);
     fund(&f, &depositor, 10_000);
     f.pool.deposit(
@@ -400,4 +490,103 @@ fn binding_matches_frontend() {
         hex,
         "0eb4bf53f3d713b4c3ace9614c3faf7a8c246550dfaa337d1cb27f3c492eba75"
     );
+}
+
+// ---- D1: execute_settlement (the fund-movement primitive) ---------------
+
+#[test]
+fn test_execute_settlement_inserts_note_and_pays_out() {
+    let f = setup();
+    // Pool holds liquidity to pay a seizure/payout from.
+    fund(&f, &f.pool.address, 10_000);
+
+    let authority = Address::generate(&f.env);
+    f.pool.add_settlement_authority(&authority);
+    assert!(f.pool.is_settlement_authority(&authority));
+
+    let recipient = Address::generate(&f.env);
+    let mut outs: Vec<BytesN<32>> = Vec::new(&f.env);
+    outs.push_back(commitment(&f.env, 42));
+    let mut nfs: Vec<BytesN<32>> = Vec::new(&f.env);
+    nfs.push_back(commitment(&f.env, 7)); // a spent nullifier
+
+    f.pool.execute_settlement(&authority, &nfs, &outs, &Some(recipient.clone()), &600i128);
+
+    // Output note inserted into the tree, payout delivered, pool debited.
+    assert_eq!(f.pool.get_leaf_count(), 1);
+    assert_eq!(balance(&f, &recipient), 600);
+    assert_eq!(balance(&f, &f.pool.address), 9_400);
+}
+
+#[test]
+fn test_execute_settlement_reshield_moves_no_tokens() {
+    // Position-close path: pure re-shield — insert the output note, no payout.
+    let f = setup();
+    fund(&f, &f.pool.address, 1_000);
+
+    let authority = Address::generate(&f.env);
+    f.pool.add_settlement_authority(&authority);
+
+    let mut outs: Vec<BytesN<32>> = Vec::new(&f.env);
+    outs.push_back(commitment(&f.env, 11));
+    let nfs: Vec<BytesN<32>> = Vec::new(&f.env);
+
+    f.pool.execute_settlement(&authority, &nfs, &outs, &None::<Address>, &0i128);
+
+    assert_eq!(f.pool.get_leaf_count(), 1);
+    assert_eq!(balance(&f, &f.pool.address), 1_000); // nothing left the pool
+}
+
+#[test]
+fn test_execute_settlement_rejects_non_authority() {
+    // The security boundary: a caller not on the allowlist cannot move funds.
+    let f = setup();
+    let outsider = Address::generate(&f.env);
+    let empty: Vec<BytesN<32>> = Vec::new(&f.env);
+    let res = f.pool.try_execute_settlement(&outsider, &empty, &empty, &None::<Address>, &0i128);
+    assert_eq!(res, Err(Ok(Error::NotSettlementAuthority)));
+}
+
+#[test]
+fn test_execute_settlement_rejects_double_spend_nullifier() {
+    let f = setup();
+    let authority = Address::generate(&f.env);
+    f.pool.add_settlement_authority(&authority);
+
+    let empty: Vec<BytesN<32>> = Vec::new(&f.env);
+    let mut nfs: Vec<BytesN<32>> = Vec::new(&f.env);
+    nfs.push_back(commitment(&f.env, 21));
+
+    f.pool.execute_settlement(&authority, &nfs, &empty, &None::<Address>, &0i128);
+    // Re-spending the same nullifier through settlement is rejected.
+    let res = f.pool.try_execute_settlement(&authority, &nfs, &empty, &None::<Address>, &0i128);
+    assert_eq!(res, Err(Ok(Error::NullifierAlreadyUsed)));
+}
+
+#[test]
+fn test_execute_settlement_rejects_negative_payout() {
+    let f = setup();
+    let authority = Address::generate(&f.env);
+    f.pool.add_settlement_authority(&authority);
+    let recipient = Address::generate(&f.env);
+    let empty: Vec<BytesN<32>> = Vec::new(&f.env);
+    let res =
+        f.pool
+            .try_execute_settlement(&authority, &empty, &empty, &Some(recipient), &-5i128);
+    assert_eq!(res, Err(Ok(Error::InvalidAmount)));
+}
+
+#[test]
+fn test_remove_settlement_authority_revokes_access() {
+    let f = setup();
+    let authority = Address::generate(&f.env);
+    f.pool.add_settlement_authority(&authority);
+    assert!(f.pool.is_settlement_authority(&authority));
+
+    f.pool.remove_settlement_authority(&authority);
+    assert!(!f.pool.is_settlement_authority(&authority));
+
+    let empty: Vec<BytesN<32>> = Vec::new(&f.env);
+    let res = f.pool.try_execute_settlement(&authority, &empty, &empty, &None::<Address>, &0i128);
+    assert_eq!(res, Err(Ok(Error::NotSettlementAuthority)));
 }

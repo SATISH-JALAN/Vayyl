@@ -13,3 +13,5 @@ vayyl-types = { path = "../vayyl-types" }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
+# Real VayylPool to prove reveal_and_seize moves collateral end-to-end.
+vayyl-pool = { path = "../vayyl-pool" }

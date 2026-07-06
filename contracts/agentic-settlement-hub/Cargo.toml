@@ -5,10 +5,13 @@ edition = "2024"
 publish = false
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 soroban-sdk = { workspace = true }
+vayyl-types = { path = "../vayyl-types" }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
+# Real VayylPool to prove claim_quest pays out end-to-end.
+vayyl-pool = { path = "../vayyl-pool" }
