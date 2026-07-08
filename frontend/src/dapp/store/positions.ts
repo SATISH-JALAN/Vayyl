@@ -1,5 +1,4 @@
 import { create } from 'zustand';
-import ProofWorker from '../lib/proof-worker?worker';
 
 export interface Position {
   id: string;
@@ -20,7 +19,9 @@ interface PositionsState {
 
 const runWorkerTask = (type: string, payload: any): Promise<any> => {
   return new Promise((resolve, reject) => {
-    const worker = new ProofWorker();
+    const worker = new Worker(new URL('../lib/proof-worker.ts', import.meta.url), {
+      type: 'module',
+    });
     const taskId = Math.random().toString(36).substring(7);
     
     worker.onmessage = (e: any) => {

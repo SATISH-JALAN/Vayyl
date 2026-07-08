@@ -7,6 +7,7 @@ import { ScrollTrigger } from 'gsap/ScrollTrigger';
 
 export function initParallax(): void {
   // ── Floating orbs at different scroll speeds ──
+  const trust = document.querySelector<HTMLElement>('.trust');
   const float1 = document.getElementById('float-1');
   const float2 = document.getElementById('float-2');
 
@@ -16,7 +17,7 @@ export function initParallax(): void {
       x: 30,
       ease: 'none',
       scrollTrigger: {
-        trigger: '.trust',
+        trigger: trust ?? float1,
         start: 'top bottom',
         end: 'bottom top',
         scrub: true,
@@ -31,7 +32,7 @@ export function initParallax(): void {
       rotation: 15,
       ease: 'none',
       scrollTrigger: {
-        trigger: '.trust',
+        trigger: trust ?? float2,
         start: 'top bottom',
         end: 'bottom top',
         scrub: true,
@@ -40,17 +41,20 @@ export function initParallax(): void {
   }
 
   // ── Section header entrance ──
-  gsap.from('.trust__header', {
-    autoAlpha: 0,
-    y: 40,
-    duration: 0.8,
-    ease: 'power2.out',
-    scrollTrigger: {
-      trigger: '.trust',
-      start: 'top 75%',
-      toggleActions: 'play none none none',
-    },
-  });
+  const header = document.querySelector<HTMLElement>('.trust__header');
+  if (header) {
+    gsap.from(header, {
+      autoAlpha: 0,
+      y: 40,
+      duration: 0.8,
+      ease: 'power2.out',
+      scrollTrigger: {
+        trigger: trust ?? header,
+        start: 'top 75%',
+        toggleActions: 'play none none none',
+      },
+    });
+  }
 
   // ── Stats stagger entrance ──
   const stats = document.querySelectorAll<HTMLElement>('.stat');
@@ -73,15 +77,18 @@ export function initParallax(): void {
   }
 
   // ── Bottom text entrance ──
-  gsap.from('.trust__bottom', {
-    autoAlpha: 0,
-    y: 30,
-    duration: 0.7,
-    ease: 'power2.out',
-    scrollTrigger: {
-      trigger: '.trust__bottom',
-      start: 'top 85%',
-      toggleActions: 'play none none none',
-    },
-  });
+  const bottom = document.querySelector<HTMLElement>('.trust__bottom');
+  if (bottom) {
+    gsap.from(bottom, {
+      autoAlpha: 0,
+      y: 30,
+      duration: 0.7,
+      ease: 'power2.out',
+      scrollTrigger: {
+        trigger: bottom,
+        start: 'top 85%',
+        toggleActions: 'play none none none',
+      },
+    });
+  }
 }

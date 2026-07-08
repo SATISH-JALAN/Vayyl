@@ -6,7 +6,6 @@
 // Positions/orders stay UI-only (mock, labeled) and are NOT touched here.
 
 import { create } from 'zustand';
-import ProofWorker from '../lib/proof-worker?worker';
 import { useWalletStore } from './wallet';
 import {
   randomFieldElement,
@@ -43,7 +42,9 @@ interface PoolState {
 
 const runWorkerTask = (type: string, payload: any): Promise<any> =>
   new Promise((resolve, reject) => {
-    const worker = new ProofWorker();
+    const worker = new Worker(new URL('../lib/proof-worker.ts', import.meta.url), {
+      type: 'module',
+    });
     const taskId = Math.random().toString(36).substring(7);
     worker.onmessage = (e: any) => {
       if (e.data.id === taskId) {

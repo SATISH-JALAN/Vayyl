@@ -13,7 +13,7 @@
 
 .dapp-card:hover {
   border-color: rgba(244, 111, 115, 0.2);
-  box-shadow: 0 12px 40px rgba(0,0,0,0.4);
+  box-shadow: var(--shadow-medium);
 }
 
 /* Forms & Inputs */

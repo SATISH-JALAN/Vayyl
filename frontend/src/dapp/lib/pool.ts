@@ -25,21 +25,20 @@ import { signTransaction } from '@stellar/freighter-api';
 
 // ---- config (env-overridable) ----------------------------------------------
 
-const env = (import.meta as unknown as { env: Record<string, string | undefined> }).env || {};
-export const RPC_URL = env.VITE_RPC_URL || 'https://soroban-testnet.stellar.org';
-export const NETWORK_PASSPHRASE = env.VITE_NETWORK_PASSPHRASE || Networks.TESTNET;
-export const INDEXER_URL = env.VITE_INDEXER_URL || 'http://localhost:3001';
-export const RELAYER_URL = env.VITE_RELAYER_URL || 'http://localhost:3002';
+export const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || 'https://soroban-testnet.stellar.org';
+export const NETWORK_PASSPHRASE = process.env.NEXT_PUBLIC_NETWORK_PASSPHRASE || Networks.TESTNET;
+export const INDEXER_URL = process.env.NEXT_PUBLIC_INDEXER_URL || 'http://localhost:3001';
+export const RELAYER_URL = process.env.NEXT_PUBLIC_RELAYER_URL || 'http://localhost:3002';
 export const POOL_IDS: Record<string, string | undefined> = {
-  XLM: env.VITE_POOL_XLM,
-  USDC: env.VITE_POOL_USDC,
+  XLM: process.env.NEXT_PUBLIC_POOL_XLM,
+  USDC: process.env.NEXT_PUBLIC_POOL_USDC,
 };
 
 export const server = new rpc.Server(RPC_URL, { allowHttp: true });
 
 export function poolIdForAsset(asset: string): string {
   const id = POOL_IDS[asset];
-  if (!id) throw new Error(`No pool contract configured for ${asset} (set VITE_POOL_${asset})`);
+  if (!id) throw new Error(`No pool contract configured for ${asset} (set NEXT_PUBLIC_POOL_${asset})`);
   return id;
 }
 
@@ -105,7 +104,8 @@ const addr = (a: string) => new Address(a).toScVal();
 // makes every withdraw proof silently fail to verify — validate against a live
 // contract call once before trusting it (see docs landmine §8).
 async function sha256(bytes: Uint8Array): Promise<Uint8Array> {
-  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  const input = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+  const digest = await crypto.subtle.digest('SHA-256', input);
   return new Uint8Array(digest);
 }
 

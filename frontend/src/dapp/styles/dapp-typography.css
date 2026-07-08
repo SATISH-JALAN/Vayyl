@@ -1,6 +1,6 @@
 /* ── Typography (dApp) ── */
 
-body {
+.dapp-shell {
   font-family: var(--font-body);
   font-weight: 400;
   font-size: var(--text-body);
