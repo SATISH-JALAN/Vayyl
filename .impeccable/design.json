@@ -1,0 +1,149 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-07-06T00:00:00+05:30",
+  "title": "Design System: Vayyl",
+  "extensions": {
+    "colorMeta": {
+      "coral": {
+        "role": "primary",
+        "displayName": "Proof Coral",
+        "canonical": "#F46F73",
+        "tonalRamp": ["oklch(18% 0.08 19)", "oklch(30% 0.11 19)", "oklch(42% 0.14 19)", "oklch(55% 0.17 19)", "oklch(68% 0.16 19)", "oklch(78% 0.11 19)", "oklch(88% 0.06 19)", "oklch(96% 0.02 19)"]
+      },
+      "charcoal": {
+        "role": "neutral",
+        "displayName": "Deep Charcoal",
+        "canonical": "#262321",
+        "tonalRamp": ["#151311", "#262321", "#3A3633", "#514B46", "#6B635D", "#8E8580", "#BDB5AF", "#F8F6F3"]
+      },
+      "ivory": {
+        "role": "neutral",
+        "displayName": "Ivory Surface",
+        "canonical": "#F8F6F3",
+        "tonalRamp": ["#262321", "#655D58", "#938B85", "#C8BCB4", "#DED5CF", "#F2EEEA", "#F8F6F3", "#FFFFFF"]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Hero and major brand statements only."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Protocol explanation and product credibility copy."
+      },
+      "mono": {
+        "displayName": "Proof Label",
+        "purpose": "Technical labels, contract stats, and proof-system metadata."
+      }
+    },
+    "shadows": [
+      {
+        "name": "subtle-surface",
+        "value": "0 1px 3px rgba(38, 35, 33, 0.04), 0 1px 2px rgba(38, 35, 33, 0.06)",
+        "purpose": "Low depth for quiet surfaces."
+      },
+      {
+        "name": "coral-glow",
+        "value": "0 0 40px rgba(244, 111, 115, 0.15)",
+        "purpose": "CTA emphasis only."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-out-expo",
+        "value": "cubic-bezier(0.19, 1, 0.22, 1)",
+        "purpose": "Large page choreography and nav transitions."
+      },
+      {
+        "name": "ease-out",
+        "value": "cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "Component hover and state changes."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "tablet",
+        "value": "1024px"
+      },
+      {
+        "name": "mobile",
+        "value": "640px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Primary app launch and request-access action.",
+      "html": "<button class=\"ds-btn-primary\">Launch App <span aria-hidden=\"true\">-></span></button>",
+      "css": ".ds-btn-primary { display: inline-flex; align-items: center; gap: 0.75rem; background: #F46F73; color: #FFFFFF; border: 0; border-radius: 9999px; padding: 1rem 2.5rem; font: 500 0.9375rem Manrope, sans-serif; letter-spacing: 0.04em; transition: background 400ms cubic-bezier(0.16, 1, 0.3, 1), transform 400ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 400ms cubic-bezier(0.16, 1, 0.3, 1); } .ds-btn-primary:hover { background: #CF5059; transform: translateY(-2px); box-shadow: 0 0 40px rgba(244, 111, 115, 0.15); } .ds-btn-primary:focus-visible { outline: 2px solid #F8F6F3; outline-offset: 3px; }"
+    },
+    {
+      "name": "Feature Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "Current repeated primitive card for protocol capabilities.",
+      "html": "<article class=\"ds-card\"><div class=\"ds-card-icon\">ZK</div><h3>Private Positions</h3><p>Prove health without revealing size, direction, or strategy.</p></article>",
+      "css": ".ds-card { background: #F8F6F3; color: #262321; border: 1px solid rgba(147, 139, 133, 0.15); border-radius: 24px; padding: 2.5rem; max-width: 340px; font-family: Manrope, sans-serif; } .ds-card-icon { width: 48px; height: 48px; display: grid; place-items: center; border-radius: 12px; background: #F2EEEA; color: #F46F73; margin-bottom: 1.5rem; font: 400 0.875rem JetBrains Mono, monospace; } .ds-card h3 { margin: 0 0 0.75rem; font-size: 1.25rem; line-height: 1.3; } .ds-card p { margin: 0; color: #655D58; line-height: 1.6; }"
+    },
+    {
+      "name": "Dark Email Field",
+      "kind": "input",
+      "refersTo": "input-dark",
+      "description": "Final CTA email capture field.",
+      "html": "<label class=\"ds-email\"><span>Email</span><input placeholder=\"you@protocol.xyz\" /></label>",
+      "css": ".ds-email { display: grid; gap: 0.5rem; color: #F8F6F3; font-family: Manrope, sans-serif; } .ds-email span { font-size: 0.8125rem; letter-spacing: 0.08em; text-transform: uppercase; } .ds-email input { background: rgba(248, 246, 243, 0.08); border: 1px solid rgba(248, 246, 243, 0.2); border-radius: 9999px; color: #F8F6F3; padding: 1rem 1.5rem; font-size: 0.9375rem; outline: none; } .ds-email input::placeholder { color: rgba(248, 246, 243, 0.6); } .ds-email input:focus { border-color: #F46F73; background: rgba(248, 246, 243, 0.05); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Confidential Ledger Room",
+    "overview": "The current system presents Vayyl as a quiet, high-trust privacy protocol with editorial typography, warm dark surfaces, coral accents, and cinematic scroll motion. The design should evolve toward mechanism-led infrastructure: more proof path, less decorative mystique.",
+    "keyCharacteristics": [
+      "Dark confidential hero surfaces with coral as the primary action color.",
+      "Warm off-white body sections for long-form technical explanation.",
+      "Serif display type for brand voice and Manrope for readable explanation.",
+      "GSAP-driven page choreography, with reduced-motion fallbacks preserved.",
+      "Diagrams and proof-flow visuals should carry more weight than generic card grids."
+    ],
+    "rules": [
+      {
+        "name": "The Coral Scarcity Rule",
+        "body": "Coral is strongest when rare. Use it for action and proof emphasis, not as ambient decoration.",
+        "section": "colors"
+      },
+      {
+        "name": "The No Privacy Fog Rule",
+        "body": "If a dark/glow treatment does not clarify privacy, proof, or settlement, remove it.",
+        "section": "colors"
+      },
+      {
+        "name": "The Mechanism Before Mood Rule",
+        "body": "Headlines can be poetic, but supporting copy must name the actual protocol mechanism.",
+        "section": "typography"
+      },
+      {
+        "name": "The Border Or Shadow Rule",
+        "body": "Do not pair a decorative 1px border with a wide soft shadow on the same card unless the state change earns it.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do lead with Vayyl's proof path: commitments, nullifiers, Merkle inclusion, Groth16, and Soroban BN254 verification.",
+      "Do keep reduced-motion behavior and ensure content is visible when animations are skipped.",
+      "Do use Proof Coral for primary action and proof emphasis only.",
+      "Do show testnet/project status honestly when making trust claims.",
+      "Do verify mobile text wrapping and CTA/input sizing on narrow screens."
+    ],
+    "donts": [
+      "Don't ship copied SaaS landing-page templates with interchangeable hero copy and icon-card grids.",
+      "Don't use generic crypto neon, purple gradients, decorative glow orbs, or glassmorphism by default.",
+      "Don't make vague privacy claims without showing the mechanism.",
+      "Don't overclaim production readiness beyond current evidence.",
+      "Don't add repeated tiny uppercase tracked labels above every section.",
+      "Don't hide important content behind animation-only visibility states."
+    ]
+  }
+}

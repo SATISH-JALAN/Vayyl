@@ -92,7 +92,7 @@ Every stage must be byte-consistent. The **Poseidon2 parameters** in the Circom 
 | **Contracts** | `contracts/` | Rust · Soroban SDK 26 (`#![no_std]`) | 9 core contracts: verifier, per-asset pool, ASP, positions, liquidation, orders |
 | **Circuits** | `circuits/` | Circom · snarkjs | ZK circuits + Groth16 setup + proof generation |
 | **Backend** | `backend/` | TypeScript · Rust | Indexer, relayer, oracle-adapter, keeper + proof-bridge |
-| **Frontend** | `frontend/` | Vite · React · Zustand · GSAP | Marketing site + DApp (Freighter, Web-Worker proving) |
+| **Frontend** | `frontend/` | Next.js App Router · React · Zustand · GSAP | Marketing site + DApp (Freighter, Web-Worker proving) |
 
 ---
 
@@ -118,7 +118,7 @@ vayyl/
 │   ├── oracle-adapter/       # Validates SEP-40 (Reflector) prices
 │   ├── keeper/               # Liquidation / order keeper
 │   └── proof-bridge/         # Rust: snarkjs JSON → raw binary for bn254 hosts
-├── frontend/             # Vite app — index.html (marketing) + app.html (DApp)
+├── frontend/             # Next.js app — marketing route + DApp route
 ├── rs-soroban-poseidon/  # Vendored Poseidon2 crate (path dep of contracts)
 ├── scripts/              # Testnet deploy + VK registration (PowerShell / JS)
 └── docs/                 # System design, build checklist, audits, plans
@@ -160,16 +160,16 @@ The fastest way to see Vayyl. The DApp is pre-configured against the live testne
 ```bash
 cd frontend
 pnpm install
-cp .env.testnet .env          # use the live testnet contract IDs
-pnpm dev                      # → http://localhost:5173
+cp .env.testnet .env.local    # use the live testnet contract IDs
+pnpm dev                      # → http://localhost:3000
 ```
 
-- **Marketing site:** `http://localhost:5173/` (`index.html`)
-- **DApp:** `http://localhost:5173/app.html` — connect Freighter (set it to **Testnet**), then try a deposit.
+- **Marketing site:** `http://localhost:3000/`
+- **DApp:** `http://localhost:3000/app` — connect Freighter (set it to **Testnet**), then try a deposit.
 
 ```bash
 pnpm build        # production build
-pnpm preview      # serve the production build locally
+pnpm start        # serve the production build locally
 ```
 
 > ⚠️ Proof generation runs in a **Web Worker** (never the main thread) — required so mobile Safari doesn't kill it. Keep it that way if you modify proving.
@@ -279,7 +279,7 @@ cd backend/relayer && pnpm dev
 cd frontend && pnpm dev
 ```
 
-Then open `http://localhost:5173/app.html`, connect Freighter (Testnet), and deposit. The DApp proves in a Web Worker, submits via Soroban, and the indexer captures the commitment.
+Then open `http://localhost:3000/app`, connect Freighter (Testnet), and deposit. The DApp proves in a Web Worker, submits via Soroban, and the indexer captures the commitment.
 
 ---
 

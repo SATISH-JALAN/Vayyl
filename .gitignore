@@ -53,3 +53,11 @@ rs-soroban-poseidon/
 
 # Internal project documentation
 /.agents
+
+# Impeccable local runtime state
+/.impeccable/config.local.json
+/.impeccable/live/sessions/
+/
+# Local visual verification artifacts
+/.playwright-mcp/
+/vayyl-next-landing-*.png
