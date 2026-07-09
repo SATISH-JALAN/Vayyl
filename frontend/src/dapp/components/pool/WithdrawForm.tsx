@@ -1,15 +1,20 @@
-import React, { useState } from 'react';
+import { useState, type FormEvent } from 'react';
+
+import Button from '../common/Button';
 import Card from '../common/Card';
 import Input from '../common/Input';
-import Button from '../common/Button';
 import { usePoolStore } from '../../store/pool';
+import { useWalletStore } from '../../store/wallet';
 
 export default function WithdrawForm() {
   const [amount, setAmount] = useState('');
   const [destination, setDestination] = useState('');
-  const { withdraw, isProving, shieldedBalance, status } = usePoolStore();
+  const { withdraw, isProving, shieldedBalance, notes, status } = usePoolStore();
+  const { address } = useWalletStore();
+  const isError = !!status && /failed|error/i.test(status);
+  const activeNotes = notes.filter((note) => !note.isSpent);
 
-  const handleWithdraw = async (e: React.FormEvent) => {
+  const handleWithdraw = async (e: FormEvent) => {
     e.preventDefault();
     if (!amount || !destination) return;
 
@@ -17,57 +22,49 @@ export default function WithdrawForm() {
       await withdraw(Number(amount), 'XLM', destination);
       setAmount('');
       setDestination('');
-    } catch (e) {
-      // The store sets a human-readable `status`; surface it below.
-      console.error(e);
+    } catch (error) {
+      console.error(error);
     }
   };
 
-  const isError = !!status && /failed|error/i.test(status);
-
   return (
-    <Card>
-      <h3 style={{ fontSize: 'var(--text-h3)', fontFamily: 'var(--font-display)', marginBottom: '1.5rem', color: 'var(--text-primary)' }}>Unshield Assets</h3>
-      <p style={{ color: 'var(--text-muted)', fontSize: 'var(--text-body)', marginBottom: '2rem' }}>
-        Withdraw shielded assets to a public Stellar address. The source of these funds cannot be traced by observers.
-      </p>
+    <Card className="dapp-card--strong">
+      <div className="dapp-card__header">
+        <div>
+          <h2 className="dapp-card__title">Unshield XLM</h2>
+          <p className="dapp-card__description">
+            Withdraw one exact unspent note to a public Stellar address.
+          </p>
+        </div>
+        <span className="dapp-badge dapp-badge--warning">Whole note</span>
+      </div>
 
-      <form onSubmit={handleWithdraw}>
-        <Input 
-          label="Destination Address" 
-          placeholder="G..." 
+      <form className="dapp-form" onSubmit={handleWithdraw}>
+        <Input
+          label="Destination address"
+          placeholder="G..."
           value={destination}
           onChange={(e) => setDestination(e.target.value)}
           disabled={isProving}
         />
-        
-        <div style={{ marginTop: '1.5rem', marginBottom: '2rem' }}>
-          <Input
-            label={`Amount (Max: ${shieldedBalance} XLM)`}
-            type="number"
-            placeholder="0.00"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            disabled={isProving}
-          />
-        </div>
+        <Input
+          label="Amount"
+          type="number"
+          inputMode="decimal"
+          min="0"
+          step="1"
+          placeholder="0"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+          disabled={isProving}
+          helperText={`${shieldedBalance} XLM available across ${activeNotes.length} active note${activeNotes.length === 1 ? '' : 's'}.`}
+        />
 
-        <Button type="submit" disabled={isProving || !amount || !destination} style={{ width: '100%', justifyContent: 'center' }}>
-          {isProving ? 'Generating ZK Proof...' : 'Unshield Assets'}
+        <Button type="submit" disabled={isProving || !amount || !destination || !address}>
+          {!address ? 'Connect wallet first' : isProving ? 'Generating proof' : 'Unshield XLM'}
         </Button>
 
-        {status && (
-          <p
-            style={{
-              marginTop: '1rem',
-              fontSize: 'var(--text-small, 0.85rem)',
-              wordBreak: 'break-word',
-              color: isError ? 'var(--error, #ff6b6b)' : 'var(--text-muted)',
-            }}
-          >
-            {status}
-          </p>
-        )}
+        {status && <p className={`dapp-status ${isError ? 'dapp-status--error' : 'dapp-status--success'}`}>{status}</p>}
       </form>
     </Card>
   );

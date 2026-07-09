@@ -1,68 +1,74 @@
-import React from 'react';
 import Card from '../components/common/Card';
-import OpenPositionForm from '../components/positions/OpenPositionForm';
-import ClosePositionForm from '../components/positions/ClosePositionForm';
-import { usePositionsStore } from '../store/positions';
+import { useWalletStore } from '../store/wallet';
+
+const positionRows = [
+  {
+    title: 'Collateral',
+    value: '0 XLM',
+  },
+  {
+    title: 'Exposure',
+    value: '0.00',
+  },
+  {
+    title: 'Open PnL',
+    value: '0.00 XLM',
+  },
+];
 
 export default function Positions() {
-  const { positions } = usePositionsStore();
+  const { address } = useWalletStore();
 
   return (
-    <div>
+    <div className="dapp-stack">
       <header className="dapp-page-header">
-        <h1 className="dapp-page-title">Private Positions</h1>
-        <p className="dapp-page-subtitle">Manage your leveraged positions. Liquidation boundaries are proven continuously via zero-knowledge heartbeats.</p>
+        <div>
+          <h1 className="dapp-page-title">Positions</h1>
+          <p className="dapp-page-subtitle">
+            Review private position exposure tied to the connected shielded identity.
+          </p>
+        </div>
       </header>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 350px', gap: '2rem', alignItems: 'start' }}>
-        {/* Left Column: Active Positions */}
-        <div>
-          <h2 className="text-h3" style={{ marginBottom: '1.5rem' }}>Active Positions</h2>
-          {positions.length === 0 ? (
-            <p className="text-body" style={{ color: 'var(--text-muted)' }}>No active positions.</p>
-          ) : (
-            <div style={{ display: 'grid', gap: '1.5rem' }}>
-              {positions.map(pos => (
-                <Card key={pos.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '0.5rem' }}>
-                      <span style={{ fontSize: 'var(--text-h3)', fontFamily: 'var(--font-display)', color: 'var(--text-primary)' }}>{pos.asset}</span>
-                      <span style={{ 
-                        fontSize: '11px', 
-                        textTransform: 'uppercase', 
-                        letterSpacing: '0.1em',
-                        padding: '2px 8px',
-                        borderRadius: '12px',
-                        border: `1px solid ${pos.type === 'Long' ? 'var(--success)' : 'var(--error)'}`,
-                        color: pos.type === 'Long' ? 'var(--success)' : 'var(--error)'
-                      }}>
-                        {pos.type} {pos.leverage}
-                      </span>
-                    </div>
-                    <div style={{ color: 'var(--text-muted)', fontSize: 'var(--text-small)' }}>
-                      Position Size: <span style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>{pos.size}</span>
-                    </div>
-                  </div>
-
-                  <div style={{ textAlign: 'right' }}>
-                    <div style={{ marginBottom: '0.5rem', color: 'var(--text-muted)', fontSize: 'var(--text-small)' }}>
-                      Health Factor
-                    </div>
-                    <div style={{ color: 'var(--success)', fontFamily: 'var(--font-mono)', fontSize: '1.25rem' }}>
-                      {pos.health}
-                    </div>
-                  </div>
-                </Card>
-              ))}
+      <div className="dapp-grid dapp-grid--overview">
+        <Card className="dapp-card--strong">
+          <div className="dapp-card__header">
+            <div>
+              <h2 className="dapp-card__title">Private positions</h2>
+              <p className="dapp-card__description">
+                Position state appears after connecting a wallet with active shielded exposure.
+              </p>
             </div>
-          )}
-        </div>
+            <span className="dapp-badge dapp-badge--muted">{address ? 'Connected' : 'Locked'}</span>
+          </div>
 
-        {/* Right Column: Forms */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-          <OpenPositionForm />
-          <ClosePositionForm />
-        </div>
+          <div className="dapp-empty">
+            <strong>{address ? 'No active positions' : 'Wallet required'}</strong>
+            <p>
+              {address
+                ? 'Open positions associated with this shielded identity will appear here.'
+                : 'Connect Freighter to view private position state.'}
+            </p>
+          </div>
+        </Card>
+
+        <Card>
+          <div className="dapp-card__header">
+            <div>
+              <h2 className="dapp-card__title">Position summary</h2>
+              <p className="dapp-card__description">Current exposure for the connected account.</p>
+            </div>
+          </div>
+
+          <div className="dapp-setting-list">
+            {positionRows.map((row) => (
+              <div className="dapp-setting-row" key={row.title}>
+                <strong>{row.title}</strong>
+                <span className="dapp-mono">{row.value}</span>
+              </div>
+            ))}
+          </div>
+        </Card>
       </div>
     </div>
   );

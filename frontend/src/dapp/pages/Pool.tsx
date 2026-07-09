@@ -1,45 +1,66 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
+
+import Card from '../components/common/Card';
 import DepositForm from '../components/pool/DepositForm';
 import WithdrawForm from '../components/pool/WithdrawForm';
-import TransferForm from '../components/pool/TransferForm';
+
+type PoolMode = 'deposit' | 'withdraw';
 
 export default function Pool() {
-  const [activeTab, setActiveTab] = useState<'deposit' | 'withdraw' | 'transfer'>('deposit');
+  const [activeMode, setActiveMode] = useState<PoolMode>('deposit');
 
   return (
-    <div>
+    <div className="dapp-stack">
       <header className="dapp-page-header">
-        <h1 className="dapp-page-title">Shielded Pool</h1>
-        <p className="dapp-page-subtitle">Move assets into and out of the Vayyl confidential settlement layer, or transfer them privately.</p>
+        <div>
+          <h1 className="dapp-page-title">Shielded Pool</h1>
+          <p className="dapp-page-subtitle">
+            Create shielded XLM notes and unshield them to public Stellar addresses when settlement is ready.
+          </p>
+        </div>
+        <span className="dapp-badge dapp-badge--success">Active</span>
       </header>
 
-      <div style={{ maxWidth: '600px' }}>
-        <div className="dapp-tabs">
-          <button 
-            className={`dapp-tab ${activeTab === 'deposit' ? 'is-active' : ''}`}
-            onClick={() => setActiveTab('deposit')}
-          >
-            Shield (Deposit)
-          </button>
-          <button 
-            className={`dapp-tab ${activeTab === 'transfer' ? 'is-active' : ''}`}
-            onClick={() => setActiveTab('transfer')}
-          >
-            Transfer (Send)
-          </button>
-          <button 
-            className={`dapp-tab ${activeTab === 'withdraw' ? 'is-active' : ''}`}
-            onClick={() => setActiveTab('withdraw')}
-          >
-            Unshield (Withdraw)
-          </button>
+      <div className="dapp-grid dapp-grid--pool">
+        <div className="dapp-stack">
+          <div className="dapp-segment" role="tablist" aria-label="Shielded pool action">
+            <button
+              className={`dapp-segment__button ${activeMode === 'deposit' ? 'is-active' : ''}`}
+              type="button"
+              role="tab"
+              aria-selected={activeMode === 'deposit'}
+              onClick={() => setActiveMode('deposit')}
+            >
+              Shield
+            </button>
+            <button
+              className={`dapp-segment__button ${activeMode === 'withdraw' ? 'is-active' : ''}`}
+              type="button"
+              role="tab"
+              aria-selected={activeMode === 'withdraw'}
+              onClick={() => setActiveMode('withdraw')}
+            >
+              Unshield
+            </button>
+          </div>
+
+          {activeMode === 'deposit' ? <DepositForm /> : <WithdrawForm />}
         </div>
 
-        <div>
-          {activeTab === 'deposit' && <DepositForm />}
-          {activeTab === 'transfer' && <TransferForm />}
-          {activeTab === 'withdraw' && <WithdrawForm />}
-        </div>
+        <Card>
+          <div className="dapp-card__header">
+            <div>
+              <h2 className="dapp-card__title">Proof flow</h2>
+              <p className="dapp-card__description">Sensitive values stay client-side while proofs verify settlement state.</p>
+            </div>
+          </div>
+          <div className="dapp-proof-steps">
+            <div className="dapp-proof-step">Freighter authorizes shielded key derivation for the connected wallet.</div>
+            <div className="dapp-proof-step">The proof worker creates a Groth16 proof off the main thread.</div>
+            <div className="dapp-proof-step">Soroban verifies the proof against the pool contract.</div>
+            <div className="dapp-proof-step">Spendable note state is kept with the connected shielded identity.</div>
+          </div>
+        </Card>
       </div>
     </div>
   );

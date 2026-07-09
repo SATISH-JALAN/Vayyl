@@ -1,157 +1,273 @@
-/* ── App Shell Layout (Editorial Dark Mode) ── */
-
 .dapp-shell {
-  display: flex;
+  display: grid;
+  grid-template-columns: 248px minmax(0, 1fr);
   min-height: 100vh;
   min-height: 100dvh;
-  background: var(--bg-primary);
-  position: relative;
-  overflow: hidden;
-}
-
-/* Subtle background glow for the vault aesthetic */
-.dapp-shell::before {
-  content: '';
-  position: absolute;
-  top: -20vh;
-  left: 50%;
-  width: 100vw;
-  height: 60vh;
-  background: radial-gradient(ellipse at center, rgba(244, 111, 115, 0.05) 0%, transparent 60%);
-  transform: translateX(-50%);
-  pointer-events: none;
-  z-index: 0;
+  background:
+    radial-gradient(circle at 18% 0%, rgba(244, 111, 115, 0.08), transparent 32rem),
+    var(--bg-primary);
 }
 
 .dapp-sidebar {
-  width: 260px;
-  background: rgba(26, 24, 22, 0.4);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border-right: 1px solid rgba(248, 246, 243, 0.05);
-  display: flex;
-  flex-direction: column;
-  flex-shrink: 0;
-  padding: var(--space-10) 0;
   position: sticky;
   top: 0;
+  display: flex;
+  flex-direction: column;
   height: 100vh;
-  z-index: 10;
+  padding: var(--space-6);
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border-subtle);
 }
 
 .dapp-sidebar__header {
-  padding: 0 var(--space-8);
-  margin-bottom: var(--space-16);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-8);
 }
 
 .dapp-sidebar__logo {
-  font-family: var(--font-display);
-  font-size: 2rem;
-  font-style: italic;
   color: var(--text-primary);
+  font-size: 1.25rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
   text-decoration: none;
-  transition: color var(--dur-normal) var(--ease-out);
-}
-
-.dapp-sidebar__logo:hover {
-  color: var(--coral);
 }
 
 .dapp-sidebar__nav {
   display: flex;
+  flex: 1;
   flex-direction: column;
-  flex-grow: 1;
+  gap: var(--space-1);
 }
 
 .dapp-sidebar__link {
-  padding: var(--space-4) var(--space-8);
-  color: var(--text-muted);
-  font-size: var(--text-small);
-  text-decoration: none;
-  letter-spacing: var(--tracking-wide);
-  transition: all var(--dur-fast) var(--ease-out);
-  position: relative;
   display: flex;
   align-items: center;
+  min-height: 42px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-m);
+  color: var(--text-muted);
+  font-size: var(--text-small);
+  font-weight: 650;
+  text-decoration: none;
+  transition:
+    background-color var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out);
 }
 
-.dapp-sidebar__link::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 2px;
-  background: var(--coral);
-  transform: scaleY(0);
-  transform-origin: center;
-  transition: transform var(--dur-normal) var(--ease-out-expo);
-}
-
-.dapp-sidebar__link:hover {
+.dapp-sidebar__link:hover,
+.dapp-sidebar__link.is-active {
+  background: var(--bg-elevated);
   color: var(--text-primary);
-  background: linear-gradient(90deg, rgba(248,246,243,0.03) 0%, transparent 100%);
 }
 
 .dapp-sidebar__link.is-active {
-  color: var(--text-primary);
-}
-
-.dapp-sidebar__link.is-active::before {
-  transform: scaleY(1);
+  box-shadow: inset 2px 0 0 var(--coral);
 }
 
 .dapp-sidebar__footer {
-  margin-top: auto;
-  padding: 0 var(--space-8);
+  margin-top: var(--space-8);
 }
 
 .dapp-main {
-  flex-grow: 1;
-  padding: var(--space-16) var(--space-12);
-  display: flex;
-  flex-direction: column;
   width: 100%;
-  max-width: 1200px;
+  max-width: 1180px;
   margin: 0 auto;
-  z-index: 1;
+  padding: var(--space-6);
+}
+
+.dapp-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-6);
+  margin-bottom: var(--space-8);
+}
+
+.dapp-topbar__subtitle {
+  margin: var(--space-1) 0 0;
+  color: var(--text-secondary);
+  font-size: var(--text-small);
+}
+
+.dapp-wallet {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.dapp-wallet__identity {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 132px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-m);
+  background: var(--bg-surface);
 }
 
 .page-content {
   width: 100%;
-  opacity: 0; /* Handled by GSAP */
 }
 
-@media (max-width: 768px) {
+.dapp-page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-6);
+  margin-bottom: var(--space-6);
+}
+
+.dapp-page-title {
+  margin: 0 0 var(--space-2);
+}
+
+.dapp-page-subtitle {
+  max-width: 68ch;
+  margin: 0;
+}
+
+.dapp-page-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.dapp-stack {
+  display: grid;
+  gap: var(--space-5);
+}
+
+.dapp-grid {
+  display: grid;
+  gap: var(--space-5);
+}
+
+.dapp-grid--overview {
+  grid-template-columns: minmax(260px, 0.8fr) minmax(0, 1.2fr);
+}
+
+.dapp-grid--pool {
+  grid-template-columns: minmax(320px, 560px) minmax(260px, 1fr);
+  align-items: start;
+}
+
+.dapp-grid--settings {
+  grid-template-columns: repeat(2, minmax(260px, 1fr));
+}
+
+@media (max-width: 980px) {
   .dapp-shell {
-    flex-direction: column;
+    grid-template-columns: 1fr;
   }
+
   .dapp-sidebar {
-    width: 100%;
-    height: auto;
-    position: fixed;
-    bottom: 0;
-    top: auto;
-    flex-direction: row;
-    padding: var(--space-4);
-    border-right: none;
-    border-top: 1px solid rgba(248, 246, 243, 0.05);
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    height: 60px;
+    min-height: 60px;
+    padding: var(--space-2);
+    border: 0;
+    border-bottom: 1px solid var(--border-strong);
+    border-radius: 0;
+    box-shadow: var(--shadow-panel);
+    overflow: hidden;
   }
-  .dapp-sidebar__header, .dapp-sidebar__footer {
+
+  .dapp-sidebar__header,
+  .dapp-sidebar__footer {
     display: none;
   }
+
   .dapp-sidebar__nav {
     flex-direction: row;
-    justify-content: space-around;
+    justify-content: space-between;
+    height: 100%;
   }
+
   .dapp-sidebar__link {
-    padding: var(--space-3) var(--space-4);
+    justify-content: center;
+    flex: 1;
+    min-width: 0;
+    height: 44px;
+    min-height: 44px;
+    padding: 0 var(--space-2);
+    overflow: hidden;
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
-  .dapp-sidebar__link::before {
+
+  .dapp-sidebar__link.is-active {
+    box-shadow: inset 0 -2px 0 var(--coral);
+  }
+
+  .dapp-main {
+    padding: var(--space-5);
+  }
+
+  .dapp-topbar,
+  .dapp-page-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .dapp-wallet {
+    justify-content: space-between;
+  }
+
+  .dapp-grid--overview,
+  .dapp-grid--pool,
+  .dapp-grid--settings {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 520px) {
+  .dapp-main {
+    padding: var(--space-4);
+  }
+
+  .dapp-topbar {
+    gap: var(--space-3);
+    margin-bottom: var(--space-5);
+  }
+
+  .dapp-topbar__subtitle {
     display: none;
   }
-  .dapp-main {
-    padding: var(--space-8) var(--space-6);
-    padding-bottom: 100px;
+
+  .dapp-page-header {
+    gap: var(--space-3);
+    margin-bottom: var(--space-4);
+  }
+
+  .dapp-page-title {
+    font-size: 1.875rem;
+  }
+
+  .dapp-page-subtitle {
+    line-height: 1.45;
+  }
+
+  .dapp-grid {
+    gap: var(--space-4);
+  }
+
+  .dapp-wallet {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .dapp-wallet__identity {
+    width: 100%;
+  }
+
+  .dapp-sidebar__link {
+    font-size: 0.7rem;
   }
 }

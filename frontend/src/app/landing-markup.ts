@@ -5,8 +5,8 @@ export const landingMarkup = String.raw`
 
   <nav class="nav" id="nav" role="navigation" aria-label="Main navigation">
     <div class="nav__inner">
-      <a href="#" class="nav__logo" style="display: flex; align-items: center;">
-        <img src="/images/vayyllogomain - Copy.png" alt="Vayyl" style="height: 64px; width: auto;" />
+      <a href="#" class="nav__logo">
+        <img src="/images/vayyllogomain - Copy.png" alt="Vayyl" />
       </a>
       <div class="nav__links">
         <a href="/app" class="nav__cta" id="nav-cta">Launch App</a>
@@ -15,21 +15,25 @@ export const landingMarkup = String.raw`
   </nav>
 
   <section class="hero" id="hero">
-    <video class="hero__video" src="/videos/hero-bg.mp4" autoplay loop muted playsinline aria-hidden="true"></video>
+    <video class="hero__video" src="/videos/hero-bg.mp4" poster="/images/hero-bg.webp" autoplay loop muted playsinline preload="metadata" aria-hidden="true"></video>
     <div class="hero__grain"></div>
     <div class="hero__gradient"></div>
-    <div class="hero__orb" id="hero-orb"></div>
 
     <div class="hero__content">
-      <h1 class="hero__title display-hero" id="hero-title">Value, veiled.</h1>
+      <p class="hero__kicker">Shielded pools / Groth16 / Soroban BN254</p>
+      <h1 class="hero__title display-hero" id="hero-title">Private positions.<br />Public proofs.</h1>
 
       <p class="hero__subtitle" id="hero-subtitle">
-        Confidential settlement on Stellar. Zero-knowledge proofs shield every amount, every identity, every strategy - without leaving the chain.
+        Vayyl turns deposits, positions, and orders into commitments and nullifiers, then verifies Groth16 proofs on Stellar Soroban so the chain sees validity, not strategy.
       </p>
 
       <div class="hero__actions">
         <a href="/app" class="btn btn--primary" id="hero-cta">
           <span>Launch App</span>
+          <span class="btn__arrow">-&gt;</span>
+        </a>
+        <a href="#how-it-works" class="btn btn--ghost">
+          <span>Trace the proof path</span>
           <span class="btn__arrow">-&gt;</span>
         </a>
       </div>

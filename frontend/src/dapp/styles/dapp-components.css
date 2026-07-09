@@ -1,119 +1,413 @@
-/* ── dApp Components (Premium Editorial) ── */
-
 .dapp-card {
-  background: rgba(26, 24, 22, 0.3);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(248, 246, 243, 0.08);
+  padding: var(--space-5);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-l);
+  background: color-mix(in srgb, var(--bg-surface) 92%, transparent);
+}
+
+.dapp-card--strong {
+  background: var(--bg-elevated);
+  border-color: var(--border-strong);
+}
+
+.dapp-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.dapp-card__title {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--text-h3);
+  font-weight: 700;
+}
+
+.dapp-card__description {
+  margin: var(--space-1) 0 0;
+  color: var(--text-secondary);
+  font-size: var(--text-small);
+}
+
+.dapp-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  padding: 0 var(--space-4);
+  border: 1px solid transparent;
   border-radius: var(--radius-m);
-  padding: var(--space-10);
-  transition: border-color var(--dur-normal) var(--ease-out),
-              box-shadow var(--dur-normal) var(--ease-out);
+  font: inherit;
+  font-size: var(--text-small);
+  font-weight: 750;
+  cursor: pointer;
+  transition:
+    background-color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out),
+    opacity var(--dur-fast) var(--ease-out);
 }
 
-.dapp-card:hover {
-  border-color: rgba(244, 111, 115, 0.2);
-  box-shadow: var(--shadow-medium);
+.dapp-button:focus-visible,
+.dapp-input:focus-visible,
+.dapp-select:focus-visible,
+.dapp-segment__button:focus-visible,
+.dapp-sidebar__link:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 2px;
 }
 
-/* Forms & Inputs */
+.dapp-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.dapp-button--primary {
+  background: var(--coral);
+  color: var(--text-inverse);
+}
+
+.dapp-button--primary:hover:not(:disabled) {
+  background: var(--coral-strong);
+}
+
+.dapp-button--ghost {
+  background: transparent;
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+.dapp-button--ghost:hover:not(:disabled) {
+  background: var(--bg-elevated);
+}
+
+.dapp-form {
+  display: grid;
+  gap: var(--space-4);
+}
+
 .dapp-form-group {
-  margin-bottom: var(--space-8);
-  position: relative;
+  display: grid;
+  gap: var(--space-2);
+}
+
+.dapp-form-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 120px;
+  gap: var(--space-3);
 }
 
 .dapp-label {
-  display: block;
-  font-family: var(--font-body);
-  font-size: var(--text-caption);
   color: var(--text-muted);
+  font-size: var(--text-caption);
+  font-weight: 750;
+  letter-spacing: 0.07em;
   text-transform: uppercase;
-  letter-spacing: var(--tracking-caps);
-  margin-bottom: var(--space-3);
 }
 
-.dapp-input {
+.dapp-input,
+.dapp-select {
   width: 100%;
-  background: transparent;
-  border: none;
-  border-bottom: 1px solid rgba(248, 246, 243, 0.2);
-  padding: var(--space-3) 0;
+  min-height: 44px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-m);
+  background: var(--bg-primary);
   color: var(--text-primary);
   font-family: var(--font-mono);
   font-size: var(--text-body);
-  outline: none;
-  transition: border-color var(--dur-fast) var(--ease-out);
-  border-radius: 0;
 }
 
-.dapp-input:focus {
-  border-color: var(--coral);
+.dapp-input:disabled,
+.dapp-select:disabled {
+  color: var(--text-muted);
+  background: var(--bg-muted);
 }
 
 .dapp-input::placeholder {
-  color: rgba(147, 139, 133, 0.3);
+  color: var(--text-secondary);
 }
 
-/* Page Headers */
-.dapp-page-header {
-  margin-bottom: var(--space-16);
-}
-
-.dapp-page-title {
-  font-family: var(--font-display);
-  font-size: var(--text-h1);
-  color: var(--text-primary);
-  margin-bottom: var(--space-2);
-  font-weight: 400;
-}
-
-.dapp-page-subtitle {
+.dapp-helper,
+.dapp-status {
+  margin: 0;
   color: var(--text-muted);
-  font-size: var(--text-body);
-  max-width: 600px;
-}
-
-/* Custom Tabs */
-.dapp-tabs {
-  display: flex;
-  gap: var(--space-6);
-  margin-bottom: var(--space-10);
-  border-bottom: 1px solid rgba(248, 246, 243, 0.08);
-}
-
-.dapp-tab {
-  background: transparent;
-  border: none;
-  color: var(--text-muted);
-  font-family: var(--font-body);
   font-size: var(--text-small);
-  letter-spacing: var(--tracking-wide);
-  padding: var(--space-4) 0;
+}
+
+.dapp-status--error {
+  color: var(--error);
+}
+
+.dapp-status--success {
+  color: var(--success);
+}
+
+.dapp-alert {
+  margin-bottom: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-m);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+}
+
+.dapp-alert--error {
+  border-color: color-mix(in srgb, var(--error) 45%, transparent);
+  color: var(--error);
+}
+
+.dapp-badge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  min-height: 24px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  color: var(--text-primary);
+  font-size: var(--text-caption);
+  font-weight: 750;
+}
+
+.dapp-badge--muted {
+  color: var(--text-muted);
+}
+
+.dapp-badge--success {
+  border-color: color-mix(in srgb, var(--success) 48%, transparent);
+  color: var(--success);
+}
+
+.dapp-badge--warning {
+  border-color: color-mix(in srgb, var(--warning) 48%, transparent);
+  color: var(--warning);
+}
+
+.dapp-network-card {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-m);
+  background: var(--bg-surface);
+}
+
+.dapp-network-card p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-caption);
+  line-height: 1.5;
+}
+
+.dapp-metric {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.dapp-metric__label {
+  color: var(--text-muted);
+  font-size: var(--text-caption);
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.dapp-metric__value {
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 2.25rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.dapp-metric__meta {
+  color: var(--text-secondary);
+  font-size: var(--text-small);
+}
+
+.dapp-note-list,
+.dapp-activity-list,
+.dapp-roadmap-list,
+.dapp-setting-list {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.dapp-note,
+.dapp-activity-item,
+.dapp-roadmap-item,
+.dapp-setting-row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-m);
+  background: var(--bg-primary);
+}
+
+.dapp-note {
+  align-items: center;
+}
+
+.dapp-note__id {
+  max-width: 24ch;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-caption);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dapp-note__amount,
+.dapp-activity-item__amount {
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+
+.dapp-empty {
+  padding: var(--space-5);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-l);
+  color: var(--text-secondary);
+  background: rgba(248, 246, 243, 0.02);
+}
+
+.dapp-empty p {
+  margin: var(--space-2) 0 0;
+  color: var(--text-muted);
+}
+
+.dapp-segment {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-1);
+  padding: var(--space-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-m);
+  background: var(--bg-primary);
+}
+
+.dapp-segment__button {
+  min-height: 42px;
+  border: 0;
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--text-muted);
   cursor: pointer;
+  font: inherit;
+  font-size: var(--text-small);
+  font-weight: 750;
+}
+
+.dapp-segment__button.is-active {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+}
+
+.dapp-proof-steps {
+  display: grid;
+  gap: var(--space-3);
+  counter-reset: proof-step;
+}
+
+.dapp-proof-step {
   position: relative;
-  transition: color var(--dur-fast) var(--ease-out);
+  padding-left: var(--space-8);
+  color: var(--text-secondary);
+  font-size: var(--text-small);
 }
 
-.dapp-tab::after {
-  content: '';
+.dapp-proof-step::before {
+  counter-increment: proof-step;
+  content: counter(proof-step);
   position: absolute;
-  bottom: -1px;
   left: 0;
-  width: 100%;
-  height: 2px;
-  background: var(--coral);
-  transform: scaleX(0);
-  transition: transform var(--dur-normal) var(--ease-out-expo);
+  top: 0;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  color: var(--coral);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
 }
 
-.dapp-tab:hover {
-  color: var(--text-primary);
+.dapp-toast-container {
+  position: fixed;
+  right: var(--space-5);
+  bottom: var(--space-5);
+  z-index: 30;
+  display: grid;
+  gap: var(--space-2);
+  width: min(360px, calc(100vw - 2rem));
 }
 
-.dapp-tab.is-active {
-  color: var(--text-primary);
+.dapp-toast {
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-m);
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-panel);
+  color: var(--text-secondary);
+  cursor: pointer;
 }
 
-.dapp-tab.is-active::after {
-  transform: scaleX(1);
+.dapp-toast--error {
+  border-color: color-mix(in srgb, var(--error) 45%, transparent);
+  color: var(--error);
+}
+
+.dapp-toast--success {
+  border-color: color-mix(in srgb, var(--success) 45%, transparent);
+  color: var(--success);
+}
+
+@media (max-width: 640px) {
+  .dapp-card {
+    padding: var(--space-4);
+  }
+
+  .dapp-note,
+  .dapp-activity-item,
+  .dapp-roadmap-item,
+  .dapp-setting-row {
+    grid-template-columns: 1fr;
+    flex-direction: column;
+  }
+
+  .dapp-form-row {
+    grid-template-columns: minmax(0, 1fr) 84px;
+    gap: var(--space-2);
+  }
+
+  .dapp-metric__value {
+    font-size: 1.875rem;
+  }
+}
+
+@media (max-width: 520px) {
+  .dapp-card {
+    padding: var(--space-3);
+  }
+
+  .dapp-card__header,
+  .dapp-form {
+    gap: var(--space-3);
+  }
+
+  .dapp-card__header {
+    margin-bottom: var(--space-3);
+  }
+
+  .dapp-segment__button {
+    min-height: 40px;
+  }
 }

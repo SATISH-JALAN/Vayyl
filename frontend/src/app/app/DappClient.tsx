@@ -1,16 +1,13 @@
 'use client';
 
 import { Buffer } from 'buffer';
-import dynamic from 'next/dynamic';
+
+import type { RouteKey } from '../../dapp/App';
+import App from '../../dapp/App';
 
 const globals = globalThis as typeof globalThis & { Buffer?: typeof Buffer };
 if (!globals.Buffer) globals.Buffer = Buffer;
 
-const DappRuntime = dynamic(() => import('./DappRuntime'), {
-  ssr: false,
-  loading: () => <div className="dapp-shell" />,
-});
-
-export default function DappClient() {
-  return <DappRuntime />;
+export default function DappClient({ initialRoute = 'dashboard' }: { initialRoute?: RouteKey }) {
+  return <App initialRoute={initialRoute} />;
 }

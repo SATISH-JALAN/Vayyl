@@ -38,11 +38,11 @@
   --font-body:     var(--font-manrope), -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-mono:     var(--font-jetbrains-mono), 'Fira Code', 'Consolas', monospace;
 
-  --text-hero:     clamp(3.5rem, 8vw, 8.5rem);
-  --text-h1:       clamp(2.5rem, 5vw, 4.5rem);
-  --text-h2:       clamp(1.875rem, 3.5vw, 3rem);
-  --text-h3:       clamp(1.25rem, 2vw, 1.5rem);
-  --text-body:     clamp(1rem, 1.125vw, 1.125rem);
+  --text-hero:     clamp(3rem, 1.2rem + 5vw, 6.5rem);
+  --text-h1:       clamp(2.25rem, 1.5rem + 2.4vw, 4.5rem);
+  --text-h2:       clamp(1.75rem, 1.35rem + 1.7vw, 3rem);
+  --text-h3:       clamp(1.2rem, 1rem + 0.75vw, 1.5rem);
+  --text-body:     clamp(1rem, 0.94rem + 0.25vw, 1.125rem);
   --text-small:    0.9375rem;
   --text-caption:  0.8125rem;
   --text-mono:     0.875rem;

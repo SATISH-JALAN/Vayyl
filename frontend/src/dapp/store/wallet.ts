@@ -17,7 +17,6 @@ interface WalletState {
   /** Derive the shielded viewing/spend keys (prompts a Freighter signature). */
   unlockShieldedKeys: () => Promise<ShieldedKeys>;
   disconnect: () => void;
-  setNetwork: (network: string) => void;
 }
 
 export const useWalletStore = create<WalletState>((set, get) => ({
@@ -68,9 +67,5 @@ export const useWalletStore = create<WalletState>((set, get) => ({
 
   disconnect: () => {
     set({ address: null, keys: null });
-  },
-
-  setNetwork: (network: string) => {
-    set({ network });
   }
 }));

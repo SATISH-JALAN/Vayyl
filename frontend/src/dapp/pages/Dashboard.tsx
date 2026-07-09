@@ -1,67 +1,109 @@
-import React, { useEffect } from 'react';
+import { useEffect } from 'react';
+
 import Card from '../components/common/Card';
 import ActivityFeed from '../components/dashboard/ActivityFeed';
 import { usePoolStore } from '../store/pool';
 import { useWalletStore } from '../store/wallet';
 
-export default function Dashboard() {
-  const { shieldedBalance, notes, fetchState } = usePoolStore();
-  const { address, keys } = useWalletStore();
+function noteLabel(id: string): string {
+  return `${id.slice(0, 10)}...${id.slice(-6)}`;
+}
 
-  // Refresh notes + activity when the dashboard opens. Guarded on `keys` so we
-  // never trigger a Freighter signature just by visiting; fetchState also
-  // no-ops without keys.
+export default function Dashboard() {
+  const { shieldedBalance, notes, activity, status, fetchState } = usePoolStore();
+  const { address, keys, isUnlocking } = useWalletStore();
+  const activeNotes = notes.filter((note) => !note.isSpent);
+
   useEffect(() => {
     if (address && keys) void fetchState();
   }, [address, keys, fetchState]);
 
   return (
-    <div>
+    <div className="dapp-stack">
       <header className="dapp-page-header">
-        <h1 className="dapp-page-title">Dashboard</h1>
-        <p className="dapp-page-subtitle">Your confidential portfolio overview.</p>
+        <div>
+          <h1 className="dapp-page-title">Dashboard</h1>
+          <p className="dapp-page-subtitle">
+            Monitor shielded balances, spendable notes, and recent private settlement activity.
+          </p>
+        </div>
+        <div className="dapp-page-actions">
+          <a className="dapp-button dapp-button--primary" href="/app?view=pool">
+            Open shielded pool
+          </a>
+        </div>
       </header>
 
       {!address ? (
-        <Card>
-          <div style={{ textAlign: 'center', padding: '2rem 0', color: 'var(--text-muted)' }}>
-            <p>Connect your wallet to view your shielded assets.</p>
+        <Card className="dapp-card--strong">
+          <div className="dapp-empty">
+            <strong>Wallet required</strong>
+            <p>Connect Freighter to unlock shielded balances and private settlement activity.</p>
           </div>
         </Card>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '2rem' }}>
-          {/* Balance Card */}
-          <Card style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-            <span style={{ color: 'var(--text-muted)', fontSize: 'var(--text-caption)', letterSpacing: 'var(--tracking-caps)', textTransform: 'uppercase', marginBottom: '1rem' }}>Total Shielded Value</span>
-            <span style={{ fontFamily: 'var(--font-display)', fontSize: 'clamp(2.5rem, 4vw, 3.5rem)', color: 'var(--text-primary)', lineHeight: 1 }}>
-              ${(shieldedBalance * 0.1).toFixed(2)} {/* Mock conversion rate */}
-            </span>
-            <span style={{ color: 'var(--coral)', marginTop: '0.5rem', fontFamily: 'var(--font-mono)' }}>{shieldedBalance} XLM</span>
-          </Card>
-
-          {/* Active Notes */}
-          <Card>
-            <h3 style={{ fontSize: 'var(--text-small)', letterSpacing: 'var(--tracking-caps)', textTransform: 'uppercase', color: 'var(--text-muted)', marginBottom: '1.5rem' }}>Active Shielded Notes</h3>
-            {notes.length === 0 ? (
-              <p style={{ color: 'var(--text-muted)' }}>No active notes.</p>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                {notes.map(note => (
-                  <div key={note.id} style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '1rem', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                    <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>{note.id}</span>
-                    <span style={{ color: 'var(--text-primary)' }}>{note.amount} {note.asset}</span>
-                  </div>
-                ))}
+        <>
+          <div className="dapp-grid dapp-grid--overview">
+            <Card className="dapp-card--strong">
+              <div className="dapp-metric">
+                <span className="dapp-metric__label">Shielded balance</span>
+                <span className="dapp-metric__value">{shieldedBalance} XLM</span>
+                <span className="dapp-metric__meta">
+                  {activeNotes.length} active note{activeNotes.length === 1 ? '' : 's'} for this viewing key
+                </span>
               </div>
-            )}
-          </Card>
-        </div>
-      )}
-      
-      {address && (
-        <div style={{ marginTop: '2rem' }}>
-          <ActivityFeed />
-        </div>
+            </Card>
+
+            <Card>
+              <div className="dapp-card__header">
+                <div>
+                  <h2 className="dapp-card__title">Shielded notes</h2>
+                  <p className="dapp-card__description">
+                    Spendable commitments associated with the connected shielded identity.
+                  </p>
+                </div>
+                <span className="dapp-badge dapp-badge--muted">Private</span>
+              </div>
+
+              {activeNotes.length === 0 ? (
+                <div className="dapp-empty">
+                  <strong>No shielded notes</strong>
+                  <p>Deposit XLM into the shielded pool to create the first spendable note.</p>
+                </div>
+              ) : (
+                <div className="dapp-note-list">
+                  {activeNotes.map((note) => (
+                    <div className="dapp-note" key={note.id}>
+                      <span className="dapp-note__id">{noteLabel(note.id)}</span>
+                      <span className="dapp-note__amount">
+                        {note.amount} {note.asset}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Card>
+          </div>
+
+          <div className="dapp-grid dapp-grid--overview">
+            <Card>
+              <div className="dapp-card__header">
+                <div>
+                  <h2 className="dapp-card__title">Transaction status</h2>
+                  <p className="dapp-card__description">Proof generation and settlement state for the current session.</p>
+                </div>
+                <span className={`dapp-badge ${status?.toLowerCase().includes('failed') ? 'dapp-badge--warning' : ''}`}>
+                  {isUnlocking ? 'Unlocking' : 'Ready'}
+                </span>
+              </div>
+              <p className={`dapp-status ${status?.toLowerCase().includes('failed') ? 'dapp-status--error' : ''}`}>
+                {status ?? 'No active operation.'}
+              </p>
+            </Card>
+
+            <ActivityFeed activityCount={activity.length} />
+          </div>
+        </>
       )}
     </div>
   );

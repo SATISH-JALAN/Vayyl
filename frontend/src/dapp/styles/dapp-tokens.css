@@ -1,90 +1,65 @@
-/* ── Design Tokens (Dark Mode) ── */
-
 .dapp-shell {
-  /* ── Palette: Warm, Earthy & Editorial ── */
-  --coral:       #F46F73;
-  --burnt-coral: #E35C63;
-  --dusty-rose:  #CF5059;
-  --terracotta:  #B96858;
-  --clay-brown:  #8B5E52;
-  --ivory:       #F8F6F3;
-  --linen:       #F2EEEA;
-  --pure-white:  #FFFFFF;
-  --charcoal:    #262321;
-  --taupe:       #655D58;
-  --stone:       #938B85;
-  --sand:        #DED5CF;
-  --beige:       #C8BCB4;
+  --coral: #f46f73;
+  --coral-strong: #ff7e82;
+  --charcoal: #11100f;
+  --ivory: #f8f6f3;
 
-  /* Status */
-  --success:     #607C5C;
-  --warning:     #C48B48;
-  --error:       #B5524E;
-  --info:        #7B726D;
+  --success: #8fc77e;
+  --warning: #d3a35f;
+  --error: #ff8c83;
+  --info: #9ea7b3;
 
-  /* ── Semantic color assignments (Inverted for Dark Mode) ── */
-  --bg-primary:    #0D0C0B;
-  --bg-surface:    #1A1816;
-  --bg-elevated:   #242120;
-  --bg-subtle:     #2D2A28;
-  
-  --text-primary:  var(--ivory);
-  --text-inverse:  var(--charcoal);
-  --text-muted:    var(--stone);
-  --text-body:     #A59C96;
-  
-  --accent:        var(--coral);
-  --accent-deep:   var(--terracotta);
+  --bg-primary: #0d0c0b;
+  --bg-sidebar: #131110;
+  --bg-surface: #171514;
+  --bg-elevated: #201d1b;
+  --bg-muted: #282421;
 
-  /* ── Type Scale ── */
-  --font-display:  var(--font-cormorant), Georgia, 'Times New Roman', serif;
-  --font-body:     var(--font-manrope), -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-mono:     var(--font-jetbrains-mono), 'Fira Code', 'Consolas', monospace;
+  --text-primary: var(--ivory);
+  --text-secondary: #c9c1bb;
+  --text-muted: #918780;
+  --text-disabled: #655e59;
+  --text-inverse: var(--charcoal);
 
-  --text-h1:       clamp(2rem, 3vw, 3rem);
-  --text-h2:       clamp(1.5rem, 2.5vw, 2rem);
-  --text-h3:       clamp(1.25rem, 1.5vw, 1.5rem);
-  --text-body:     1rem;
-  --text-small:    0.9375rem;
-  --text-caption:  0.8125rem;
-  --text-mono:     0.875rem;
+  --border-subtle: rgba(248, 246, 243, 0.08);
+  --border-strong: rgba(248, 246, 243, 0.16);
+  --focus-ring: rgba(244, 111, 115, 0.38);
 
-  --leading-tight:   1.05;
-  --leading-display: 1.1;
-  --leading-body:    1.6;
-  --leading-relaxed: 1.75;
+  --color-border: var(--border-subtle);
+  --color-surface-elevated: var(--bg-elevated);
+  --color-error: var(--error);
 
-  --tracking-tight:  -0.03em;
-  --tracking-normal: -0.01em;
-  --tracking-wide:   0.02em;
-  --tracking-caps:   0.1em;
+  --font-ui: var(--font-manrope), -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: var(--font-jetbrains-mono), "Fira Code", Consolas, monospace;
 
-  /* ── Spacing (4px base grid) ── */
-  --space-1:   0.25rem;
-  --space-2:   0.5rem;
-  --space-3:   0.75rem;
-  --space-4:   1rem;
-  --space-5:   1.25rem;
-  --space-6:   1.5rem;
-  --space-8:   2rem;
-  --space-10:  2.5rem;
-  --space-12:  3rem;
-  --space-16:  4rem;
+  --text-h1: 2rem;
+  --text-h2: 1.5rem;
+  --text-h3: 1.125rem;
+  --text-body: 1rem;
+  --text-small: 0.875rem;
+  --text-caption: 0.75rem;
+  --text-mono: 0.875rem;
 
-  /* ── Radii ── */
-  --radius-s:    6px;
-  --radius-m:    12px;
-  --radius-l:    24px;
-  --radius-full: 9999px;
+  --leading-tight: 1.18;
+  --leading-body: 1.55;
 
-  /* ── Shadows (Adapted for Dark Mode) ── */
-  --shadow-subtle:  0 1px 3px rgba(0,0,0,0.4);
-  --shadow-medium:  0 4px 16px rgba(0,0,0,0.6);
-  --shadow-lifted:  0 12px 40px rgba(0,0,0,0.8);
-  --shadow-glow:    0 0 40px rgba(244, 111, 115, 0.15);
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
 
-  /* ── Transitions ── */
-  --ease-out:      cubic-bezier(0.16, 1, 0.3, 1);
-  --dur-fast:      200ms;
-  --dur-normal:    400ms;
+  --radius-s: 6px;
+  --radius-m: 10px;
+  --radius-l: 14px;
+  --radius-pill: 999px;
+
+  --shadow-panel: 0 16px 42px rgba(0, 0, 0, 0.26);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-fast: 160ms;
+  --dur-normal: 220ms;
 }

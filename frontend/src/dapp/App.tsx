@@ -1,121 +1,128 @@
-import React, { useEffect, useRef } from 'react';
-import { Routes, Route, NavLink, useLocation } from 'react-router-dom';
-import gsap from 'gsap';
-import { useWalletStore } from './store/wallet';
+import { useEffect, useState } from 'react';
+
 import Button from './components/common/Button';
 import ToastContainer from './components/common/ToastContainer';
+import { useWalletStore } from './store/wallet';
 
-// Pages
 import Dashboard from './pages/Dashboard';
 import Pool from './pages/Pool';
 import Positions from './pages/Positions';
 import Settings from './pages/Settings';
 
-export default function App() {
-  const { address, network, setNetwork, isConnecting, connect, disconnect } = useWalletStore();
-  const location = useLocation();
-  const shellRef = useRef<HTMLDivElement>(null);
-  const contentRef = useRef<HTMLDivElement>(null);
+export type RouteKey = 'dashboard' | 'pool' | 'positions' | 'settings';
 
-  // Initial load animation
+const navItems: Array<{ route: RouteKey; href: string; label: string }> = [
+  { route: 'dashboard', href: '/app', label: 'Dashboard' },
+  { route: 'pool', href: '/app?view=pool', label: 'Shielded Pool' },
+  { route: 'positions', href: '/app?view=positions', label: 'Positions' },
+  { route: 'settings', href: '/app?view=settings', label: 'Settings' },
+];
+
+function routeFromLocation(fallback: RouteKey): RouteKey {
+  const view = new URLSearchParams(window.location.search).get('view');
+  if (view === 'pool' || view === 'positions' || view === 'settings') return view;
+  return fallback;
+}
+
+function shortAddress(address: string): string {
+  return `${address.slice(0, 6)}...${address.slice(-4)}`;
+}
+
+function renderRoute(route: RouteKey) {
+  switch (route) {
+    case 'pool':
+      return <Pool />;
+    case 'positions':
+      return <Positions />;
+    case 'settings':
+      return <Settings />;
+    default:
+      return <Dashboard />;
+  }
+}
+
+export default function App({ initialRoute = 'dashboard' }: { initialRoute?: RouteKey }) {
+  const { address, network, isConnecting, isUnlocking, error, connect, disconnect } = useWalletStore();
+  const [route, setRoute] = useState<RouteKey>(() =>
+    typeof window === 'undefined' ? initialRoute : routeFromLocation(initialRoute),
+  );
+
   useEffect(() => {
-    const ctx = gsap.context(() => {
-      gsap.fromTo('.dapp-sidebar', 
-        { x: -50, opacity: 0 }, 
-        { x: 0, opacity: 1, duration: 1, ease: 'power3.out' }
-      );
-      gsap.fromTo('.dapp-main',
-        { y: 30, opacity: 0 },
-        { y: 0, opacity: 1, duration: 1, delay: 0.2, ease: 'power3.out' }
-      );
-    }, shellRef);
-
-    return () => ctx.revert();
-  }, []);
-
-  // Page transition animation
-  useEffect(() => {
-    if (!contentRef.current) return;
-    
-    gsap.fromTo(contentRef.current,
-      { opacity: 0, y: 15 },
-      { opacity: 1, y: 0, duration: 0.5, ease: 'power2.out' }
-    );
-  }, [location.pathname]);
-
-  const toggleNetwork = () => {
-    setNetwork(network === 'TESTNET' ? 'MAINNET' : 'TESTNET');
-  };
+    const syncRoute = () => setRoute(routeFromLocation(initialRoute));
+    syncRoute();
+    window.addEventListener('popstate', syncRoute);
+    return () => {
+      window.removeEventListener('popstate', syncRoute);
+    };
+  }, [initialRoute]);
 
   return (
-    <div className="dapp-shell" ref={shellRef}>
-      {/* Sidebar Navigation */}
-      <aside className="dapp-sidebar">
+    <div className="dapp-shell">
+      <aside className="dapp-sidebar" aria-label="Vayyl app navigation">
         <div className="dapp-sidebar__header">
-          <a href="/" className="dapp-sidebar__logo">Vayyl</a>
+          <a href="/" className="dapp-sidebar__logo" aria-label="Back to Vayyl landing page">
+            Vayyl
+          </a>
+          <span className="dapp-badge dapp-badge--muted">Private Console</span>
         </div>
-        
+
         <nav className="dapp-sidebar__nav">
-          <NavLink to="/" className={({ isActive }) => `dapp-sidebar__link ${isActive ? 'is-active' : ''}`}>
-            Dashboard
-          </NavLink>
-          <NavLink to="/pool" className={({ isActive }) => `dapp-sidebar__link ${isActive ? 'is-active' : ''}`}>
-            Shielded Pool
-          </NavLink>
-          <NavLink to="/positions" className={({ isActive }) => `dapp-sidebar__link ${isActive ? 'is-active' : ''}`}>
-            Positions
-          </NavLink>
-          <NavLink to="/settings" className={({ isActive }) => `dapp-sidebar__link ${isActive ? 'is-active' : ''}`}>
-            Settings
-          </NavLink>
+          {navItems.map((item) => (
+            <a
+              key={item.route}
+              href={item.href}
+              onClick={(event) => {
+                event.preventDefault();
+                window.history.pushState(null, '', item.href);
+                setRoute(item.route);
+              }}
+              className={`dapp-sidebar__link ${route === item.route ? 'is-active' : ''}`}
+            >
+              {item.label}
+            </a>
+          ))}
         </nav>
 
         <div className="dapp-sidebar__footer">
-          <div style={{ marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Network:</span>
-            <button 
-              onClick={toggleNetwork}
-              style={{ 
-                background: 'transparent', 
-                border: '1px solid var(--color-border)', 
-                color: 'var(--text-primary)',
-                padding: '4px 8px',
-                borderRadius: '4px',
-                fontSize: '10px',
-                cursor: 'pointer'
-              }}
-            >
-              {network}
-            </button>
+          <div className="dapp-network-card">
+            <span className="dapp-label-text">Network</span>
+            <strong>{network}</strong>
+            <p>Wallet-authorized proofs and local shielded key state.</p>
           </div>
-          {address ? (
-            <div>
-              <p style={{ color: 'var(--text-muted)', fontSize: '12px', marginBottom: '8px' }}>
-                {address.substring(0, 6)}...{address.substring(50)}
-              </p>
-              <Button variant="ghost" onClick={disconnect} style={{ width: '100%', fontSize: '12px', padding: '8px' }}>
-                Disconnect
-              </Button>
-            </div>
-          ) : (
-            <Button onClick={connect} style={{ width: '100%' }}>
-              {isConnecting ? 'Connecting...' : 'Connect Wallet'}
-            </Button>
-          )}
         </div>
       </aside>
 
-      {/* Main Content Area */}
       <main className="dapp-main">
-        <div ref={contentRef} className="page-content">
-          <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/pool" element={<Pool />} />
-            <Route path="/positions" element={<Positions />} />
-            <Route path="/settings" element={<Settings />} />
-          </Routes>
-        </div>
+        <header className="dapp-topbar">
+          <div>
+            <span className="dapp-kicker">Confidential settlement workspace</span>
+            <p className="dapp-topbar__subtitle">Shield assets, manage positions, and settle privately.</p>
+          </div>
+
+          <div className="dapp-wallet">
+            {address ? (
+              <>
+                <div className="dapp-wallet__identity">
+                  <span className="dapp-label-text">Wallet</span>
+                  <strong>{shortAddress(address)}</strong>
+                </div>
+                <Button variant="ghost" onClick={disconnect}>
+                  Disconnect
+                </Button>
+              </>
+            ) : (
+              <Button onClick={connect} disabled={isConnecting || isUnlocking}>
+                {isConnecting ? 'Connecting' : 'Connect wallet'}
+              </Button>
+            )}
+          </div>
+        </header>
+
+        {error && <div className="dapp-alert dapp-alert--error">{error}</div>}
+
+        <div className="page-content">{renderRoute(route)}</div>
       </main>
+
       <ToastContainer />
     </div>
   );

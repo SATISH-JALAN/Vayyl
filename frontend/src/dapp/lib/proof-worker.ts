@@ -6,8 +6,8 @@
 // secrets + a reconstructed Merkle path, then fullProve with the fresh
 // wasm/zkey artifacts under /circuits (regenerated after the Poseidon2 fix).
 //
-// Positions/orders remain mock and are intentionally NOT handled here — they
-// stay UI-only ("vision") per the MVP scope.
+// Transfer, positions, and orders are intentionally NOT handled here; the app
+// labels them as roadmap until real circuit inputs and contract paths exist.
 
 import * as snarkjs from 'snarkjs';
 import { computeCommitment, computeNullifier, poseidon2Hash2 } from './poseidon';

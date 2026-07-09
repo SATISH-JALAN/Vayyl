@@ -18,7 +18,8 @@ body {
   font-weight: 300;
   font-style: italic;
   line-height: var(--leading-tight);
-  letter-spacing: -0.04em;
+  letter-spacing: -0.032em;
+  text-wrap: balance;
   color: var(--text-primary); /* Use dark text on light bg */
 }
 
@@ -27,7 +28,8 @@ body {
   font-size: var(--text-h1);
   font-weight: 400;
   line-height: var(--leading-display);
-  letter-spacing: -0.03em;
+  letter-spacing: -0.025em;
+  text-wrap: balance;
 }
 
 .display-h2 {
@@ -35,7 +37,8 @@ body {
   font-size: var(--text-h2);
   font-weight: 400;
   line-height: var(--leading-display);
-  letter-spacing: -0.02em;
+  letter-spacing: -0.015em;
+  text-wrap: balance;
 }
 
 .text-h3 {
@@ -55,9 +58,10 @@ body {
 }
 
 .text-body-large {
-  font-size: clamp(1.125rem, 1.5vw, 1.375rem);
-  line-height: var(--leading-relaxed);
+  font-size: clamp(1.0625rem, 0.95rem + 0.45vw, 1.25rem);
+  line-height: 1.65;
   color: var(--text-body);
+  text-wrap: pretty;
 }
 
 .text-small {

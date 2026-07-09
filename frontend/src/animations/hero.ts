@@ -1,7 +1,7 @@
 /**
  * Hero section animations
  * - SplitText character reveal on headline
- * - Subtitle + badge + buttons fade in
+ * - Subtitle + buttons fade in
  * - SVG decorative line draw
  * - Parallax on scroll
  */
@@ -15,24 +15,6 @@ export function initHeroAnimations(): gsap.core.Timeline {
 
   // ── Reveal content wrapper to prevent FOUC ──
   gsap.set('.hero__content', { autoAlpha: 1 });
-
-  // ── Orb reveal and continuous rotation ──
-  tl.to(
-    '#hero-orb',
-    {
-      autoAlpha: 1,
-      duration: 2,
-      ease: 'power2.out',
-    },
-    0 // start immediately
-  );
-  
-  gsap.to('#hero-orb', {
-    rotation: 360,
-    duration: 30,
-    repeat: -1,
-    ease: 'none',
-  });
 
   // ── Headline character reveal ──
   const heroTitle = document.getElementById('hero-title');
@@ -54,6 +36,17 @@ export function initHeroAnimations(): gsap.core.Timeline {
       0
     );
   }
+
+  tl.from(
+    '.hero__kicker',
+    {
+      autoAlpha: 0,
+      y: 12,
+      duration: 0.5,
+      ease: 'power2.out',
+    },
+    0
+  );
 
   // ── Subtitle ──
   tl.from(
@@ -109,20 +102,6 @@ export function initHeroAnimations(): gsap.core.Timeline {
 
   gsap.to('.hero__line', {
     y: 80,
-    ease: 'none',
-    scrollTrigger: {
-      trigger: '.hero',
-      start: 'top top',
-      end: 'bottom top',
-      scrub: 1,
-    },
-  });
-
-  // ── Orb parallax on scroll ──
-  gsap.to('#hero-orb', {
-    y: 150,
-    scale: 0.8,
-    opacity: 0.5,
     ease: 'none',
     scrollTrigger: {
       trigger: '.hero',

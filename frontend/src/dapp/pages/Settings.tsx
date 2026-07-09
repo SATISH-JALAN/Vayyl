@@ -1,46 +1,77 @@
-import React, { useRef } from 'react';
-import { useGSAP } from '@gsap/react';
-import gsap from 'gsap';
+import { useState } from 'react';
+
+import Button from '../components/common/Button';
+import Card from '../components/common/Card';
+import { clearNotes } from '../lib/storage';
+import { usePoolStore } from '../store/pool';
+import { useWalletStore } from '../store/wallet';
 
 export default function Settings() {
-  const container = useRef<HTMLDivElement>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const { address, keys, network } = useWalletStore();
+  const { fetchState } = usePoolStore();
 
-  useGSAP(() => {
-    gsap.from('.stagger-item', {
-      y: 20,
-      opacity: 0,
-      duration: 0.5,
-      stagger: 0.1,
-      ease: 'power2.out',
-    });
-  }, { scope: container });
+  const handleClearLocalNotes = async () => {
+    if (!keys) {
+      setMessage('Connect and unlock shielded keys before clearing local note storage.');
+      return;
+    }
+
+    await clearNotes(keys.viewingKey);
+    await fetchState();
+    setMessage('Local notes and local activity were cleared for this viewing key.');
+  };
 
   return (
-    <div ref={container}>
-      <div className="page-header stagger-item">
-        <h1 className="text-h2 page-title">Settings</h1>
-        <p className="text-body text-muted">Manage your wallet and local proofs.</p>
-      </div>
-
-      <div className="card stagger-item" style={{ maxWidth: '600px', marginBottom: '2rem' }}>
-        <h3 className="text-h3" style={{ marginBottom: '1rem' }}>Network</h3>
-        <div className="form-group">
-          <label className="form-label">Current Network</label>
-          <select className="form-input" defaultValue="testnet">
-            <option value="testnet">Stellar Testnet</option>
-            <option value="mainnet">Stellar Mainnet</option>
-          </select>
+    <div className="dapp-stack">
+      <header className="dapp-page-header">
+        <div>
+          <h1 className="dapp-page-title">Settings</h1>
+          <p className="dapp-page-subtitle">
+            Manage wallet authorization, connected network state, and shielded data for this device.
+          </p>
         </div>
-      </div>
+      </header>
 
-      <div className="card stagger-item" style={{ maxWidth: '600px' }}>
-        <h3 className="text-h3" style={{ marginBottom: '1rem' }}>Viewing Keys</h3>
-        <p className="text-small text-muted" style={{ marginBottom: '1rem' }}>
-          Your viewing keys allow third parties to decrypt your shielded notes without giving them the ability to spend.
-        </p>
-        <button className="btn btn--ghost">
-          Export Viewing Key
-        </button>
+      <div className="dapp-grid dapp-grid--settings">
+        <Card>
+          <div className="dapp-card__header">
+            <div>
+              <h2 className="dapp-card__title">Network</h2>
+              <p className="dapp-card__description">Current network for wallet-authorized settlement activity.</p>
+            </div>
+            <span className="dapp-badge">{network}</span>
+          </div>
+          <p className="dapp-status">
+            Network selection follows the connected wallet and deployment configuration.
+          </p>
+        </Card>
+
+        <Card>
+          <div className="dapp-card__header">
+            <div>
+              <h2 className="dapp-card__title">Local shielded data</h2>
+              <p className="dapp-card__description">
+                Notes are stored per viewing key in this browser. Clearing them can remove spendable
+                local state.
+              </p>
+            </div>
+          </div>
+          <div className="dapp-setting-list">
+            <div className="dapp-setting-row">
+              <div>
+                <strong>{address ? 'Connected wallet' : 'No wallet connected'}</strong>
+                <p className="dapp-helper">
+                  {keys ? 'Shielded keys are unlocked for this session.' : 'Shielded keys are not unlocked.'}
+                </p>
+              </div>
+              <Button variant="ghost" type="button" onClick={handleClearLocalNotes}>
+                Clear local notes
+              </Button>
+            </div>
+          </div>
+          {message && <p className="dapp-status">{message}</p>}
+        </Card>
       </div>
     </div>
   );

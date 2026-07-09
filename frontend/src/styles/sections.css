@@ -13,6 +13,7 @@
   align-items: center;
   justify-content: center;
   pointer-events: none;
+  animation: preloader-timeout 2.6s var(--ease-in-out) forwards;
 }
 
 .preloader__text {
@@ -21,6 +22,17 @@
   font-style: italic;
   color: var(--ivory);
   opacity: 0;
+}
+
+@keyframes preloader-timeout {
+  0%, 78% {
+    transform: translateY(0);
+    visibility: visible;
+  }
+  99%, 100% {
+    transform: translateY(-100%);
+    visibility: hidden;
+  }
 }
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -38,7 +50,7 @@
   text-align: center;
   background: var(--charcoal);
   overflow: hidden;
-  padding: var(--space-20) var(--container-pad) var(--space-16);
+  padding: clamp(var(--space-16), 10vh, var(--space-20)) var(--container-pad) var(--space-12);
 }
 
 .hero__video {
@@ -47,6 +59,7 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
+  object-position: center;
   z-index: 0;
   pointer-events: none;
 }
@@ -65,53 +78,35 @@
   inset: 0;
   background:
     linear-gradient(to bottom, transparent 98%, var(--bg-primary) 100%),
-    radial-gradient(ellipse 80% 80% at 50% 50%, rgba(15, 12, 16, 0.2) 0%, rgba(15, 12, 16, 0.7) 100%);
+    radial-gradient(ellipse 85% 70% at 50% 50%, rgba(38, 35, 33, 0.18) 0%, rgba(38, 35, 33, 0.78) 100%),
+    linear-gradient(135deg, rgba(244, 111, 115, 0.14) 0%, transparent 32%, transparent 100%);
   z-index: 1;
   pointer-events: none;
-}
-
-.hero__orb {
-  position: absolute;
-  width: 60vw;
-  height: 60vw;
-  max-width: 800px;
-  max-height: 800px;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(160, 120, 255, 0.25) 0%, rgba(255, 140, 180, 0.1) 40%, transparent 70%);
-  filter: blur(80px);
-  z-index: 1;
-  pointer-events: none;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  opacity: 0;
 }
 
 .hero__content {
   position: relative;
   z-index: 2;
-  max-width: 900px;
-  visibility: hidden; /* Prevent FOUC */
+  max-width: min(900px, 88vw);
 }
 
-.hero__badge {
-  margin-bottom: var(--space-8);
-  display: inline-flex;
+.hero__kicker {
+  font-family: var(--font-mono);
+  font-size: var(--text-caption);
+  color: rgba(248, 246, 243, 0.72);
+  margin-bottom: var(--space-6);
+  text-wrap: balance;
 }
 
 .hero__title {
-  margin-bottom: var(--space-8);
+  margin-bottom: var(--space-6);
   overflow: visible;
-  /* GSAP SplitText creates child divs, so we apply the text-shadow here... */
-  text-shadow: 0 4px 15px rgba(0, 0, 0, 0.6);
+  text-shadow: 0 4px 15px color-mix(in srgb, var(--charcoal) 70%, transparent);
+  color: var(--ivory);
 }
 
-/* ...and apply the background-clip gradient to all child text wrappers so they don't vanish */
 .hero__title * {
-  background: linear-gradient(135deg, #ffffff 10%, #fce7e9 50%, #e4d7ec 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: inherit;
   padding: 0.1em;
   margin: -0.1em;
 }
@@ -122,17 +117,18 @@
   font-weight: 300;
   line-height: var(--leading-relaxed);
   color: var(--ivory);
-  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.6);
-  max-width: 52ch;
+  text-shadow: 0 2px 12px color-mix(in srgb, var(--charcoal) 70%, transparent);
+  max-width: min(58ch, 90vw);
   margin-inline: auto;
-  margin-bottom: var(--space-12);
+  margin-bottom: var(--space-10);
+  text-wrap: pretty;
 }
 
 .hero__actions {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: var(--space-6);
+  gap: var(--space-4);
   flex-wrap: wrap;
 }
 
@@ -171,12 +167,13 @@
 
 .problem__text {
   font-family: var(--font-display);
-  font-size: clamp(1.75rem, 3.5vw, 3.25rem);
+  font-size: clamp(1.625rem, 1.1rem + 2vw, 2.75rem);
   font-weight: 400;
-  line-height: 1.4;
+  line-height: 1.32;
   text-align: center;
-  max-width: 20ch;
+  max-width: min(24ch, 86vw);
   color: var(--text-primary);
+  text-wrap: balance;
 }
 
 .problem__text .word {
@@ -262,7 +259,7 @@
 .reveal__curtain {
   position: absolute;
   inset: 0;
-  background: #000000;
+  background: var(--charcoal);
   z-index: 2;
   display: flex;
   align-items: center;
@@ -296,11 +293,12 @@
 
 .reveal__curtain-text {
   font-family: var(--font-display);
-  font-size: clamp(2rem, 4vw, 3.5rem);
+  font-size: clamp(1.875rem, 1.25rem + 2.4vw, 3.25rem);
   font-weight: 300;
   color: var(--ivory);
   text-align: center;
-  line-height: 1.2;
+  line-height: 1.16;
+  text-wrap: balance;
 }
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -474,7 +472,7 @@
 
 .trust__title {
   font-family: var(--font-display);
-  font-size: clamp(2.5rem, 4vw, 4rem);
+  font-size: clamp(2.25rem, 1.35rem + 2.6vw, 3.75rem);
   font-weight: 300;
   line-height: var(--leading-display);
   letter-spacing: var(--tracking-normal);
@@ -726,5 +724,25 @@
 
   .reveal__visual {
     display: none;
+  }
+}
+
+@media (max-height: 820px) and (min-width: 900px) {
+  .hero {
+    padding-top: var(--space-16);
+    padding-bottom: var(--space-8);
+  }
+
+  .hero__kicker {
+    margin-bottom: var(--space-4);
+  }
+
+  .hero__subtitle {
+    line-height: 1.6;
+    margin-bottom: var(--space-8);
+  }
+
+  .hero__line {
+    height: 150px;
   }
 }

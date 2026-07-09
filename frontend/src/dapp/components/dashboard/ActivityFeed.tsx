@@ -1,59 +1,69 @@
-import React from 'react';
 import Card from '../common/Card';
 import { usePoolStore } from '../../store/pool';
 
-/** "2 mins ago" style relative time from a ms-epoch timestamp. */
+interface ActivityFeedProps {
+  activityCount?: number;
+}
+
 function relativeTime(ts: number): string {
-  const s = Math.max(0, Math.floor((Date.now() - ts) / 1000));
-  if (s < 60) return s <= 1 ? 'just now' : `${s} secs ago`;
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m} min${m === 1 ? '' : 's'} ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h} hr${h === 1 ? '' : 's'} ago`;
-  const d = Math.floor(h / 24);
-  return `${d} day${d === 1 ? '' : 's'} ago`;
+  const seconds = Math.max(0, Math.floor((Date.now() - ts) / 1000));
+  if (seconds < 60) return seconds <= 1 ? 'just now' : `${seconds}s ago`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
+function shortHash(hash: string): string {
+  return `${hash.slice(0, 8)}...${hash.slice(-6)}`;
 }
 
 const EXPLORER = 'https://stellar.expert/explorer/testnet/tx';
 
-export default function ActivityFeed() {
+export default function ActivityFeed({ activityCount }: ActivityFeedProps) {
   const { activity } = usePoolStore();
 
   return (
     <Card>
-      <h3 className="text-h3" style={{ marginBottom: '16px' }}>Recent Shielded Activity</h3>
+      <div className="dapp-card__header">
+        <div>
+          <h2 className="dapp-card__title">Recent activity</h2>
+          <p className="dapp-card__description">
+            {activityCount ?? activity.length} settlement event{(activityCount ?? activity.length) === 1 ? '' : 's'}
+          </p>
+        </div>
+      </div>
 
       {activity.length === 0 ? (
-        <p className="text-body" style={{ color: 'var(--text-muted)' }}>
-          No activity yet. Shield or unshield assets to see them here.
-        </p>
+        <div className="dapp-empty">
+          <strong>No activity yet</strong>
+          <p>Shield or unshield XLM to populate this feed with settlement activity and transaction links.</p>
+        </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        <div className="dapp-activity-list">
           {activity.map((act) => (
-            <div
-              key={`${act.type}-${act.id}`}
-              style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '12px', borderBottom: '1px solid var(--color-border)' }}
-            >
+            <div className="dapp-activity-item" key={`${act.type}-${act.id}`}>
               <div>
-                <div className="text-body" style={{ fontWeight: 600 }}>{act.type}</div>
-                <div className="text-caption" style={{ color: 'var(--text-muted)' }}>
-                  {relativeTime(act.timestamp)}
-                </div>
+                <strong>{act.type}</strong>
+                <p className="dapp-helper">{relativeTime(act.timestamp)}</p>
               </div>
-              <div style={{ textAlign: 'right' }}>
-                <div className="text-mono">{act.amount} {act.asset}</div>
+              <div>
+                <div className="dapp-activity-item__amount">
+                  {act.amount} {act.asset}
+                </div>
                 {act.txHash ? (
                   <a
+                    className="dapp-helper"
                     href={`${EXPLORER}/${act.txHash}`}
                     target="_blank"
                     rel="noreferrer"
-                    className="text-caption"
-                    style={{ color: 'var(--success)', textDecoration: 'none' }}
                   >
-                    Confirmed ↗
+                    {shortHash(act.txHash)}
                   </a>
                 ) : (
-                  <div className="text-caption" style={{ color: 'var(--success)' }}>Confirmed</div>
+                  <p className="dapp-helper">Local</p>
                 )}
               </div>
             </div>

@@ -1,9 +1,9 @@
 // ============================================================
 // Pool store — the ONE real vertical: deposit → withdraw  (Tasks 6.2–6.4, 6.3)
 // ============================================================
-// Orchestrates: derive shielded keys → build real inputs → prove in the Web
-// Worker → assemble/sign/submit a real Soroban tx → persist the spendable note.
-// Positions/orders stay UI-only (mock, labeled) and are NOT touched here.
+// Orchestrates: derive shielded keys -> build real inputs -> prove in the Web
+// Worker -> assemble/sign/submit a real Soroban tx -> persist the spendable note.
+// Transfer, positions, and orders are roadmap surfaces and are NOT touched here.
 
 import { create } from 'zustand';
 import { useWalletStore } from './wallet';

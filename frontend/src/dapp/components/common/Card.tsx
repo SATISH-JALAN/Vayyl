@@ -1,9 +1,10 @@
 import React from 'react';
 
-export default function Card({ children, className = '', style }: { children: React.ReactNode, className?: string, style?: React.CSSProperties }) {
-  return (
-    <div className={`dapp-card ${className}`} style={style}>
-      {children}
-    </div>
-  );
+interface CardProps {
+  children: React.ReactNode;
+  className?: string;
+}
+
+export default function Card({ children, className = '' }: CardProps) {
+  return <section className={`dapp-card ${className}`.trim()}>{children}</section>;
 }
