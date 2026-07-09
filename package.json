@@ -1,0 +1,19 @@
+{
+  "name": "vayyl",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Vayyl monorepo dev launcher — starts the DApp + backend services together for local testnet work.",
+  "scripts": {
+    "dev": "concurrently -k -n indexer,relayer,frontend -c blue,magenta,green \"pnpm --dir backend/indexer dev\" \"pnpm --dir backend/relayer dev\" \"pnpm --dir frontend dev\"",
+    "dev:app": "concurrently -k -n indexer,frontend -c blue,green \"pnpm --dir backend/indexer dev\" \"pnpm --dir frontend dev\"",
+    "dev:frontend": "pnpm --dir frontend dev",
+    "dev:indexer": "pnpm --dir backend/indexer dev",
+    "dev:relayer": "pnpm --dir backend/relayer dev"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  },
+  "dependencies": {
+    "@stellar/stellar-base": "^15.0.0"
+  }
+}

@@ -38,6 +38,12 @@ pub trait VayylPoolInterface {
         payout_recipient: Option<Address>,
         payout_amount: i128,
     ) -> Result<(), soroban_sdk::Error>;
+    fn pull_public_deposit(
+        env: Env,
+        authority: Address,
+        depositor: Address,
+        amount: i128,
+    ) -> Result<(), soroban_sdk::Error>;
 }
 
 #[contracttype]
@@ -46,6 +52,7 @@ pub struct OrderState {
     pub commitment: BytesN<32>,
     pub escrow_amount: i128,
     pub pool: Address,
+    pub depositor: Address,
     pub active: bool,
 }
 
@@ -101,22 +108,20 @@ impl HiddenOrderRegistryContract {
     /// Commit a hidden order (sealed stop-loss / take-profit).
     ///
     /// `commitment = Poseidon2(trigger_price, order_direction, salt)` — the
-    /// trigger price and direction stay hidden until the order fires. The
-    /// `escrow_amount` is the collateral released to the recipient on execution.
-    ///
-    /// HONEST-SCOPE CAVEAT (parity with D3 seize): the fund-locking side of the
-    /// escrow — pulling `escrow_amount` from the user into the pool at commit
-    /// time — is a deposit-style flow not wired here; on testnet the pool is
-    /// pre-funded and `escrow_amount` is the accounting figure paid out. The
-    /// pool's own balance is the hard cap (the SAC transfer fails if the pool
-    /// can't cover the payout).
+    /// trigger price and direction stay hidden until the order fires. When
+    /// `escrow_amount > 0`, the depositor's public tokens are pulled into the
+    /// pool via `pull_public_deposit` (this registry must be a settlement
+    /// authority on the pool). The escrow is paid out on execution or refunded
+    /// on cancel.
     pub fn commit_order(
         env: Env,
         order_id: BytesN<32>,
         commitment: BytesN<32>,
         escrow_amount: i128,
         pool: Address,
+        depositor: Address,
     ) -> Result<(), Error> {
+        depositor.require_auth();
         if escrow_amount < 0 {
             return Err(Error::InvalidAmount);
         }
@@ -124,13 +129,59 @@ impl HiddenOrderRegistryContract {
             return Err(Error::OrderAlreadyExists);
         }
 
+        if escrow_amount > 0 {
+            let pool_client = VayylPoolClient::new(&env, &pool);
+            pool_client.pull_public_deposit(
+                &env.current_contract_address(),
+                &depositor,
+                &escrow_amount,
+            );
+        }
+
         let state = OrderState {
             commitment,
             escrow_amount,
             pool,
+            depositor,
             active: true,
         };
         env.storage().persistent().set(&DataKey::SealedOrder(order_id), &state);
+        Ok(())
+    }
+
+    /// Cancel an active order and refund the locked escrow to the depositor.
+    pub fn cancel_order(env: Env, order_id: BytesN<32>, depositor: Address) -> Result<(), Error> {
+        depositor.require_auth();
+
+        let mut state: OrderState = env
+            .storage()
+            .persistent()
+            .get(&DataKey::SealedOrder(order_id.clone()))
+            .ok_or(Error::OrderNotFound)?;
+
+        if state.depositor != depositor {
+            return Err(Error::Unauthorized);
+        }
+        if !state.active {
+            return Err(Error::OrderInactive);
+        }
+
+        state.active = false;
+        env.storage().persistent().set(&DataKey::SealedOrder(order_id), &state);
+
+        if state.escrow_amount > 0 {
+            let pool_client = VayylPoolClient::new(&env, &state.pool);
+            let no_nullifiers: Vec<BytesN<32>> = Vec::new(&env);
+            let no_commitments: Vec<BytesN<32>> = Vec::new(&env);
+            pool_client.execute_settlement(
+                &env.current_contract_address(),
+                &no_nullifiers,
+                &no_commitments,
+                &Some(depositor),
+                &state.escrow_amount,
+            );
+        }
+
         Ok(())
     }
 
@@ -278,7 +329,50 @@ mod test {
         client.initialize(&a, &a);
         let oid = BytesN::from_array(&env, &[1u8; 32]);
         let c = BytesN::from_array(&env, &[2u8; 32]);
-        assert!(client.try_commit_order(&oid, &c, &-1i128, &a).is_err());
+        assert!(client.try_commit_order(&oid, &c, &-1i128, &a, &a).is_err());
+    }
+
+    #[sdk_contract]
+    pub struct MockVerifierFails;
+    #[sdk_contractimpl]
+    impl MockVerifierFails {
+        pub fn verify(
+            _env: Env,
+            _circuit_id: CircuitId,
+            _proof: Groth16Proof,
+            _public_inputs: Vec<BytesN<32>>,
+        ) -> Result<bool, soroban_sdk::Error> {
+            Ok(false)
+        }
+    }
+
+    #[test]
+    fn test_reveal_fails_if_proof_invalid() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(HiddenOrderRegistryContract, ());
+        let client = HiddenOrderRegistryContractClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        let verifier_fails = env.register(MockVerifierFails, ());
+        client.initialize(&admin, &verifier_fails);
+
+        let pool = Address::generate(&env);
+        let depositor = Address::generate(&env);
+        let order_id = BytesN::from_array(&env, &[1u8; 32]);
+        let commitment = BytesN::from_array(&env, &[2u8; 32]);
+        client.commit_order(&order_id, &commitment, &0i128, &pool, &depositor);
+
+        let recipient = Address::generate(&env);
+        let meta_hash = BytesN::from_array(&env, &[0x0F; 32]);
+        let result = client.try_reveal_and_execute(
+            &order_id,
+            &dummy_proof(&env),
+            &1500i128,
+            &meta_hash,
+            &recipient,
+        );
+        assert_eq!(result, Err(Ok(Error::ProofFailed)));
+        assert!(client.get_order(&order_id).active);
     }
 
     // ---- E2/E4: reveal_and_execute pays the escrow out of a real pool -----
@@ -312,19 +406,24 @@ mod test {
         // The registry must be an allowlisted settlement authority to move funds.
         pool.add_settlement_authority(&reg_id);
 
-        // Commit an order escrowing 700 against the pool.
+        let depositor = Address::generate(&env);
+        token::StellarAssetClient::new(&env, &asset).mint(&depositor, &10_000);
+
+        // Commit an order escrowing 700 against the pool (locks depositor funds).
         let order_id = BytesN::from_array(&env, &[0x01; 32]);
         let commitment = BytesN::from_array(&env, &[0xC1; 32]);
-        reg.commit_order(&order_id, &commitment, &700i128, &pool_id);
+        reg.commit_order(&order_id, &commitment, &700i128, &pool_id, &depositor);
+        assert_eq!(token::Client::new(&env, &asset).balance(&depositor), 9_300);
+        assert_eq!(token::Client::new(&env, &asset).balance(&pool_id), 10_700);
 
         // Fire the order: escrow paid out to the recipient.
         let recipient = Address::generate(&env);
         let meta_hash = BytesN::from_array(&env, &[0x0F; 32]);
         reg.reveal_and_execute(&order_id, &dummy_proof(&env), &1500i128, &meta_hash, &recipient);
 
-        // Real fund movement: recipient credited 700, pool debited to 9_300.
+        // Real fund movement: recipient credited 700; pool keeps its original liquidity.
         assert_eq!(token::Client::new(&env, &asset).balance(&recipient), 700);
-        assert_eq!(token::Client::new(&env, &asset).balance(&pool_id), 9_300);
+        assert_eq!(token::Client::new(&env, &asset).balance(&pool_id), 10_000);
         // Order is now inactive — a second execution is rejected (double-execute guard).
         assert!(!reg.get_order(&order_id).active);
         assert!(reg
@@ -355,11 +454,18 @@ mod test {
         let reg_id = env.register(HiddenOrderRegistryContract, ());
         let reg = HiddenOrderRegistryContractClient::new(&env, &reg_id);
         reg.initialize(&admin, &verifier_id);
-        // NOTE: deliberately NOT allowlisted on the pool.
+
+        // Lock escrow while allowlisted, then revoke before reveal.
+        pool.add_settlement_authority(&reg_id);
+
+        let depositor = Address::generate(&env);
+        token::StellarAssetClient::new(&env, &asset).mint(&depositor, &10_000);
 
         let order_id = BytesN::from_array(&env, &[0x01; 32]);
         let commitment = BytesN::from_array(&env, &[0xC1; 32]);
-        reg.commit_order(&order_id, &commitment, &700i128, &pool_id);
+        reg.commit_order(&order_id, &commitment, &700i128, &pool_id, &depositor);
+
+        pool.remove_settlement_authority(&reg_id);
 
         let recipient = Address::generate(&env);
         let meta_hash = BytesN::from_array(&env, &[0x0F; 32]);
@@ -372,5 +478,43 @@ mod test {
         );
         assert!(res.is_err(), "fire without pool allowlist must fail");
         assert_eq!(token::Client::new(&env, &asset).balance(&recipient), 0);
+    }
+
+    #[test]
+    fn test_cancel_order_refunds_escrow() {
+        use vayyl_pool::{VayylPool, VayylPoolClient};
+
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let sac_admin = Address::generate(&env);
+        let sac = env.register_stellar_asset_contract_v2(sac_admin);
+        let asset = sac.address();
+        let verifier_id = env.register(MockVerifier, ());
+
+        let admin = Address::generate(&env);
+        let dummy = Address::generate(&env);
+        let pool_id = env.register(VayylPool, ());
+        let pool = VayylPoolClient::new(&env, &pool_id);
+        pool.initialize(&admin, &asset, &verifier_id, &dummy, &dummy);
+
+        let reg_id = env.register(HiddenOrderRegistryContract, ());
+        let reg = HiddenOrderRegistryContractClient::new(&env, &reg_id);
+        reg.initialize(&admin, &verifier_id);
+        pool.add_settlement_authority(&reg_id);
+
+        let depositor = Address::generate(&env);
+        token::StellarAssetClient::new(&env, &asset).mint(&depositor, &5_000);
+
+        let order_id = BytesN::from_array(&env, &[0x02; 32]);
+        let commitment = BytesN::from_array(&env, &[0xC2; 32]);
+        reg.commit_order(&order_id, &commitment, &400i128, &pool_id, &depositor);
+        assert_eq!(token::Client::new(&env, &asset).balance(&depositor), 4_600);
+        assert_eq!(token::Client::new(&env, &asset).balance(&pool_id), 400);
+
+        reg.cancel_order(&order_id, &depositor);
+        assert_eq!(token::Client::new(&env, &asset).balance(&depositor), 5_000);
+        assert_eq!(token::Client::new(&env, &asset).balance(&pool_id), 0);
+        assert!(!reg.get_order(&order_id).active);
     }
 }

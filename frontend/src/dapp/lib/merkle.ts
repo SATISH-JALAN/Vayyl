@@ -20,8 +20,14 @@ export interface MerklePath {
   pathIndices: number[]; // length TREE_DEPTH, each 0/1
 }
 
-/** Precompute zero-subtree hashes for levels 0..depth. */
-async function zeroHashes(depth: number): Promise<bigint[]> {
+/**
+ * Precompute zero-subtree hashes for levels 0..depth (array length depth+1).
+ * `zeros[l]` is the root of an all-empty subtree of height `l`, i.e. the sibling
+ * a leaf sees at level `l` when everything to its right is empty. Shared by the
+ * withdraw path here and the deposit ASP path (proof-worker.ts) so both match the
+ * on-chain empty-subtree ladder exactly (`asp-membership::initialize`).
+ */
+export async function zeroHashes(depth: number): Promise<bigint[]> {
   const zeros: bigint[] = [0n];
   for (let l = 1; l <= depth; l++) {
     zeros[l] = await poseidon2Hash2(zeros[l - 1], zeros[l - 1]);

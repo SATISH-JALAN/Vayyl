@@ -1,3 +1,11 @@
+//! ASP non-membership blocklist (V1 scope).
+//!
+//! **V1:** storage-backed blocklist + running-hash root. `is_not_blocked` is a
+//! lookup used by `VayylPool::transfer` / `withdraw` when this contract is
+//! initialized. There is no circuit-verifiable sparse Merkle non-membership
+//! proof in V1 — that requires `asp_non_membership.circom` + a real sparse tree
+//! (V2 upgrade via `upgrade()`).
+
 #![no_std]
 
 use soroban_poseidon::poseidon2_hash;
@@ -10,6 +18,10 @@ use soroban_sdk::{
 /// A sparse tree can prove both inclusion and NON-inclusion.
 /// Non-membership is proved by showing the leaf slot is empty (zero).
 pub const SPARSE_TREE_DEPTH: u32 = 16;
+
+/// Persistent TTL policy (kept in sync with vayyl-pool / asp-membership).
+pub const PERSISTENT_TTL_THRESHOLD: u32 = 1_000_000;
+pub const PERSISTENT_TTL_EXTEND: u32 = 3_000_000;
 
 #[contracttype]
 #[derive(Clone)]
@@ -108,8 +120,8 @@ impl AspNonMembershipContract {
         env.storage().persistent().set(&DataKey::BlockedLeaf(leaf.clone()), &true);
         env.storage().persistent().extend_ttl(
             &DataKey::BlockedLeaf(leaf.clone()),
-            50000,
-            100000,
+            PERSISTENT_TTL_THRESHOLD,
+            PERSISTENT_TTL_EXTEND,
         );
 
         // Update the root: new_root = Poseidon2(old_root, leaf)
@@ -165,6 +177,14 @@ impl AspNonMembershipContract {
             .instance()
             .get(&DataKey::BlockedCount)
             .unwrap_or(0)
+    }
+
+    /// Get the admin authorized to upgrade this contract.
+    pub fn admin(env: Env) -> Result<Address, Error> {
+        env.storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::Unauthorized)
     }
 
     /// Upgrade the contract's WASM code in place (admin-gated).

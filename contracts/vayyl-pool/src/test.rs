@@ -12,6 +12,7 @@ extern crate std;
 
 use super::*;
 use asp_membership::{AspMembershipContract, AspMembershipContractClient};
+use asp_non_membership::{AspNonMembershipContract, AspNonMembershipContractClient};
 use soroban_sdk::{
     contract as sdk_contract, contractimpl as sdk_contractimpl, symbol_short,
     testutils::{Address as _, Events as _},
@@ -275,6 +276,88 @@ fn test_asp_check_precedes_proof_verify_c3() {
         &bogus_asp_root,
     );
     assert_eq!(res, Err(Ok(Error::InvalidAspRoot)));
+}
+
+// ---- V2-ready ASP non-membership on transfer/withdraw -------------------
+
+fn setup_with_blocklist() -> (Fixture, AspNonMembershipContractClient<'static>) {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let asset_admin = Address::generate(&env);
+    let sac = env.register_stellar_asset_contract_v2(asset_admin.clone());
+    let asset = sac.address();
+
+    let verifier_id = env.register(MockVerifier, ());
+    let verifier = MockVerifierClient::new(&env, &verifier_id);
+
+    let pool_id = env.register(VayylPool, ());
+    let pool = VayylPoolClient::new(&env, &pool_id);
+
+    let admin = Address::generate(&env);
+    let asp_id = env.register(AspMembershipContract, ());
+    let asp = AspMembershipContractClient::new(&env, &asp_id);
+    asp.initialize(&admin);
+    asp.insert_leaf(&BytesN::from_array(&env, &[0xA1; 32]));
+
+    let nm_id = env.register(AspNonMembershipContract, ());
+    let nm = AspNonMembershipContractClient::new(&env, &nm_id);
+    nm.initialize(&admin);
+
+    pool.initialize(&admin, &asset, &verifier_id, &asp_id, &nm_id);
+
+    let f = Fixture {
+        env,
+        pool,
+        verifier,
+        asp,
+        asset,
+        admin,
+    };
+    (f, nm)
+}
+
+#[test]
+fn test_transfer_rejects_blocked_nullifier() {
+    let (f, nm) = setup_with_blocklist();
+    let relayer = Address::generate(&f.env);
+    let root = f.pool.get_root();
+    let blocked = commitment(&f.env, 0xBB);
+    let clean = commitment(&f.env, 0xCC);
+    nm.block_leaf(&blocked);
+
+    let res = f.pool.try_transfer(
+        &dummy_proof(&f.env),
+        &blocked,
+        &clean,
+        &commitment(&f.env, 1),
+        &commitment(&f.env, 2),
+        &root,
+        &0i128,
+        &relayer,
+    );
+    assert_eq!(res, Err(Ok(Error::NullifierBlocked)));
+}
+
+#[test]
+fn test_withdraw_rejects_blocked_nullifier() {
+    let (f, nm) = setup_with_blocklist();
+    let recipient = Address::generate(&f.env);
+    let relayer = Address::generate(&f.env);
+    let root = f.pool.get_root();
+    let blocked = commitment(&f.env, 0xDD);
+    nm.block_leaf(&blocked);
+
+    let res = f.pool.try_withdraw(
+        &dummy_proof(&f.env),
+        &blocked,
+        &100i128,
+        &recipient,
+        &root,
+        &0i128,
+        &relayer,
+    );
+    assert_eq!(res, Err(Ok(Error::NullifierBlocked)));
 }
 
 // ---- C4: events ----------------------------------------------------------
@@ -589,4 +672,17 @@ fn test_remove_settlement_authority_revokes_access() {
     let empty: Vec<BytesN<32>> = Vec::new(&f.env);
     let res = f.pool.try_execute_settlement(&authority, &empty, &empty, &None::<Address>, &0i128);
     assert_eq!(res, Err(Ok(Error::NotSettlementAuthority)));
+}
+
+#[test]
+fn test_pull_public_deposit_moves_tokens_from_depositor() {
+    let f = setup();
+    let authority = Address::generate(&f.env);
+    f.pool.add_settlement_authority(&authority);
+    let depositor = Address::generate(&f.env);
+    fund(&f, &depositor, 2_000);
+
+    f.pool.pull_public_deposit(&authority, &depositor, &800i128);
+    assert_eq!(balance(&f, &depositor), 1_200);
+    assert_eq!(balance(&f, &f.pool.address), 800);
 }

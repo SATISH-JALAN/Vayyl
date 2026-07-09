@@ -31,6 +31,8 @@ pub enum Error {
     PositionNotFound = 5,
     /// A price/fee value is negative — non-encodable as a BN254 field element.
     InvalidAmount = 6,
+    /// Position was seized by the liquidation engine and is no longer active.
+    PositionSeized = 7,
 }
 
 /// H3: nullifier persistence TTL (kept in sync with the pool's policy). A spent
@@ -94,6 +96,12 @@ pub trait VayylPoolInterface {
         payout_recipient: Option<Address>,
         payout_amount: i128,
     ) -> Result<(), soroban_sdk::Error>;
+    fn pull_public_deposit(
+        env: Env,
+        authority: Address,
+        depositor: Address,
+        amount: i128,
+    ) -> Result<(), soroban_sdk::Error>;
 }
 
 #[contract]
@@ -137,7 +145,12 @@ impl PositionManager {
         Ok(())
     }
 
-    /// Open a new confidential derivative position using a shielded note as collateral
+    /// Open a new confidential derivative position using a shielded note as collateral.
+    ///
+    /// Collateral is **not** pulled here — the owner must already hold a pool note
+    /// (from a prior deposit). `open_position` consumes that note's nullifier via
+    /// the PositionOpen proof; the collateral value lives in the pool Merkle tree
+    /// until close/liquidation settles it through `execute_settlement`.
     pub fn open_position(
         env: Env,
         position_id: BytesN<32>,
@@ -317,6 +330,23 @@ impl PositionManager {
 
     pub fn get_position_state(env: Env, position_id: BytesN<32>) -> Result<PositionState, Error> {
         env.storage().persistent().get(&DataKey::Position(position_id)).ok_or(Error::PositionNotFound)
+    }
+
+    /// Mark a position as seized after liquidation. Callable only by the wired
+    /// LiquidationEngine — removes the position record so `get_position_state`
+    /// returns `PositionNotFound`.
+    pub fn mark_position_seized(env: Env, position_id: BytesN<32>) -> Result<(), Error> {
+        let le: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::LiquidationEngine)
+            .ok_or(Error::NotInitialized)?;
+        le.require_auth();
+        if !env.storage().persistent().has(&DataKey::Position(position_id.clone())) {
+            return Err(Error::PositionNotFound);
+        }
+        env.storage().persistent().remove(&DataKey::Position(position_id));
+        Ok(())
     }
 
     /// Get the admin authorized to upgrade this contract.
@@ -530,5 +560,175 @@ mod test {
 
         // The real fund movement: exactly one withdrawable note now exists.
         assert_eq!(pool.get_leaf_count(), 1, "close must insert the output note");
+    }
+
+    /// Stand-in verifier that always rejects.
+    #[sdk_contract]
+    pub struct MockVerifierFails;
+    #[sdk_contractimpl]
+    impl MockVerifierFails {
+        pub fn verify(
+            _env: Env,
+            _circuit_id: CircuitId,
+            _proof: Groth16Proof,
+            _public_inputs: Vec<BytesN<32>>,
+        ) -> Result<bool, soroban_sdk::Error> {
+            Ok(false)
+        }
+    }
+
+    #[test]
+    fn test_open_position_fails_if_proof_invalid() {
+        let env = Env::default();
+        env.mock_all_auths();
+        
+        let contract_id = env.register(PositionManager, ());
+        let pm = PositionManagerClient::new(&env, &contract_id);
+        
+        let admin = Address::generate(&env);
+        let verifier_fails_id = env.register(MockVerifierFails, ());
+        let oracle_id = env.register(MockOracle, ());
+        let le_id = Address::generate(&env);
+        let pool_id = Address::generate(&env);
+        
+        pm.initialize(&admin, &verifier_fails_id, &oracle_id, &le_id, &pool_id);
+
+        let owner = Address::generate(&env);
+        let position_id = BytesN::from_array(&env, &[0x01; 32]);
+        let pos_commitment = BytesN::from_array(&env, &[0xC1; 32]);
+        
+        let result = pm.try_open_position(
+            &position_id,
+            &owner,
+            &dummy_proof(&env),
+            &BytesN::from_array(&env, &[0x00; 32]), // root
+            &BytesN::from_array(&env, &[0x0A; 32]), // collateral nullifier
+            &pos_commitment,
+            &BytesN::from_array(&env, &[0x0F; 32]), // meta_hash
+        );
+        
+        assert_eq!(result, Err(Ok(Error::InvalidProof)));
+    }
+
+    #[test]
+    fn test_attest_health_fails_if_proof_invalid() {
+        let env = Env::default();
+        env.mock_all_auths();
+        
+        let contract_id = env.register(PositionManager, ());
+        let pm = PositionManagerClient::new(&env, &contract_id);
+        
+        let admin = Address::generate(&env);
+        let verifier_fails_id = env.register(MockVerifierFails, ());
+        let oracle_id = env.register(MockOracle, ());
+        let le_id = Address::generate(&env);
+        let pool_id = Address::generate(&env);
+        
+        pm.initialize(&admin, &verifier_fails_id, &oracle_id, &le_id, &pool_id);
+        
+        let owner = Address::generate(&env);
+        let position_id = BytesN::from_array(&env, &[0x01; 32]);
+        let pos_commitment = BytesN::from_array(&env, &[0xC1; 32]);
+        
+        let state = PositionState {
+            owner: owner.clone(),
+            commitment: pos_commitment,
+            last_health_timestamp: 0,
+        };
+        env.as_contract(&contract_id, || {
+            env.storage().persistent().set(&DataKey::Position(position_id.clone()), &state);
+        });
+        
+        let result = pm.try_attest_health(&position_id, &dummy_proof(&env));
+        assert_eq!(result, Err(Ok(Error::InvalidProof)));
+    }
+
+    #[test]
+    fn test_close_or_modify_fails_if_proof_invalid() {
+        let env = Env::default();
+        env.mock_all_auths();
+        
+        let contract_id = env.register(PositionManager, ());
+        let pm = PositionManagerClient::new(&env, &contract_id);
+        
+        let admin = Address::generate(&env);
+        let verifier_fails_id = env.register(MockVerifierFails, ());
+        let oracle_id = env.register(MockOracle, ());
+        let le_id = Address::generate(&env);
+        let pool_id = Address::generate(&env);
+        
+        pm.initialize(&admin, &verifier_fails_id, &oracle_id, &le_id, &pool_id);
+        
+        let owner = Address::generate(&env);
+        let position_id = BytesN::from_array(&env, &[0x01; 32]);
+        let pos_commitment = BytesN::from_array(&env, &[0xC1; 32]);
+        
+        let state = PositionState {
+            owner: owner.clone(),
+            commitment: pos_commitment,
+            last_health_timestamp: 0,
+        };
+        env.as_contract(&contract_id, || {
+            env.storage().persistent().set(&DataKey::Position(position_id.clone()), &state);
+        });
+        
+        let result = pm.try_close_or_modify_position(
+            &position_id,
+            &dummy_proof(&env),
+            &BytesN::from_array(&env, &[0x0B; 32]), // position nullifier
+            &BytesN::from_array(&env, &[0xC2; 32]), // new position commitment
+            &BytesN::from_array(&env, &[0x0E; 32]), // output note commitment
+            &0i128,                                  // fee
+            &BytesN::from_array(&env, &[0x0F; 32]),  // meta_hash
+        );
+        
+        assert_eq!(result, Err(Ok(Error::InvalidProof)));
+    }
+
+    #[test]
+    fn test_mark_position_seized_requires_liquidation_engine_auth() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(PositionManager, ());
+        let pm = PositionManagerClient::new(&env, &contract_id);
+
+        let admin = Address::generate(&env);
+        let verifier = Address::generate(&env);
+        let oracle = Address::generate(&env);
+        let le = Address::generate(&env);
+        let pool = Address::generate(&env);
+        pm.initialize(&admin, &verifier, &oracle, &le, &pool);
+
+        let position_id = BytesN::from_array(&env, &[0x01; 32]);
+        let owner = Address::generate(&env);
+        let state = PositionState {
+            owner,
+            commitment: BytesN::from_array(&env, &[0xC1; 32]),
+            last_health_timestamp: 0,
+        };
+        env.as_contract(&contract_id, || {
+            env.storage().persistent().set(&DataKey::Position(position_id.clone()), &state);
+        });
+
+        pm.mark_position_seized(&position_id);
+        assert!(pm.try_get_position_state(&position_id).is_err());
+    }
+
+    #[test]
+    fn test_mark_position_seized_rejects_non_liquidation_engine() {
+        let env = Env::default();
+        let contract_id = env.register(PositionManager, ());
+        let pm = PositionManagerClient::new(&env, &contract_id);
+
+        let admin = Address::generate(&env);
+        let verifier = Address::generate(&env);
+        let oracle = Address::generate(&env);
+        let le = Address::generate(&env);
+        let pool = Address::generate(&env);
+        pm.initialize(&admin, &verifier, &oracle, &le, &pool);
+
+        let position_id = BytesN::from_array(&env, &[0x01; 32]);
+        let result = pm.try_mark_position_seized(&position_id);
+        assert!(result.is_err());
     }
 }

@@ -130,8 +130,8 @@ impl VayylPoolFactoryContract {
             .set(&DataKey::Pool(asset.clone()), &pool_address);
         env.storage().persistent().extend_ttl(
             &DataKey::Pool(asset),
-            50000,
-            100000,
+            1000000,
+            3000000,
         );
 
         // Increment pool count
@@ -216,4 +216,103 @@ mod test {
         assert_eq!(client.admin(), admin);
         assert_eq!(client.pool_count(), 0);
     }
+
+    mod pool {
+        soroban_sdk::contractimport!(
+            file = "../target/wasm32v1-none/release/vayyl_pool.wasm"
+        );
+    }
+
+    #[soroban_sdk::contract]
+    pub struct MockVerifier;
+    #[soroban_sdk::contractimpl]
+    impl MockVerifier {
+        pub fn verify(
+            _env: Env,
+            _circuit_id: soroban_sdk::Val,
+            _proof: soroban_sdk::Val,
+            _public_inputs: soroban_sdk::Val,
+        ) -> Result<bool, soroban_sdk::Error> {
+            Ok(true)
+        }
+    }
+
+    #[soroban_sdk::contract]
+    pub struct MockAsp;
+    #[soroban_sdk::contractimpl]
+    impl MockAsp {
+        pub fn is_known_root(_env: Env, _root: soroban_sdk::BytesN<32>) -> bool {
+            true
+        }
+    }
+
+    #[soroban_sdk::contract]
+    pub struct MockNonMembership;
+    #[soroban_sdk::contractimpl]
+    impl MockNonMembership {
+        pub fn is_not_blocked(_env: Env, _nullifier: soroban_sdk::BytesN<32>) -> bool {
+            true
+        }
+    }
+
+    #[test]
+    fn test_deploy_and_deposit_withdraw() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let factory_id = env.register(VayylPoolFactoryContract, ());
+        let factory = VayylPoolFactoryContractClient::new(&env, &factory_id);
+
+        let admin = Address::generate(&env);
+        
+        let verifier_id = env.register(MockVerifier, ());
+        let membership_id = env.register(MockAsp, ());
+        let non_membership_id = env.register(MockNonMembership, ());
+
+        factory.initialize(&admin, &verifier_id, &membership_id, &non_membership_id);
+
+        let wasm_hash = env.deployer().upload_contract_wasm(pool::WASM);
+        factory.set_pool_wasm(&wasm_hash);
+
+        // deploy SAC
+        let asset_admin = Address::generate(&env);
+        let sac = env.register_stellar_asset_contract_v2(asset_admin);
+        let asset = sac.address();
+
+        let pool_address = factory.deploy_pool(&asset);
+        assert_eq!(factory.pool_count(), 1);
+
+        let pool_client = pool::Client::new(&env, &pool_address);
+        assert_eq!(pool_client.admin(), admin);
+
+        // Fund user
+        let user = Address::generate(&env);
+        let token_admin_client = soroban_sdk::token::StellarAssetClient::new(&env, &asset);
+        token_admin_client.mint(&user, &1000);
+
+        // Deposit
+        let proof = pool::Groth16Proof {
+            a: soroban_sdk::BytesN::from_array(&env, &[0u8; 64]),
+            b: soroban_sdk::BytesN::from_array(&env, &[0u8; 128]),
+            c: soroban_sdk::BytesN::from_array(&env, &[0u8; 64]),
+        };
+        let commitment = soroban_sdk::BytesN::from_array(&env, &[1u8; 32]);
+        let asp_root = soroban_sdk::BytesN::from_array(&env, &[2u8; 32]);
+
+        pool_client.deposit(&user, &proof, &commitment, &500, &asp_root);
+        
+        let token_client = soroban_sdk::token::Client::new(&env, &asset);
+        assert_eq!(token_client.balance(&user), 500);
+        assert_eq!(token_client.balance(&pool_address), 500);
+        assert_eq!(pool_client.get_leaf_count(), 1);
+
+        // Withdraw
+        let pool_root = pool_client.get_root();
+        let nullifier = soroban_sdk::BytesN::from_array(&env, &[3u8; 32]);
+        pool_client.withdraw(&proof, &nullifier, &500, &user, &pool_root, &0, &user);
+        
+        assert_eq!(token_client.balance(&user), 1000);
+        assert_eq!(token_client.balance(&pool_address), 0);
+    }
+
 }

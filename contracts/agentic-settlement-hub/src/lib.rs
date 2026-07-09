@@ -23,6 +23,12 @@ pub trait VayylPoolInterface {
         payout_recipient: Option<Address>,
         payout_amount: i128,
     ) -> Result<(), soroban_sdk::Error>;
+    fn pull_public_deposit(
+        env: Env,
+        authority: Address,
+        depositor: Address,
+        amount: i128,
+    ) -> Result<(), soroban_sdk::Error>;
 }
 
 #[contracttype]
@@ -31,6 +37,7 @@ pub struct QuestState {
     pub commitment: BytesN<32>,
     pub reward_amount: i128,
     pub pool: Address,
+    pub creator: Address,
     pub claimed: bool,
 }
 
@@ -84,27 +91,38 @@ impl AgenticSettlementHubContract {
         Ok(())
     }
 
-    /// Create a quest — escrow a reward for an agent task.
+    /// Create a quest — lock a reward in the pool for an agent task.
     ///
-    /// HONEST-SCOPE CAVEAT (parity with the order registry / D3 seize): the
-    /// fund-locking side — pulling `reward_amount` into the pool at create time —
-    /// is a deposit-style flow not wired here; on testnet the pool is pre-funded
-    /// and `reward_amount` is the accounting figure paid out. The pool's balance
-    /// is the hard cap.
+    /// When `reward_amount > 0`, the creator's public tokens are pulled into
+    /// the pool via `pull_public_deposit` (this hub must be a settlement
+    /// authority on the pool). The reward is paid out on claim.
     pub fn create_quest(
         env: Env,
         quest_id: BytesN<32>,
         quest_commitment: BytesN<32>,
         reward_amount: i128,
         pool: Address,
+        creator: Address,
     ) -> Result<(), Error> {
+        creator.require_auth();
         if reward_amount < 0 {
             return Err(Error::InvalidAmount);
         }
+
+        if reward_amount > 0 {
+            let pool_client = VayylPoolClient::new(&env, &pool);
+            pool_client.pull_public_deposit(
+                &env.current_contract_address(),
+                &creator,
+                &reward_amount,
+            );
+        }
+
         let state = QuestState {
             commitment: quest_commitment,
             reward_amount,
             pool,
+            creator,
             claimed: false,
         };
         env.storage().persistent().set(&DataKey::Quest(quest_id), &state);
@@ -260,7 +278,44 @@ mod test {
         client.initialize(&a, &a);
         let qid = BytesN::from_array(&env, &[1u8; 32]);
         let c = BytesN::from_array(&env, &[2u8; 32]);
-        assert!(client.try_create_quest(&qid, &c, &-1i128, &a).is_err());
+        assert!(client.try_create_quest(&qid, &c, &-1i128, &a, &a).is_err());
+    }
+
+    #[sdk_contract]
+    pub struct MockVerifierFails;
+    #[sdk_contractimpl]
+    impl MockVerifierFails {
+        pub fn verify(
+            _env: Env,
+            _circuit_id: CircuitId,
+            _proof: Groth16Proof,
+            _public_inputs: Vec<BytesN<32>>,
+        ) -> Result<bool, soroban_sdk::Error> {
+            Ok(false)
+        }
+    }
+
+    #[test]
+    fn test_claim_quest_fails_if_proof_invalid() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(AgenticSettlementHubContract, ());
+        let client = AgenticSettlementHubContractClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        let verifier_fails = env.register(MockVerifierFails, ());
+        client.initialize(&admin, &verifier_fails);
+
+        let pool = Address::generate(&env);
+        let creator = Address::generate(&env);
+        let quest_id = BytesN::from_array(&env, &[1u8; 32]);
+        let commitment = BytesN::from_array(&env, &[2u8; 32]);
+        client.create_quest(&quest_id, &commitment, &0i128, &pool, &creator);
+
+        let agent = Address::generate(&env);
+        let nullifier = BytesN::from_array(&env, &[0x0A; 32]);
+        let result = client.try_claim_quest(&quest_id, &dummy_proof(&env), &nullifier, &agent);
+        assert_eq!(result, Err(Ok(Error::ProofFailed)));
+        assert!(!client.get_quest(&quest_id).claimed);
     }
 
     // ---- E3/E4: claim_quest pays the reward out of a real pool ------------
@@ -294,19 +349,24 @@ mod test {
         // The hub must be an allowlisted settlement authority to move funds.
         pool.add_settlement_authority(&hub_id);
 
-        // Create a quest with a 250 reward.
+        let creator = Address::generate(&env);
+        token::StellarAssetClient::new(&env, &asset).mint(&creator, &10_000);
+
+        // Create a quest with a 250 reward (locks creator funds in the pool).
         let quest_id = BytesN::from_array(&env, &[0x01; 32]);
         let commitment = BytesN::from_array(&env, &[0xC1; 32]);
-        hub.create_quest(&quest_id, &commitment, &250i128, &pool_id);
+        hub.create_quest(&quest_id, &commitment, &250i128, &pool_id, &creator);
+        assert_eq!(token::Client::new(&env, &asset).balance(&creator), 9_750);
+        assert_eq!(token::Client::new(&env, &asset).balance(&pool_id), 10_250);
 
         // Agent claims: reward paid out to the agent.
         let agent = Address::generate(&env);
         let agent_nullifier = BytesN::from_array(&env, &[0x0A; 32]);
         hub.claim_quest(&quest_id, &dummy_proof(&env), &agent_nullifier, &agent);
 
-        // Real fund movement: agent credited 250, pool debited to 9_750.
+        // Real fund movement: agent credited 250; pool retains original liquidity.
         assert_eq!(token::Client::new(&env, &asset).balance(&agent), 250);
-        assert_eq!(token::Client::new(&env, &asset).balance(&pool_id), 9_750);
+        assert_eq!(token::Client::new(&env, &asset).balance(&pool_id), 10_000);
         assert!(hub.get_quest(&quest_id).claimed);
 
         // Second claim rejected — quest already claimed.
@@ -342,10 +402,11 @@ mod test {
         pool.add_settlement_authority(&hub_id);
 
         let commitment = BytesN::from_array(&env, &[0xC1; 32]);
+        let creator = Address::generate(&env);
         let q1 = BytesN::from_array(&env, &[0x01; 32]);
         let q2 = BytesN::from_array(&env, &[0x02; 32]);
-        hub.create_quest(&q1, &commitment, &100i128, &pool_id);
-        hub.create_quest(&q2, &commitment, &100i128, &pool_id);
+        hub.create_quest(&q1, &commitment, &0i128, &pool_id, &creator);
+        hub.create_quest(&q2, &commitment, &0i128, &pool_id, &creator);
 
         let agent = Address::generate(&env);
         let nullifier = BytesN::from_array(&env, &[0x0A; 32]);
@@ -379,11 +440,17 @@ mod test {
         let hub_id = env.register(AgenticSettlementHubContract, ());
         let hub = AgenticSettlementHubContractClient::new(&env, &hub_id);
         hub.initialize(&admin, &verifier_id);
-        // NOTE: deliberately NOT allowlisted.
+
+        // Lock reward while allowlisted, then revoke before claim.
+        pool.add_settlement_authority(&hub_id);
 
         let quest_id = BytesN::from_array(&env, &[0x01; 32]);
         let commitment = BytesN::from_array(&env, &[0xC1; 32]);
-        hub.create_quest(&quest_id, &commitment, &250i128, &pool_id);
+        let creator = Address::generate(&env);
+        token::StellarAssetClient::new(&env, &asset).mint(&creator, &1_000);
+        hub.create_quest(&quest_id, &commitment, &250i128, &pool_id, &creator);
+
+        pool.remove_settlement_authority(&hub_id);
 
         let agent = Address::generate(&env);
         let agent_nullifier = BytesN::from_array(&env, &[0x0A; 32]);

@@ -8,6 +8,13 @@ const SOURCE = process.env.STELLAR_SOURCE || "deployer";
 // When set, print the invoke commands instead of running them — lets you (and CI)
 // sanity-check the exact registration calls without a live CLI/network.
 const DRY_RUN = process.env.DRY_RUN === "1";
+const RETRY_DELAY_MS = Number(process.env.RETRY_DELAY_MS || 5000);
+const MAX_RETRIES = Number(process.env.MAX_RETRIES || 3);
+
+function sleepSync(ms) {
+    const end = Date.now() + ms;
+    while (Date.now() < end) { /* spin */ }
+}
 
 // A fresh `stellar contract deploy` mints a NEW verifier id, so a hardcoded
 // constant is a footgun — it silently registers VKs against a stale contract.
@@ -63,18 +70,27 @@ const CIRCUITS = {
     "PositionOpen": { id: 3, file: "position_open" },
     "PositionHealth": { id: 4, file: "position_health" },
     "PositionClose": { id: 5, file: "position_close" },
-    // Sprint E order circuits. IDs match the CircuitId enum order in
-    // vayyl-types (HiddenOrderTrigger=7, SealedOrder=11); the on-chain call
-    // keys off the variant NAME, so the id here is documentation/ordering only.
-    // Outside V1 scope — register with REGISTER_ALL=1 only.
+    // LiquidationEngine::reveal_and_seize verifies against this circuit, so its
+    // VK MUST be registered or seize fails on-chain. id 6 = CircuitId enum order.
+    "LiquidationHeartbeat": { id: 6, file: "liquidation_heartbeat" },
+    // Order/agentic circuits — HiddenOrderTrigger=7, SealedOrder=11 in CircuitId enum.
     "HiddenOrderTrigger": { id: 7, file: "hidden_order_trigger" },
     "SealedOrder": { id: 11, file: "sealed_order" }
 };
 
-// V1 scope: only the proven payment-core circuits register by default. The
-// position/derivative circuits carry unfixed soundness work (Bug 2 in
-// position_health) — set REGISTER_ALL=1 to include them once audited.
-const V1_CIRCUITS = new Set(["Deposit", "Transfer", "Withdraw"]);
+// Default: register every circuit below that has a built VK. Set REGISTER_ALL=0
+// to skip circuits not in this set (legacy narrow scope).
+const V1_CIRCUITS = new Set([
+    "Deposit",
+    "Transfer",
+    "Withdraw",
+    "PositionOpen",
+    "PositionHealth",
+    "PositionClose",
+    "LiquidationHeartbeat",
+    "HiddenOrderTrigger",
+    "SealedOrder",
+]);
 const registerAll = process.env.REGISTER_ALL === "1";
 
 console.log(`Target verifier: ${VERIFIER_ID} (network=${NETWORK}${DRY_RUN ? ", DRY_RUN" : ""})`);
@@ -125,7 +141,16 @@ for (const [name, config] of Object.entries(CIRCUITS)) {
     }
 
     try {
-        execSync(cmd, { stdio: 'inherit' });
+        for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+            try {
+                execSync(cmd, { stdio: 'inherit' });
+                break;
+            } catch (error) {
+                if (attempt === MAX_RETRIES) throw error;
+                console.warn(`Register ${name} attempt ${attempt} failed, retrying in ${RETRY_DELAY_MS}ms...`);
+                sleepSync(RETRY_DELAY_MS);
+            }
+        }
     } catch (error) {
         console.error(`Failed to register VK for ${name}`);
         process.exit(1);

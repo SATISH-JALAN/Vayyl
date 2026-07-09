@@ -4,10 +4,12 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "node scripts/poseidon2_verify_constants.mjs && node scripts/poseidon2_diff.mjs && node scripts/payment_circuits_test.mjs",
+    "test": "node scripts/poseidon2_verify_constants.mjs && node scripts/poseidon2_diff.mjs && node scripts/payment_circuits_test.mjs && node scripts/order_circuits_test.mjs && node scripts/position_circuits_test.mjs",
     "test:poseidon2-constants": "node scripts/poseidon2_verify_constants.mjs",
     "test:poseidon2-diff": "node scripts/poseidon2_diff.mjs",
-    "test:payment-circuits": "node scripts/payment_circuits_test.mjs"
+    "test:payment-circuits": "node scripts/payment_circuits_test.mjs",
+    "test:order-circuits": "node scripts/order_circuits_test.mjs",
+    "test:position-circuits": "node scripts/position_circuits_test.mjs"
   },
   "keywords": [],
   "author": "",

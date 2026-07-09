@@ -66,7 +66,7 @@
           },
           "ext": "v0"
         },
-        "live_until": 100000
+        "live_until": 3000000
       },
       {
         "entry": {

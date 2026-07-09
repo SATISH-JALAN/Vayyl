@@ -64,7 +64,7 @@ template HiddenOrderTrigger() {
     signal gap <== sel_span + down;
     // gap >= 0 iff the correct-direction trigger has fired. Both prices are
     // < 2^64, so the fired-side gap is < 2^64 and fits; the wrong side wraps.
-    component rc_gap = RangeCheck64();
+    component rc_gap = RangeCheckN(65);
     rc_gap.in <== gap;
 }
 
