@@ -66,6 +66,16 @@ pub trait AspMembershipInterface {
     fn is_known_root(env: Env, root: BytesN<32>) -> bool;
 }
 
+/// Decoupled client for the ASP blocklist contract. On transfer/withdraw the
+/// pool rejects nullifiers the blocklist marks as blocked. If the non-membership
+/// contract is not yet initialized (no `Admin` key), the check is skipped so
+/// older deployments keep working until the admin wires a real blocklist.
+#[soroban_sdk::contractclient(name = "AspNonMembershipClient")]
+pub trait AspNonMembershipInterface {
+    fn is_not_blocked(env: Env, leaf: BytesN<32>) -> bool;
+    fn admin(env: Env) -> Result<Address, soroban_sdk::Error>;
+}
+
 pub const TREE_DEPTH: u32 = 20;
 
 /// H4: how many recent Merkle roots stay valid for in-flight proofs.
@@ -125,6 +135,8 @@ pub enum Error {
     /// D1: `execute_settlement` caller is not on the admin-managed settlement
     /// authority allowlist.
     NotSettlementAuthority = 9,
+    /// A spent nullifier is on the ASP blocklist (non-membership enforcement).
+    NullifierBlocked = 10,
 }
 
 #[contract]
@@ -174,6 +186,42 @@ fn i128_to_field_bytes(value: i128) -> Result<[u8; 32], Error> {
     let mut out = [0u8; 32];
     out[16..32].copy_from_slice(&value.to_be_bytes());
     Ok(out)
+}
+
+/// Reject nullifiers on the ASP blocklist when a real non-membership contract
+/// is wired. Skipped if the contract at `NonMembership` was never initialized
+/// (backwards-compatible with pools that pass a placeholder address).
+fn assert_nullifier_not_blocked(env: &Env, nullifier: &BytesN<32>) -> Result<(), Error> {
+    let nm_addr: Address = env
+        .storage()
+        .instance()
+        .get(&DataKey::NonMembership)
+        .ok_or(Error::NotInitialized)?;
+    // Deploy scripts may pass verifier/membership as a placeholder until a real
+    // AspNonMembership contract is wired. Those contracts expose `admin` but not
+    // `is_not_blocked`, so treat them as "blocklist not yet enabled".
+    let verifier: Address = env
+        .storage()
+        .instance()
+        .get(&DataKey::Verifier)
+        .ok_or(Error::NotInitialized)?;
+    let membership: Address = env
+        .storage()
+        .instance()
+        .get(&DataKey::Membership)
+        .ok_or(Error::NotInitialized)?;
+    if nm_addr == verifier || nm_addr == membership {
+        return Ok(());
+    }
+    let nm_client = AspNonMembershipClient::new(env, &nm_addr);
+    // `admin()` returns Err when the blocklist contract was never initialized.
+    if nm_client.try_admin().is_err() {
+        return Ok(());
+    }
+    if !nm_client.is_not_blocked(nullifier) {
+        return Err(Error::NullifierBlocked);
+    }
+    Ok(())
 }
 
 #[contractimpl]
@@ -506,6 +554,10 @@ impl VayylPool {
             return Err(Error::UnknownRoot);
         }
 
+        // V2-ready blocklist: reject blocked nullifiers before any state change.
+        assert_nullifier_not_blocked(&env, &nullifier1)?;
+        assert_nullifier_not_blocked(&env, &nullifier2)?;
+
         // 1. Mark Nullifiers (prevents double-spend)
         Self::mark_nullifier(&env, nullifier1.clone())?;
         Self::mark_nullifier(&env, nullifier2.clone())?;
@@ -575,6 +627,9 @@ impl VayylPool {
         if !Self::is_known_root(&env, &root) {
             return Err(Error::UnknownRoot);
         }
+
+        // V2-ready blocklist: reject blocked nullifiers before any state change.
+        assert_nullifier_not_blocked(&env, &nullifier)?;
 
         // 1. Mark Nullifier (prevents double-spend)
         Self::mark_nullifier(&env, nullifier.clone())?;
@@ -740,6 +795,38 @@ impl VayylPool {
         env.storage()
             .instance()
             .has(&DataKey::SettlementAuthority(authority))
+    }
+
+    /// Pull public tokens from `depositor` into pool custody. Callable only by
+    /// settlement authorities (hidden-order / agentic hubs lock escrow at commit).
+    /// Both the authority sub-call and the depositor must authorize.
+    pub fn pull_public_deposit(
+        env: Env,
+        authority: Address,
+        depositor: Address,
+        amount: i128,
+    ) -> Result<(), Error> {
+        authority.require_auth();
+        if !env
+            .storage()
+            .instance()
+            .has(&DataKey::SettlementAuthority(authority.clone()))
+        {
+            return Err(Error::NotSettlementAuthority);
+        }
+        if amount <= 0 {
+            return Err(Error::InvalidAmount);
+        }
+        depositor.require_auth();
+
+        let asset: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Asset)
+            .ok_or(Error::NotInitialized)?;
+        let token_client = token::Client::new(&env, &asset);
+        token_client.transfer(&depositor, &env.current_contract_address(), &amount);
+        Ok(())
     }
 
     /// Get the current Merkle root

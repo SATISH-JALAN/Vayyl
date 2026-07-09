@@ -40,10 +40,7 @@ const runWorkerTask = (type: string, payload: any): Promise<any> => {
 };
 
 export const usePositionsStore = create<PositionsState>((set, get) => ({
-  positions: [
-    { id: 'pos_1', asset: 'USDC/XLM', type: 'Long', leverage: '5x', size: '$12,500', health: '92%', status: 'Active' },
-    { id: 'pos_2', asset: 'BTC/USDC', type: 'Short', leverage: '2x', size: '$8,200', health: '85%', status: 'Active' }
-  ],
+  positions: [],
   isProving: false,
 
   openPosition: async (asset, type, leverage, size) => {

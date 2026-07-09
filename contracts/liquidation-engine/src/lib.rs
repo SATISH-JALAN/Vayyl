@@ -42,6 +42,7 @@ pub trait Groth16VerifierInterface {
 #[soroban_sdk::contractclient(name = "PositionManagerClient")]
 pub trait PositionManagerInterface {
     fn get_position_state(env: Env, position_id: BytesN<32>) -> Result<PositionState, soroban_sdk::Error>;
+    fn mark_position_seized(env: Env, position_id: BytesN<32>) -> Result<(), soroban_sdk::Error>;
 }
 
 /// D3: decoupled client for the pool's settlement primitive. A seizure pays the
@@ -209,22 +210,15 @@ impl LiquidationEngineContract {
         env.storage().persistent().set(&DataKey::Liquidated(position_id.clone()), &true);
 
         // 7. Clean up escrow
-        env.storage().persistent().remove(&DataKey::KeeperEscrow(position_id));
+        env.storage().persistent().remove(&DataKey::KeeperEscrow(position_id.clone()));
 
         // 8. Real seizure (D3): pay the collateral out of the pool to the keeper via
-        //    `execute_settlement`. This is the fund movement that was previously a
-        //    `let _ = receiver` no-op. The liquidation-engine must be an allowlisted
+        //    `execute_settlement`. The liquidation-engine must be an allowlisted
         //    settlement authority on the pool; its own sub-call auto-authorizes.
         //
-        //    HONEST-SCOPE CAVEAT: `seize_amount` is NOT yet bound by the
-        //    LiquidationHeartbeat circuit (its public inputs are only
-        //    [position_commitment, keeper_public_commitment, timestamp] — the private
-        //    collateral_amount is proven-known but never exposed). So on testnet the
-        //    amount is keeper-asserted and trusted; the allowlist + escrow + proof +
-        //    grace-window checks are the gate. Binding the seized amount trustlessly
-        //    needs a seize circuit that exposes collateral (the "forced-reveal
-        //    threshold decryption" HARD roadmap item). The pool's own balance is the
-        //    hard cap (the SAC transfer fails if the pool can't cover it).
+        //    V2: `seize_amount` is keeper-asserted until a LiquidationSeize circuit
+        //    exposes collateral in the public inputs. The pool SAC balance is the
+        //    hard cap (transfer fails if the pool can't cover it).
         if seize_amount > 0 {
             let pool_addr: Address = env
                 .storage()
@@ -242,6 +236,9 @@ impl LiquidationEngineContract {
                 &seize_amount,
             );
         }
+
+        // 9. Remove the position record from PositionManager.
+        let _ = pm_client.mark_position_seized(&position_id);
 
         Ok(())
     }
@@ -428,6 +425,9 @@ mod test {
                 last_health_timestamp: 0,
             }
         }
+        pub fn mark_position_seized(_env: Env, _position_id: BytesN<32>) -> Result<(), soroban_sdk::Error> {
+            Ok(())
+        }
     }
 
     fn dummy_proof(env: &Env) -> Groth16Proof {
@@ -549,5 +549,57 @@ mod test {
         );
         assert!(res.is_err(), "seizure without pool allowlist must fail");
         assert_eq!(token::Client::new(&env, &asset).balance(&keeper), 0);
+    }
+
+    #[sdk_contract]
+    pub struct MockVerifierFails;
+    #[sdk_contractimpl]
+    impl MockVerifierFails {
+        pub fn verify(
+            _env: Env,
+            _circuit_id: CircuitId,
+            _proof: Groth16Proof,
+            _public_inputs: Vec<BytesN<32>>,
+        ) -> Result<bool, soroban_sdk::Error> {
+            Ok(false)
+        }
+    }
+
+    #[test]
+    fn test_reveal_and_seize_fails_if_proof_invalid() {
+        let env = Env::default();
+        env.mock_all_auths();
+
+        let verifier_fails = env.register(MockVerifierFails, ());
+        let position_commitment = BytesN::from_array(&env, &[0xC1; 32]);
+        let owner = Address::generate(&env);
+        let pm_id = env.register(MockPM, ());
+        MockPMClient::new(&env, &pm_id).init(&owner, &position_commitment);
+
+        let admin = Address::generate(&env);
+        let pool = Address::generate(&env);
+        let le_id = env.register(LiquidationEngineContract, ());
+        let le = LiquidationEngineContractClient::new(&env, &le_id);
+        le.initialize(&admin, &pm_id, &verifier_fails, &pool, &3600u64);
+
+        let position_id = BytesN::from_array(&env, &[0x01; 32]);
+        let keeper_commitment = BytesN::from_array(&env, &[0x0C; 32]);
+        le.register_heartbeat(&position_id, &0u64);
+        env.ledger().with_mut(|li| li.timestamp = 7200);
+        le.initiate_liquidation(&position_id, &keeper_commitment);
+
+        let keeper = Address::generate(&env);
+        let ts_bytes = BytesN::from_array(&env, &[0u8; 32]);
+        let result = le.try_reveal_and_seize(
+            &position_id,
+            &dummy_proof(&env),
+            &position_commitment,
+            &keeper_commitment,
+            &ts_bytes,
+            &keeper,
+            &600i128,
+        );
+        assert_eq!(result, Err(Ok(Error::InvalidProof)));
+        assert!(!le.is_liquidated(&position_id));
     }
 }

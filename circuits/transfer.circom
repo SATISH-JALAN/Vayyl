@@ -90,6 +90,10 @@ template Transfer(depth) {
     }
     in2_tree.root === root;
 
+    // 3.5 Nullifier distinctness
+    signal diff_inv <-- 1 / (nullifier1 - nullifier2);
+    (nullifier1 - nullifier2) * diff_inv === 1;
+
     // 4. Output 1 Logic
     component out1_amount_check = Num2Bits(64);
     out1_amount_check.in <== out_amount1;

@@ -273,4 +273,62 @@ mod test {
 
         assert!(!client.has_vk(&CircuitId::Deposit));
     }
+
+    #[contract]
+    pub struct CallerContract;
+
+    #[contractimpl]
+    impl CallerContract {
+        pub fn call_verifier(
+            env: Env,
+            verifier_id: Address,
+            circuit_id: CircuitId,
+            public_inputs: Vec<BytesN<32>>,
+            proof: Groth16Proof,
+        ) -> bool {
+            let client = Groth16VerifierContractClient::new(&env, &verifier_id);
+            client.verify(&circuit_id, &proof, &public_inputs)
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(Crypto, InvalidInput)")]
+    fn test_cross_contract_verify() {
+        let env = Env::default();
+        env.mock_all_auths();
+        
+        let verifier_id = env.register(Groth16VerifierContract, ());
+        let verifier_client = Groth16VerifierContractClient::new(&env, &verifier_id);
+        
+        let admin = Address::generate(&env);
+        verifier_client.initialize(&admin);
+        
+        // Register a valid VK (gamma != delta)
+        let vk = VerificationKey {
+            alpha_g1: BytesN::from_array(&env, &[0u8; 64]),
+            beta_g2: BytesN::from_array(&env, &[0u8; 128]),
+            gamma_g2: BytesN::from_array(&env, &[0u8; 128]),
+            delta_g2: BytesN::from_array(&env, &[1u8; 128]), // gamma != delta
+            ic: Vec::from_slice(&env, &[
+                BytesN::from_array(&env, &[0u8; 64]),
+                BytesN::from_array(&env, &[0u8; 64])
+            ]), // 1 public input expected, so ic.len() must be 2
+        };
+        verifier_client.set_vk(&CircuitId::Deposit, &vk);
+        
+        let caller_id = env.register(CallerContract, ());
+        let caller_client = CallerContractClient::new(&env, &caller_id);
+        
+        let proof = Groth16Proof {
+            a: BytesN::from_array(&env, &[0u8; 64]),
+            b: BytesN::from_array(&env, &[0u8; 128]),
+            c: BytesN::from_array(&env, &[0u8; 64]),
+        };
+        
+        let public_inputs = Vec::from_slice(&env, &[BytesN::from_array(&env, &[0u8; 32])]);
+        
+        // The pairing check will fail with dummy data, so it should return false
+        let result = caller_client.call_verifier(&verifier_id, &CircuitId::Deposit, &public_inputs, &proof);
+        assert!(!result);
+    }
 }

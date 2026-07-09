@@ -4,16 +4,35 @@ set -e
 # Compile all Vayyl circuits
 # Note: Position circuits require a higher power of tau (e.g. 15 or 16) due to range checks and poseidon hashes.
 
-CIRCUITS=("deposit" "transfer" "withdraw" "asp_membership" "position_open" "position_health" "position_close" "liquidation_heartbeat")
+# Full registrable circuit set = every circuit that gets a VK registered on-chain
+# (matches the CIRCUITS map in scripts/register_vks.js, 9 entries). The Sprint E
+# order circuits (hidden_order_trigger, sealed_order) MUST be here or a "regenerate
+# all" run silently skips them and their registered VK goes stale vs the deployed
+# proving key.
+#   NOTE: asp_membership.circom is deliberately NOT here — it's a library template
+#   (its `component main` is commented out) that is proven INSIDE deposit/withdraw
+#   via include, never as a standalone proof. Listing it aborted this whole script
+#   at "No main specified" under `set -e`, which is why circuits used to be compiled
+#   one-by-one by hand.
+CIRCUITS=("deposit" "transfer" "withdraw" "position_open" "position_health" "position_close" "liquidation_heartbeat" "hidden_order_trigger" "sealed_order")
 
 mkdir -p build/r1cs build/wasm build/zkey build/vkey
 
+# Any valid 2^16 phase-1 ptau works for these per-circuit Groth16 setups. Prefer a
+# ptau already on disk (pot16_final.ptau from earlier runs) over re-downloading the
+# ~75 MB hez file. All listed circuits fit under 2^16 constraints.
 echo "Checking for Powers of Tau file..."
-if [ ! -f ptau/powersOfTau28_hez_final_16.ptau ]; then
+if [ -f ptau/pot16_final.ptau ]; then
+    PTAU="ptau/pot16_final.ptau"
+elif [ -f ptau/powersOfTau28_hez_final_16.ptau ]; then
+    PTAU="ptau/powersOfTau28_hez_final_16.ptau"
+else
     echo "Downloading Powers of Tau 16..."
     mkdir -p ptau
     curl -o ptau/powersOfTau28_hez_final_16.ptau https://hermez.s3-eu-west-1.amazonaws.com/powersOfTau28_hez_final_16.ptau
+    PTAU="ptau/powersOfTau28_hez_final_16.ptau"
 fi
+echo "Using ptau: $PTAU"
 
 for circuit in "${CIRCUITS[@]}"; do
     echo "======================================"
@@ -30,7 +49,7 @@ for circuit in "${CIRCUITS[@]}"; do
 
     # 2. Setup (ZKey and VKey)
     echo "Generating zkey for $circuit..."
-    snarkjs groth16 setup "build/r1cs/$circuit.r1cs" ptau/powersOfTau28_hez_final_16.ptau "build/zkey/${circuit}_0000.zkey"
+    snarkjs groth16 setup "build/r1cs/$circuit.r1cs" "$PTAU" "build/zkey/${circuit}_0000.zkey"
     
     # 3. Contribute (Dummy for local testnet)
     echo "Contributing to phase 2..."

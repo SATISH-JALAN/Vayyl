@@ -9,13 +9,15 @@ dist/
 .env
 .env.*
 !.env.example
-!.env.testnet
 
 # Agent customizations
+.claude
+AGENTS.md
+CLAUDE.md
 
 # Docs
-CLAUDE.md
 docs/
+
 # Circom build artifacts
 circuits/build/
 *.sym

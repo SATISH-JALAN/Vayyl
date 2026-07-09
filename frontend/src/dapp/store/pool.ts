@@ -119,8 +119,17 @@ export const usePoolStore = create<PoolState>((set, get) => ({
         pubX: keys.pubX.toString(),
         pubY: keys.pubY.toString(),
         blindness,
-        aspRoot: '0', // ASP not enforced in testnet V1 (labeled) — Task 5.9
       });
+
+      // ASP is enforced on-chain: the deposit reverts with Error #8 unless this
+      // key's leaf is in the ASP tree. Surface the leaf so an admin can insert it
+      // (scripts/asp_insert.js) — indispensable for diagnosing an Error #8.
+      console.info(
+        '[Vayyl] ASP leaf for this key:', proveResult.aspLeaf,
+        '\n  pubX:', keys.pubX.toString(),
+        '\n  pubY:', keys.pubY.toString(),
+        '\n  asp_root:', proveResult.aspRoot,
+      );
 
       set({ status: 'Submitting transaction…' });
       const txHash = await submitDeposit({
@@ -129,7 +138,8 @@ export const usePoolStore = create<PoolState>((set, get) => ({
         commitment: proveResult.commitment,
         publicAmount: BigInt(amount),
         // Must match the proof's asp_root public signal exactly (derived in the
-        // worker), else on-chain verification fails. V1 ASP is not enforced.
+        // worker), and be a root the ASP contract has produced — else the on-chain
+        // is_known_root gate rejects the deposit (Error #8).
         aspRoot: proveResult.aspRoot,
         asset,
       });
