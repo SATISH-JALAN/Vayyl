@@ -193,7 +193,13 @@ export const usePoolStore = create<PoolState>((set, get) => ({
         );
       }
 
-      const fee = 0n; // self-submit; relayer fee wired when using the relayer path
+      // Fetch relayer pubkey
+      const relayerRes = await fetch(`${process.env.NEXT_PUBLIC_RELAYER_URL || 'http://localhost:3002'}/health`);
+      if (!relayerRes.ok) throw new Error('Relayer health check failed');
+      const relayerData = await relayerRes.json();
+      const relayerPubkey = relayerData.address;
+
+      const fee = 0n; // Relayer subsidizes the fee
       const publicAmount = BigInt(amount);
       const withdrawBinding = await computeWithdrawBinding(destination, publicAmount);
 
@@ -218,7 +224,7 @@ export const usePoolStore = create<PoolState>((set, get) => ({
         leaves: leaves.map((c) => c.toString()),
       });
 
-      set({ status: 'Submitting transaction…' });
+      set({ status: 'Submitting via Relayer…' });
       const txHash = await submitWithdraw({
         source: wallet.address,
         proof: proveResult.proof,
@@ -227,8 +233,9 @@ export const usePoolStore = create<PoolState>((set, get) => ({
         recipient: destination,
         root: proveResult.root,
         fee,
-        relayer: wallet.address, // self as relayer when self-submitting (fee=0)
+        relayer: relayerPubkey,
         asset,
+        useRelayer: true,
       });
 
       await markNoteSpent(keys.viewingKey, note.id);

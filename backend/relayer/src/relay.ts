@@ -22,7 +22,7 @@ export class RelayerService {
             await this.validateTransaction(innerTx);
 
             // Fetch the relayer's base fee or calculate fee based on inner tx
-            const baseFee = await this.fetchBaseFee();
+            const baseFee = await this.fetchBaseFee(innerTx);
             
             // Soroban transactions require higher fees, this should be estimated dynamically
             // For now, we set a reasonable fixed fee or use the RPC simulateTransaction
@@ -54,31 +54,39 @@ export class RelayerService {
             throw new Error("Relayer only supports transactions with exactly one operation");
         }
 
-        const op = tx.operations[0];
+        const op = tx.operations[0] as StellarSdk.Operation.InvokeHostFunction;
         
-        // This validation is simplified. In reality, you'd check if the operation
-        // is an InvokeHostFunction and extract the contract address.
-        // For the buildathon, we bypass deep XDR inspection if it's too complex, 
-        // but it's crucial for security in production.
-        
-        /* 
         if (op.type !== 'invokeHostFunction') {
             throw new Error("Only smart contract invocations are allowed");
         }
-        */
         
-        // Ensure the inner tx is fully signed by the user
-        // (For fully anonymous shielded txs, there might not be a signature!)
+        const func = op.func;
+        if (func.switch().name === 'hostFunctionTypeInvokeContract') {
+             const invokeArgs = func.invokeContract();
+             const contractIdXdr = invokeArgs.contractAddress();
+             const contractAddress = StellarSdk.Address.fromScAddress(contractIdXdr).toString();
+             if (!this.allowedContracts.includes(contractAddress)) {
+                 throw new Error(`Contract ${contractAddress} is not in the allowlist.`);
+             }
+        }
         
-        console.log(`Validating transaction ${tx.hash().toString('hex')}...`);
+        console.log(`Validated transaction ${tx.hash().toString('hex')} targeting allowed contract.`);
     }
 
-    private async fetchBaseFee(): Promise<number> {
-        // Should fetch the latest base fee from the network.
-        // Soroban fee bump transactions need to cover the inner transaction's resource fees plus
-        // the inclusion fee.
-        
-        // For buildathon, return a fixed high fee (e.g. 5,000,000 stroops = 0.5 XLM)
-        return 5000000;
+    private async fetchBaseFee(innerTx: StellarSdk.Transaction): Promise<number> {
+        try {
+            const simulated = await this.server.simulateTransaction(innerTx);
+            if (StellarSdk.rpc.Api.isSimulationError(simulated)) {
+                throw new Error(simulated.error);
+            }
+            
+            const minResourceFee = BigInt(simulated.minResourceFee);
+            const inclusionFee = BigInt(100_000); 
+            
+            return Number(minResourceFee + inclusionFee);
+        } catch (e: any) {
+            console.error("Simulation failed, falling back to fixed fee", e);
+            return 5000000;
+        }
     }
 }

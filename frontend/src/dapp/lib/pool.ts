@@ -135,11 +135,12 @@ export async function computeWithdrawBinding(recipient: string, amount: bigint):
 
 // ---- tx assembly + submit --------------------------------------------------
 
-async function buildSignSubmit(
+export async function buildSignSubmit(
   sourceAddress: string,
   contractId: string,
   method: string,
   args: xdr.ScVal[],
+  useRelayer: boolean = false
 ): Promise<string> {
   const source = await server.getAccount(sourceAddress);
   const contract = new Contract(contractId);
@@ -160,6 +161,33 @@ async function buildSignSubmit(
     address: sourceAddress,
   });
   const signedXdr = typeof signed === 'string' ? signed : (signed as { signedTxXdr: string }).signedTxXdr;
+
+  if (useRelayer) {
+    const res = await fetch(`${RELAYER_URL}/relay`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tx: signedXdr })
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      throw new Error(`Relayer failed: ${data.error || JSON.stringify(data)}`);
+    }
+    // The relayer response contains the fee bump transaction hash
+    const hash = data.response?.hash;
+    if (!hash) throw new Error('Relayer did not return a transaction hash');
+
+    // Poll for finality
+    let attempts = 0;
+    while (true) {
+      const txRes = await server.getTransaction(hash);
+      if (txRes.status === 'SUCCESS') return hash;
+      if (txRes.status === 'FAILED') {
+        throw new Error(`Transaction ${hash} failed on-chain: ${JSON.stringify(txRes)}`);
+      }
+      if (++attempts > 30) throw new Error(`Timed out waiting for ${hash}`);
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+  }
 
   const signedTx = TransactionBuilder.fromXDR(signedXdr, NETWORK_PASSPHRASE);
   const sent = await server.sendTransaction(signedTx);
@@ -190,6 +218,7 @@ export interface DepositArgs {
   publicAmount: bigint;
   aspRoot: string; // decimal field element
   asset: string;
+  useRelayer?: boolean;
 }
 
 export async function submitDeposit(a: DepositArgs): Promise<string> {
@@ -200,7 +229,7 @@ export async function submitDeposit(a: DepositArgs): Promise<string> {
     i128(a.publicAmount),
     bytesN(a.aspRoot),
   ];
-  return buildSignSubmit(a.depositor, poolIdForAsset(a.asset), 'deposit', args);
+  return buildSignSubmit(a.depositor, poolIdForAsset(a.asset), 'deposit', args, a.useRelayer);
 }
 
 export interface WithdrawArgs {
@@ -213,6 +242,7 @@ export interface WithdrawArgs {
   fee: bigint;
   relayer: string;
   asset: string;
+  useRelayer?: boolean;
 }
 
 export async function submitWithdraw(a: WithdrawArgs): Promise<string> {
@@ -225,7 +255,7 @@ export async function submitWithdraw(a: WithdrawArgs): Promise<string> {
     i128(a.fee),
     addr(a.relayer),
   ];
-  return buildSignSubmit(a.source, poolIdForAsset(a.asset), 'withdraw', args);
+  return buildSignSubmit(a.source, poolIdForAsset(a.asset), 'withdraw', args, a.useRelayer);
 }
 
 // ---- indexer reads ---------------------------------------------------------

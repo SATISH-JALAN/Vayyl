@@ -7,13 +7,15 @@ export class Poller {
     private db: Database;
     private rpcUrl: string;
     private poolAddress: string;
+    private positionManagerAddress?: string;
     private running = false;
 
-    constructor(rpcUrl: string, db: Database, poolAddress: string) {
+    constructor(rpcUrl: string, db: Database, poolAddress: string, positionManagerAddress?: string) {
         this.server = new StellarSdk.rpc.Server(rpcUrl, { allowHttp: true });
         this.db = db;
         this.rpcUrl = rpcUrl;
         this.poolAddress = poolAddress;
+        this.positionManagerAddress = positionManagerAddress;
     }
 
     async start() {
@@ -65,11 +67,16 @@ export class Poller {
         // Follow pagination within this tick until the page isn't full.
         // eslint-disable-next-line no-constant-condition
         while (true) {
+            const contractIds = [this.poolAddress];
+            if (this.positionManagerAddress) {
+                contractIds.push(this.positionManagerAddress);
+            }
+
             const req: StellarSdk.rpc.Server.GetEventsRequest = {
                 filters: [
                     {
                         type: 'contract',
-                        contractIds: [this.poolAddress],
+                        contractIds: contractIds,
                         topics: [],
                     },
                 ],
@@ -137,6 +144,18 @@ export class Poller {
                     await this.db.insertCommitment(this.poolAddress, decoded.commitment1, -1, txHash, ledgerSeq);
                     await this.db.insertCommitment(this.poolAddress, decoded.commitment2, -1, txHash, ledgerSeq);
                     console.log(`Transfer: 2 nullifiers spent, 2 commitments added`);
+                    break;
+                case 'PositionOpen':
+                    await this.db.insertPosition(decoded.positionId, decoded.owner, decoded.commitment);
+                    console.log(`PositionOpen: id=${decoded.positionId.slice(0, 12)}... owner=${decoded.owner}`);
+                    break;
+                case 'PositionHealth':
+                    await this.db.updatePositionHealth(decoded.positionId, decoded.timestamp);
+                    console.log(`PositionHealth: id=${decoded.positionId.slice(0, 12)}... timestamp=${decoded.timestamp}`);
+                    break;
+                case 'PositionClose':
+                    await this.db.updatePositionClose(decoded.positionId, decoded.newCommitment);
+                    console.log(`PositionClose: id=${decoded.positionId.slice(0, 12)}...`);
                     break;
             }
         } catch (e: any) {

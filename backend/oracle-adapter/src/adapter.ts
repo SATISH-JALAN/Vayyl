@@ -14,31 +14,87 @@ export class OracleAdapter {
 
     async getAssetPrice(asset: string): Promise<{ price: number, timestamp: number, isStale: boolean }> {
         try {
-            // Reflector smart contract interface simulation
-            // For the buildathon, we simulate an RPC call to the actual Reflector Oracle contract.
-            // A real integration uses the exact XDR for Reflector's `lastprice` function.
-            
-            // Example Reflector call structure (simplified)
-            // let args = [StellarSdk.xdr.ScVal.scvSymbol("XLM")]
-            
             console.log(`Fetching price for ${asset} from Oracle ${this.oracleContractId}...`);
 
-            // SIMULATED RESPONSE
-            // In a real app, parse the xdr returned from simulateTransaction or invokeHostFunction
+            const contract = new StellarSdk.Contract(this.oracleContractId);
+
+            // Build the get_last_price() invocation
+            const call = contract.call('get_last_price');
+
+            // Simulate the transaction to read the return value without submitting
+            const simResult = await this.server.simulateTransaction(
+                new StellarSdk.TransactionBuilder(
+                    new StellarSdk.Account(
+                        // Use a throw-away source for simulation (read-only call)
+                        'GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF',
+                        '0'
+                    ),
+                    {
+                        fee: '100',
+                        networkPassphrase: StellarSdk.Networks.TESTNET,
+                    }
+                )
+                    .addOperation(call)
+                    .setTimeout(30)
+                    .build()
+            );
+
+            if (StellarSdk.rpc.Api.isSimulationError(simResult)) {
+                throw new Error(`Simulation failed: ${(simResult as any).error}`);
+            }
+
+            // Parse the result — get_last_price returns (i128, u64) as a tuple
+            const successResult = simResult as StellarSdk.rpc.Api.SimulateTransactionSuccessResponse;
+            const returnValue = successResult.result?.retval;
+
+            if (!returnValue) {
+                throw new Error('No return value from simulation');
+            }
+
+            // The return type is a Soroban tuple (Vec<ScVal>) containing [i128, u64]
+            const tupleValues = returnValue.value() as any[];
+            
+            let price: number;
+            let oracleTimestamp: number;
+
+            if (Array.isArray(tupleValues) && tupleValues.length >= 2) {
+                // Extract i128 price — Soroban i128 is encoded as { hi: i64, lo: u64 }
+                const priceVal = tupleValues[0];
+                if (priceVal && typeof priceVal.value === 'function') {
+                    const pv = priceVal.value();
+                    if (pv && pv.lo !== undefined && pv.hi !== undefined) {
+                        price = Number(BigInt(pv.hi().toString()) * BigInt(2**64) + BigInt(pv.lo().toString()));
+                    } else {
+                        price = Number(pv);
+                    }
+                } else {
+                    price = Number(priceVal);
+                }
+
+                // Extract u64 timestamp
+                const tsVal = tupleValues[1];
+                if (tsVal && typeof tsVal.value === 'function') {
+                    oracleTimestamp = Number(tsVal.value());
+                } else {
+                    oracleTimestamp = Number(tsVal);
+                }
+            } else {
+                // Fallback: try to parse as a simple value
+                console.warn('Unexpected return format, attempting raw parse');
+                price = 0;
+                oracleTimestamp = 0;
+            }
+            
             const currentTimestamp = Math.floor(Date.now() / 1000);
-            
-            const simulatedPrice = 0.50; // $0.50 per XLM
-            const simulatedOracleTimestamp = currentTimestamp - 60; // 1 minute old
-            
-            const isStale = (currentTimestamp - simulatedOracleTimestamp) > this.maxStaleness;
+            const isStale = (currentTimestamp - oracleTimestamp) > this.maxStaleness;
 
             return {
-                price: simulatedPrice,
-                timestamp: simulatedOracleTimestamp,
+                price,
+                timestamp: oracleTimestamp,
                 isStale
             };
         } catch (err: any) {
-            console.error("Oracle fetch error:", err);
+            console.error("Oracle fetch error:", err.message || err);
             throw new Error(`Failed to fetch oracle price: ${err.message}`);
         }
     }

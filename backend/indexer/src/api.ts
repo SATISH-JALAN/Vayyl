@@ -52,5 +52,15 @@ export function createApi(db: Database, poolAddress: string): express.Express {
         }
     });
 
+    app.get('/positions', async (req, res) => {
+        try {
+            const owner = req.query.owner as string | undefined;
+            const positions = await db.getPositions(owner);
+            res.json({ positions });
+        } catch (err: any) {
+            res.status(500).json({ error: err.message });
+        }
+    });
+
     return app;
 }

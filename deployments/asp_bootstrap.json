@@ -3,6 +3,14 @@
     {
       "label": "frontend-user-key",
       "hex": "0cdeae9ad78f56fb16c3dd478f9f49ecf273bdb3998da4d6f588b0ac05ceba93"
+    },
+    {
+      "label": "e2e-deposit-1-key-hash2(12345,67890)",
+      "hex": "1ad6b3b05a9aa94b13c2f95c8661a9d8413b79cc1999f489ab155cef8ab4d6e0"
+    },
+    {
+      "label": "e2e-deposit-2-key-hash2(54321,09876)",
+      "hex": "2b1027644320080f0cb2b770dcfd1d0360e6ee13e341d671e7227ec66fecc366"
     }
   ]
 }

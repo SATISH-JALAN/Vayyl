@@ -164,42 +164,38 @@ self.onmessage = async (e: MessageEvent) => {
       case 'PROVE_POSITION_OPEN': {
         const p = payload as any;
         
-        // Mock note secrets for MVP
-        const amount = 500n;
-        const pubX = 1n;
-        const pubY = 2n;
-        const blindness = 3n;
-        const privKey = 10n;
+        const amount = BigInt(p.amount);
+        const pubX = BigInt(p.pubX);
+        const pubY = BigInt(p.pubY);
+        const blindness = BigInt(p.blindness);
+        const privKey = BigInt(p.privKey);
         
         const commitment = await computeCommitment(amount, pubX, pubY, blindness);
         const nullifier = await computeNullifier(commitment, privKey);
         
-        const size = p.size ? BigInt(p.size.replace(/[^0-9]/g, '')) : 12500n;
-        const direction = p.type === 'Long' ? 1n : 0n;
-        const entry_price = 1000n;
-        const position_blindness = 4n;
+        const leaves = p.leaves.map((x: string) => BigInt(x));
+        const { root, pathElements, pathIndices } = await buildMerklePath(leaves, p.leafIndex);
         
-        // Position Commitment
-        const pos_commit = await poseidon2Hash2(size, await poseidon2Hash2(direction, await poseidon2Hash2(entry_price, await poseidon2Hash2(pubX, await poseidon2Hash2(pubY, position_blindness)))));
+        const size = BigInt(p.size);
+        const direction = BigInt(p.direction);
+        const entry_price = BigInt(p.entry_price);
+        const position_blindness = BigInt(p.position_blindness);
         
-        const zeros = await zeroHashes(TREE_DEPTH);
-        const pathElements = zeros.slice(0, TREE_DEPTH).map(z => z.toString());
-        const pathIndices = Array(TREE_DEPTH).fill(0);
+        const metaHash1 = await poseidon2Hash2(size, await poseidon2Hash2(direction, await poseidon2Hash2(entry_price, position_blindness)));
+        const pos_commit = await poseidon2Hash2(amount, await poseidon2Hash2(pubX, await poseidon2Hash2(pubY, metaHash1)));
         
-        const root = await computeAspRoot(pubX, pubY, pathElements, pathIndices);
-
         const input = {
           root: root.toString(),
           nullifier: nullifier.toString(),
           position_commitment: pos_commit.toString(),
-          meta_hash: "0",
+          meta_hash: p.meta_hash,
           amount: amount.toString(),
           pubX: pubX.toString(),
           pubY: pubY.toString(),
           blindness: blindness.toString(),
           privKey: privKey.toString(),
-          pathElements,
-          pathIndices,
+          pathElements: pathElements.map((x) => x.toString()),
+          pathIndices: pathIndices.map((x) => x.toString()),
           size: size.toString(),
           direction: direction.toString(),
           entry_price: entry_price.toString(),
@@ -210,7 +206,69 @@ self.onmessage = async (e: MessageEvent) => {
           input, '/circuits/position_open.wasm', '/circuits/position_open_final.zkey'
         );
         
-        result = { proof, publicSignals, position_commitment: pos_commit.toString() };
+        result = { proof, publicSignals, position_commitment: pos_commit.toString(), nullifier: nullifier.toString(), root: root.toString() };
+        break;
+      }
+
+      case 'PROVE_POSITION_CLOSE': {
+        const p = payload as any;
+        
+        const pubX = BigInt(p.pubX);
+        const pubY = BigInt(p.pubY);
+        const old_privKey = BigInt(p.old_privKey);
+        
+        const position_nullifier = await poseidon2Hash2(BigInt(p.old_position_commitment), old_privKey);
+        
+        const new_size = BigInt(p.new_size);
+        const new_direction = BigInt(p.new_direction);
+        const new_entry_price = BigInt(p.new_entry_price);
+        const new_collateral = BigInt(p.new_collateral);
+        const new_blindness = BigInt(p.new_blindness);
+        
+        const new_pos_commit = await poseidon2Hash2(new_collateral, await poseidon2Hash2(pubX, await poseidon2Hash2(pubY, await poseidon2Hash2(new_size, await poseidon2Hash2(new_direction, await poseidon2Hash2(new_entry_price, new_blindness))))));
+        // Note: position_commitment hash ordering differs slightly between e2e and circuits sometimes. Wait, the e2e uses calculatePositionCommitment which is Hash4(collateral, pubX, pubY, Hash4(size, direction, entry_price, blindness)).
+        // Let's match the e2e script exactly for the worker.
+        
+        const metaHash1 = await poseidon2Hash2(new_size, await poseidon2Hash2(new_direction, await poseidon2Hash2(new_entry_price, new_blindness)));
+        const new_pos_commit_correct = await poseidon2Hash2(new_collateral, await poseidon2Hash2(pubX, await poseidon2Hash2(pubY, metaHash1)));
+
+        const note_amount = BigInt(p.note_amount);
+        const note_blindness = BigInt(p.note_blindness);
+        const output_note_commitment = await computeCommitment(note_amount, pubX, pubY, note_blindness);
+        
+        const input = {
+          position_nullifier: position_nullifier.toString(),
+          new_position_commitment: new_pos_commit_correct.toString(),
+          output_note_commitment: output_note_commitment.toString(),
+          oracle_price: p.oracle_price.toString(),
+          fee: p.fee.toString(),
+          meta_hash: p.meta_hash,
+          old_collateral: p.old_collateral.toString(),
+          old_size: p.old_size.toString(),
+          old_direction: p.old_direction.toString(),
+          old_entry_price: p.old_entry_price.toString(),
+          old_pubX: pubX.toString(),
+          old_pubY: pubY.toString(),
+          old_blindness: p.old_blindness.toString(),
+          old_privKey: old_privKey.toString(),
+          new_collateral: new_collateral.toString(),
+          new_size: new_size.toString(),
+          new_direction: new_direction.toString(),
+          new_entry_price: new_entry_price.toString(),
+          new_pubX: pubX.toString(),
+          new_pubY: pubY.toString(),
+          new_blindness: new_blindness.toString(),
+          note_amount: note_amount.toString(),
+          note_pubX: pubX.toString(),
+          note_pubY: pubY.toString(),
+          note_blindness: note_blindness.toString()
+        };
+
+        const { proof, publicSignals } = await snarkjs.groth16.fullProve(
+          input, '/circuits/position_close.wasm', '/circuits/position_close_final.zkey'
+        );
+        
+        result = { proof, publicSignals, position_nullifier: position_nullifier.toString(), new_position_commitment: new_pos_commit_correct.toString(), output_note_commitment: output_note_commitment.toString() };
         break;
       }
 

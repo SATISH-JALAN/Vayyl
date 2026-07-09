@@ -93,4 +93,39 @@ export class Database {
         );
         return result.rows.map(r => r.nullifier_hash);
     }
+
+    async insertPosition(positionId: string, owner: string, commitment: string) {
+        await this.pool.query(
+            `INSERT INTO positions (position_id, owner, commitment)
+             VALUES ($1, $2, $3)
+             ON CONFLICT (position_id) DO UPDATE SET commitment = EXCLUDED.commitment, is_closed = FALSE`,
+            [positionId, owner, commitment]
+        );
+    }
+
+    async updatePositionHealth(positionId: string, timestamp: number) {
+        await this.pool.query(
+            `UPDATE positions SET last_health_timestamp = $2, updated_at = CURRENT_TIMESTAMP WHERE position_id = $1`,
+            [positionId, timestamp]
+        );
+    }
+
+    async updatePositionClose(positionId: string, newCommitment: string) {
+        await this.pool.query(
+            `UPDATE positions SET commitment = $2, updated_at = CURRENT_TIMESTAMP WHERE position_id = $1`,
+            [positionId, newCommitment]
+        );
+    }
+
+    async getPositions(owner?: string): Promise<any[]> {
+        let query = 'SELECT * FROM positions';
+        let params: any[] = [];
+        if (owner) {
+            query += ' WHERE owner = $1';
+            params.push(owner);
+        }
+        query += ' ORDER BY created_at DESC';
+        const result = await this.pool.query(query, params);
+        return result.rows;
+    }
 }

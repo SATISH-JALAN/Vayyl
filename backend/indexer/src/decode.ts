@@ -26,7 +26,10 @@ export type PoolEvent =
       nullifier2: string;
       commitment1: string;
       commitment2: string;
-    };
+    }
+  | { kind: 'PositionOpen'; positionId: string; owner: string; commitment: string }
+  | { kind: 'PositionHealth'; positionId: string; timestamp: number }
+  | { kind: 'PositionClose'; positionId: string; newCommitment: string; outputNoteCommitment: string };
 
 /** 32-byte ScVal (BytesN<32>) → lowercase hex, no 0x. */
 function bytesN32ToHex(v: xdr.ScVal): string {
@@ -92,6 +95,39 @@ export function decodePoolEvent(topic: xdr.ScVal[], value: xdr.ScVal): PoolEvent
         nullifier2: bytesN32ToHex(topic[2]),
         commitment1: hex(c1),
         commitment2: hex(c2),
+      };
+    }
+    case 'PositionOpen': {
+      if (topic.length < 3) return null;
+      const c = data.commitment as Buffer | Uint8Array | undefined;
+      const hex = (b?: Buffer | Uint8Array) =>
+        b ? Buffer.from(b).toString('hex').padStart(64, '0') : '';
+      return {
+        kind: 'PositionOpen',
+        positionId: bytesN32ToHex(topic[1]),
+        owner: String(scValToNative(topic[2])),
+        commitment: hex(c),
+      };
+    }
+    case 'PositionHealth': {
+      if (topic.length < 2) return null;
+      return {
+        kind: 'PositionHealth',
+        positionId: bytesN32ToHex(topic[1]),
+        timestamp: Number(data.timestamp ?? 0),
+      };
+    }
+    case 'PositionClose': {
+      if (topic.length < 2) return null;
+      const nc = data.new_commitment as Buffer | Uint8Array | undefined;
+      const oc = data.output_note_commitment as Buffer | Uint8Array | undefined;
+      const hex = (b?: Buffer | Uint8Array) =>
+        b ? Buffer.from(b).toString('hex').padStart(64, '0') : '';
+      return {
+        kind: 'PositionClose',
+        positionId: bytesN32ToHex(topic[1]),
+        newCommitment: hex(nc),
+        outputNoteCommitment: hex(oc),
       };
     }
     default:

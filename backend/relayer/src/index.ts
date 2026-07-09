@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { RelayerService } from './relay.js';
+import * as StellarSdk from '@stellar/stellar-sdk';
 
 dotenv.config();
 
@@ -29,8 +30,10 @@ async function main() {
     app.use(cors());
     app.use(express.json());
 
+    const relayerPubkey = StellarSdk.Keypair.fromSecret(RELAYER_SECRET).publicKey();
+
     app.get('/health', (req, res) => {
-        res.json({ status: 'ok', address: "G_RELAYER_PUBKEY_HERE" }); // Would derive pubkey from secret
+        res.json({ status: 'ok', address: relayerPubkey });
     });
 
     app.post('/relay', async (req, res) => {

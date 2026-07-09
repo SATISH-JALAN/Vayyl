@@ -2,7 +2,6 @@
   "name": "@vayyl/keeper",
   "version": "0.1.0",
   "private": true,
-  "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
@@ -10,9 +9,11 @@
     "test": "vitest"
   },
   "dependencies": {
-    "@stellar/stellar-sdk": "^13.0.0"
+    "@stellar/stellar-sdk": "^13.0.0",
+    "dotenv": "^17.4.2"
   },
   "devDependencies": {
+    "@types/node": "^26.1.1",
     "tsx": "^4.0.0",
     "typescript": "^6.0.0",
     "vitest": "^3.0.0"

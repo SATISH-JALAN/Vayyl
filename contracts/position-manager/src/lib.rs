@@ -2,7 +2,7 @@
 
 use vayyl_types::{CircuitId, Groth16Proof, PositionState};
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, Address, BytesN, Env, Vec,
+    contract, contracterror, contractevent, contractimpl, contracttype, Address, BytesN, Env, Vec,
 };
 
 
@@ -19,6 +19,30 @@ pub enum DataKey {
     Pool,
     Position(BytesN<32>), // maps position_id to PositionState
     Nullifier(BytesN<32>), // tracks used nullifiers to prevent double spends
+}
+
+#[contractevent]
+pub struct PositionOpen {
+    #[topic]
+    pub position_id: BytesN<32>,
+    #[topic]
+    pub owner: Address,
+    pub commitment: BytesN<32>,
+}
+
+#[contractevent]
+pub struct PositionHealth {
+    #[topic]
+    pub position_id: BytesN<32>,
+    pub timestamp: u64,
+}
+
+#[contractevent]
+pub struct PositionClose {
+    #[topic]
+    pub position_id: BytesN<32>,
+    pub new_commitment: BytesN<32>,
+    pub output_note_commitment: BytesN<32>,
 }
 
 #[contracterror]
@@ -185,12 +209,19 @@ impl PositionManager {
 
         // 3. Store Position State
         let state = PositionState {
-            owner,
-            commitment: position_commitment,
+            owner: owner.clone(),
+            commitment: position_commitment.clone(),
             last_health_timestamp: env.ledger().timestamp(),
         };
 
-        env.storage().persistent().set(&DataKey::Position(position_id), &state);
+        env.storage().persistent().set(&DataKey::Position(position_id.clone()), &state);
+
+        PositionOpen {
+            position_id,
+            owner,
+            commitment: position_commitment,
+        }
+        .publish(&env);
 
         Ok(())
     }
@@ -245,6 +276,12 @@ impl PositionManager {
             let le_client = LiquidationEngineClient::new(&env, &le_addr);
             let _ = le_client.register_heartbeat(&position_id, &timestamp);
         }
+
+        PositionHealth {
+            position_id,
+            timestamp,
+        }
+        .publish(&env);
 
         Ok(())
     }
@@ -310,7 +347,7 @@ impl PositionManager {
         let pool_client = VayylPoolClient::new(&env, &pool_addr);
         let no_nullifiers: Vec<BytesN<32>> = Vec::new(&env);
         let mut out_commitments: Vec<BytesN<32>> = Vec::new(&env);
-        out_commitments.push_back(output_note_commitment);
+        out_commitments.push_back(output_note_commitment.clone());
         pool_client.execute_settlement(
             &env.current_contract_address(),
             &no_nullifiers,
@@ -321,9 +358,16 @@ impl PositionManager {
 
         // 5. Update state to point to new commitment (or remove if fully closed)
         let mut new_state = state.clone();
-        new_state.commitment = new_position_commitment;
+        new_state.commitment = new_position_commitment.clone();
         new_state.last_health_timestamp = env.ledger().timestamp();
-        env.storage().persistent().set(&DataKey::Position(position_id), &new_state);
+        env.storage().persistent().set(&DataKey::Position(position_id.clone()), &new_state);
+
+        PositionClose {
+            position_id,
+            new_commitment: new_position_commitment,
+            output_note_commitment,
+        }
+        .publish(&env);
 
         Ok(())
     }

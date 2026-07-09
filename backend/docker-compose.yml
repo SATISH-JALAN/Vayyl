@@ -1,0 +1,43 @@
+version: '3.8'
+
+x-common-node: &common-node
+  image: node:20
+  working_dir: /app/backend
+  volumes:
+    - ..:/app
+  env_file:
+    - .env.testnet
+
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: vayyl_indexer
+    ports:
+      - "5432:5432"
+
+  indexer:
+    <<: *common-node
+    command: sh -c "npm install -g pnpm && pnpm install && pnpm --filter @vayyl/indexer run dev"
+    ports:
+      - "3001:3001"
+    depends_on:
+      - postgres
+
+  relayer:
+    <<: *common-node
+    command: sh -c "npm install -g pnpm && pnpm install && pnpm --filter @vayyl/relayer run dev"
+    ports:
+      - "3002:3002"
+
+  oracle-adapter:
+    <<: *common-node
+    command: sh -c "npm install -g pnpm && pnpm install && pnpm --filter @vayyl/oracle-adapter run dev"
+    ports:
+      - "3003:3003"
+
+  keeper:
+    <<: *common-node
+    command: sh -c "npm install -g pnpm && pnpm install && pnpm --filter @vayyl/keeper run dev"
