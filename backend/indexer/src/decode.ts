@@ -27,7 +27,7 @@ export type PoolEvent =
       commitment1: string;
       commitment2: string;
     }
-  | { kind: 'PositionOpen'; positionId: string; owner: string; commitment: string }
+  | { kind: 'PositionOpen'; positionId: string; owner: string; commitment: string; direction: number; size: bigint }
   | { kind: 'PositionHealth'; positionId: string; timestamp: number }
   | { kind: 'PositionClose'; positionId: string; newCommitment: string; outputNoteCommitment: string };
 
@@ -107,6 +107,8 @@ export function decodePoolEvent(topic: xdr.ScVal[], value: xdr.ScVal): PoolEvent
         positionId: bytesN32ToHex(topic[1]),
         owner: String(scValToNative(topic[2])),
         commitment: hex(c),
+        direction: Number(data.direction ?? 0),
+        size: BigInt((data.size as bigint | number | string) ?? 0),
       };
     }
     case 'PositionHealth': {

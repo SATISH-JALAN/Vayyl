@@ -7,20 +7,22 @@ import { useWalletStore } from './store/wallet';
 import Dashboard from './pages/Dashboard';
 import Pool from './pages/Pool';
 import Positions from './pages/Positions';
+import Escrow from './pages/Escrow';
 import Settings from './pages/Settings';
 
-export type RouteKey = 'dashboard' | 'pool' | 'positions' | 'settings';
+export type RouteKey = 'dashboard' | 'pool' | 'positions' | 'escrow' | 'settings';
 
 const navItems: Array<{ route: RouteKey; href: string; label: string }> = [
   { route: 'dashboard', href: '/app', label: 'Dashboard' },
   { route: 'pool', href: '/app?view=pool', label: 'Shielded Pool' },
   { route: 'positions', href: '/app?view=positions', label: 'Positions' },
+  { route: 'escrow', href: '/app?view=escrow', label: 'Escrow & Agentic' },
   { route: 'settings', href: '/app?view=settings', label: 'Settings' },
 ];
 
 function routeFromLocation(fallback: RouteKey): RouteKey {
   const view = new URLSearchParams(window.location.search).get('view');
-  if (view === 'pool' || view === 'positions' || view === 'settings') return view;
+  if (view === 'pool' || view === 'positions' || view === 'escrow' || view === 'settings') return view;
   return fallback;
 }
 
@@ -34,6 +36,8 @@ function renderRoute(route: RouteKey) {
       return <Pool />;
     case 'positions':
       return <Positions />;
+    case 'escrow':
+      return <Escrow />;
     case 'settings':
       return <Settings />;
     default:

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { useWalletStore } from './wallet';
+import { useToastStore } from './toast';
 import { getNotes, markNoteSpent } from '../lib/storage';
 import { fetchCommitments } from '../lib/pool';
 import { submitPositionOpen, submitPositionClose } from '../lib/position';
@@ -19,6 +20,7 @@ export interface Position {
 interface PositionsState {
   positions: Position[];
   isProving: boolean;
+  status: string | null;
   fetchState: () => Promise<void>;
   openPosition: (asset: string, type: 'Long' | 'Short', leverage: string, size: string) => Promise<void>;
   closePosition: (id: string) => Promise<void>;
@@ -47,6 +49,7 @@ const INDEXER_URL = process.env.NEXT_PUBLIC_INDEXER_URL || 'http://localhost:300
 export const usePositionsStore = create<PositionsState>((set, get) => ({
   positions: [],
   isProving: false,
+  status: null,
 
   fetchState: async () => {
     const wallet = useWalletStore.getState();
@@ -59,9 +62,9 @@ export const usePositionsStore = create<PositionsState>((set, get) => ({
         id: p.id.toString(),
         position_id: p.position_id,
         asset: 'USDC', // Assuming USDC for MVP
-        type: 'Long',  // The indexer schema doesn't decode direction, hardcoded for MVP UI
-        leverage: '10x',
-        size: '500',   // Hardcoded for MVP UI display
+        type: p.direction === 1 ? 'Long' : (p.direction === 0 ? 'Short' : 'Long'),
+        leverage: '10x', // We don't store leverage directly, just size and collateral
+        size: p.size ? p.size.toString() : '500',
         health: p.is_closed ? '0%' : '100%',
         status: p.is_closed ? 'Closed' : 'Active',
         commitment: p.commitment
@@ -77,7 +80,7 @@ export const usePositionsStore = create<PositionsState>((set, get) => ({
     if (!wallet.address) throw new Error('Connect your wallet first');
     const keys = await wallet.unlockShieldedKeys();
 
-    set({ isProving: true });
+    set({ isProving: true, status: 'Checking collateral notes…' });
     try {
       const notes = await getNotes(keys.viewingKey);
       const note = notes.find((n) => !n.isSpent && n.asset === asset);
@@ -89,9 +92,23 @@ export const usePositionsStore = create<PositionsState>((set, get) => ({
 
       const size = BigInt(sizeStr.replace(/[^0-9]/g, ''));
       const direction = type === 'Long' ? 1n : 0n;
-      const entry_price = 2000n; // Hardcoded mock oracle price for MVP
+      let entry_price = 2000n; // Fallback
+      try {
+        set({ status: 'Fetching live oracle price…' });
+        const priceRes = await fetch(`http://localhost:3003/price/${asset}`);
+        if (priceRes.ok) {
+          const data = await priceRes.json();
+          if (data && typeof data.price === 'number') {
+            entry_price = BigInt(data.price);
+          }
+        }
+      } catch (err) {
+        console.warn('Oracle adapter unreachable. Falling back to mock price.', err);
+      }
+
       const position_blindness = 4n;
 
+      set({ status: 'Generating position proof…' });
       const proveResult = await runWorkerTask('PROVE_POSITION_OPEN', {
         amount: note.amount.toString(),
         pubX: note.pubX,
@@ -110,6 +127,7 @@ export const usePositionsStore = create<PositionsState>((set, get) => ({
       const positionIdHex = Array.from(crypto.getRandomValues(new Uint8Array(32)))
         .map(b => b.toString(16).padStart(2, '0')).join('');
 
+      set({ status: 'Submitting position…' });
       await submitPositionOpen({
         source: wallet.address,
         positionIdHex,
@@ -123,9 +141,14 @@ export const usePositionsStore = create<PositionsState>((set, get) => ({
       });
 
       await markNoteSpent(keys.viewingKey, note.id);
+      
+      set({ status: 'Position opened successfully.' });
+      useToastStore.getState().addToast(`Position opened successfully!`, 'success');
       await get().fetchState();
-    } catch (e) {
+    } catch (e: any) {
       console.error("Position open failed", e);
+      set({ status: `Position open failed: ${e.message}` });
+      useToastStore.getState().addToast(`Position open failed: ${e.message}`, 'error');
       throw e;
     } finally {
       set({ isProving: false });
@@ -137,13 +160,26 @@ export const usePositionsStore = create<PositionsState>((set, get) => ({
     if (!wallet.address) throw new Error('Connect your wallet first');
     const keys = await wallet.unlockShieldedKeys();
 
-    set({ isProving: true });
+    set({ isProving: true, status: 'Locating position…' });
     try {
       const state = get();
       const pos = state.positions.find(p => p.position_id === position_id);
       if (!pos) throw new Error('Position not found');
 
-      const closeOraclePrice = 2500n; // Hardcoded mock
+      let closeOraclePrice = 2500n; // Fallback
+      try {
+        set({ status: 'Fetching live oracle price…' });
+        const priceRes = await fetch(`http://localhost:3003/price/${pos.asset}`);
+        if (priceRes.ok) {
+          const data = await priceRes.json();
+          if (data && typeof data.price === 'number') {
+            closeOraclePrice = BigInt(data.price);
+          }
+        }
+      } catch (err) {
+        console.warn('Oracle adapter unreachable. Falling back to mock price.', err);
+      }
+
       const new_size = 0n;
       const new_direction = 0n;
       const new_entry_price = 0n;
@@ -152,13 +188,14 @@ export const usePositionsStore = create<PositionsState>((set, get) => ({
       
       const old_size = BigInt(pos.size.replace(/[^0-9]/g, ''));
       const old_direction = pos.type === 'Long' ? 1n : 0n;
-      const old_entry_price = 2000n; // Hardcoded mock
+      const old_entry_price = 2000n; // Note: We don't have entry price stored on the position, so we fallback for MVP
       const old_collateral = 500n; // Assuming standard note amount 500
       const old_blindness = 4n;
 
       const note_amount = 251000n; // PnL calculation mock matching E2E
       const note_blindness = 33333n;
 
+      set({ status: 'Generating close proof…' });
       const proveResult = await runWorkerTask('PROVE_POSITION_CLOSE', {
         pubX: keys.pubX.toString(),
         pubY: keys.pubY.toString(),
@@ -181,6 +218,7 @@ export const usePositionsStore = create<PositionsState>((set, get) => ({
         meta_hash: "0", // Should really be computed binding
       });
 
+      set({ status: 'Submitting close transaction…' });
       await submitPositionClose({
         source: wallet.address,
         positionIdHex: pos.position_id,
@@ -193,9 +231,13 @@ export const usePositionsStore = create<PositionsState>((set, get) => ({
         useRelayer: true,
       });
 
+      set({ status: 'Position closed successfully.' });
+      useToastStore.getState().addToast(`Position closed successfully!`, 'success');
       await get().fetchState();
-    } catch (e) {
+    } catch (e: any) {
       console.error("Position close failed", e);
+      set({ status: `Position close failed: ${e.message}` });
+      useToastStore.getState().addToast(`Position close failed: ${e.message}`, 'error');
       throw e;
     } finally {
       set({ isProving: false });

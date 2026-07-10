@@ -146,7 +146,7 @@ export class Poller {
                     console.log(`Transfer: 2 nullifiers spent, 2 commitments added`);
                     break;
                 case 'PositionOpen':
-                    await this.db.insertPosition(decoded.positionId, decoded.owner, decoded.commitment);
+                    await this.db.insertPosition(decoded.positionId, decoded.owner, decoded.commitment, decoded.direction, decoded.size);
                     console.log(`PositionOpen: id=${decoded.positionId.slice(0, 12)}... owner=${decoded.owner}`);
                     break;
                 case 'PositionHealth':

@@ -29,6 +29,8 @@ CREATE TABLE IF NOT EXISTS positions (
     position_id VARCHAR(64) NOT NULL UNIQUE,
     owner VARCHAR(56) NOT NULL,
     commitment VARCHAR(64) NOT NULL,
+    direction INTEGER,
+    size NUMERIC(38,0),
     last_health_timestamp BIGINT,
     is_closed BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,

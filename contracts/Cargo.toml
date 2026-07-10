@@ -1,15 +1,17 @@
 [workspace]
 resolver = "2"
 members = [
-    "vayyl-pool-factory",
     "vayyl-pool",
-    "groth16-verifier",
-    "asp-membership",
-    "asp-non-membership",
     "position-manager",
     "liquidation-engine",
+    "asp-membership",
+    "asp-non-membership",
+    "groth16-verifier",
     "hidden-order-registry",
-    "agentic-settlement-hub", "vayyl-types", "vayyl-mock-token", "vayyl-mock-oracle",
+    "agentic-settlement-hub",
+    "vayyl-pool-factory",
+    "vayyl-types",
+    "vayyl-mock-token"
 ]
 
 [workspace.dependencies]

@@ -94,12 +94,12 @@ export class Database {
         return result.rows.map(r => r.nullifier_hash);
     }
 
-    async insertPosition(positionId: string, owner: string, commitment: string) {
+    async insertPosition(positionId: string, owner: string, commitment: string, direction: number, size: bigint) {
         await this.pool.query(
-            `INSERT INTO positions (position_id, owner, commitment)
-             VALUES ($1, $2, $3)
-             ON CONFLICT (position_id) DO UPDATE SET commitment = EXCLUDED.commitment, is_closed = FALSE`,
-            [positionId, owner, commitment]
+            `INSERT INTO positions (position_id, owner, commitment, direction, size)
+             VALUES ($1, $2, $3, $4, $5)
+             ON CONFLICT (position_id) DO UPDATE SET commitment = EXCLUDED.commitment, direction = EXCLUDED.direction, size = EXCLUDED.size, is_closed = FALSE`,
+            [positionId, owner, commitment, direction, size.toString()]
         );
     }
 

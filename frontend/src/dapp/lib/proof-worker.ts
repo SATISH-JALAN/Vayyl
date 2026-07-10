@@ -275,17 +275,17 @@ self.onmessage = async (e: MessageEvent) => {
       case 'PROVE_HIDDEN_ORDER_TRIGGER': {
         const p = payload as any;
         
-        const trigger_price = 1500n;
-        const order_direction = 1n;
-        const salt = 5n;
+        const trigger_price = BigInt(p.trigger_price);
+        const order_direction = BigInt(p.order_direction);
+        const salt = BigInt(p.salt);
         
         // order_commitment = Poseidon2(trigger_price, order_direction, salt)
         let commit = await poseidon2Hash2(trigger_price, await poseidon2Hash2(order_direction, salt));
         
         const input = {
           order_commitment: commit.toString(),
-          oracle_price: "2000", // > 1500, so it fires
-          meta_hash: "0",
+          oracle_price: p.oracle_price.toString(),
+          meta_hash: p.meta_hash,
           trigger_price: trigger_price.toString(),
           order_direction: order_direction.toString(),
           salt: salt.toString()
@@ -293,6 +293,31 @@ self.onmessage = async (e: MessageEvent) => {
 
         const { proof, publicSignals } = await snarkjs.groth16.fullProve(
           input, '/circuits/hidden_order_trigger.wasm', '/circuits/hidden_order_trigger_final.zkey'
+        );
+        
+        result = { proof, publicSignals, order_commitment: commit.toString() };
+        break;
+      }
+
+      case 'PROVE_SEALED_ORDER': {
+        const p = payload as any;
+        
+        const bid_price = BigInt(p.bid_price);
+        const bid_size = BigInt(p.bid_size);
+        const salt = BigInt(p.salt);
+        
+        // order_commitment = Poseidon2(bid_price, bid_size, salt)
+        let commit = await poseidon2Hash2(bid_price, await poseidon2Hash2(bid_size, salt));
+        
+        const input = {
+          order_commitment: commit.toString(),
+          bid_price: bid_price.toString(),
+          bid_size: bid_size.toString(),
+          salt: salt.toString()
+        };
+
+        const { proof, publicSignals } = await snarkjs.groth16.fullProve(
+          input, '/circuits/sealed_order.wasm', '/circuits/sealed_order_final.zkey'
         );
         
         result = { proof, publicSignals, order_commitment: commit.toString() };

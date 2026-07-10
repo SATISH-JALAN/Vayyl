@@ -18,8 +18,15 @@ export class OracleAdapter {
 
             const contract = new StellarSdk.Contract(this.oracleContractId);
 
-            // Build the get_last_price() invocation
-            const call = contract.call('get_last_price');
+            // Reflector uses Asset::Other(Symbol) for non-Stellar native assets
+            // In XDR, this is represented as a Vec with the variant name 'Other' followed by the symbol
+            const assetArg = StellarSdk.xdr.ScVal.scvVec([
+                StellarSdk.xdr.ScVal.scvSymbol('Other'),
+                StellarSdk.xdr.ScVal.scvSymbol(asset)
+            ]);
+
+            // Build the lastprice() invocation
+            const call = contract.call('lastprice', assetArg);
 
             // Simulate the transaction to read the return value without submitting
             const simResult = await this.server.simulateTransaction(
@@ -43,7 +50,7 @@ export class OracleAdapter {
                 throw new Error(`Simulation failed: ${(simResult as any).error}`);
             }
 
-            // Parse the result — get_last_price returns (i128, u64) as a tuple
+            // Parse the result
             const successResult = simResult as StellarSdk.rpc.Api.SimulateTransactionSuccessResponse;
             const returnValue = successResult.result?.retval;
 
@@ -51,39 +58,17 @@ export class OracleAdapter {
                 throw new Error('No return value from simulation');
             }
 
-            // The return type is a Soroban tuple (Vec<ScVal>) containing [i128, u64]
-            const tupleValues = returnValue.value() as any[];
+            // Reflector returns Option<PriceData> where PriceData is a struct { price: i128, timestamp: u64 }
+            // scValToNative handles this beautifully
+            const nativeResult = StellarSdk.scValToNative(returnValue);
             
-            let price: number;
-            let oracleTimestamp: number;
-
-            if (Array.isArray(tupleValues) && tupleValues.length >= 2) {
-                // Extract i128 price — Soroban i128 is encoded as { hi: i64, lo: u64 }
-                const priceVal = tupleValues[0];
-                if (priceVal && typeof priceVal.value === 'function') {
-                    const pv = priceVal.value();
-                    if (pv && pv.lo !== undefined && pv.hi !== undefined) {
-                        price = Number(BigInt(pv.hi().toString()) * BigInt(2**64) + BigInt(pv.lo().toString()));
-                    } else {
-                        price = Number(pv);
-                    }
-                } else {
-                    price = Number(priceVal);
-                }
-
-                // Extract u64 timestamp
-                const tsVal = tupleValues[1];
-                if (tsVal && typeof tsVal.value === 'function') {
-                    oracleTimestamp = Number(tsVal.value());
-                } else {
-                    oracleTimestamp = Number(tsVal);
-                }
-            } else {
-                // Fallback: try to parse as a simple value
-                console.warn('Unexpected return format, attempting raw parse');
-                price = 0;
-                oracleTimestamp = 0;
+            if (!nativeResult) {
+                throw new Error(`Oracle returned no data for asset ${asset}`);
             }
+
+            // Extracted values
+            const price = Number(nativeResult.price);
+            const oracleTimestamp = Number(nativeResult.timestamp);
             
             const currentTimestamp = Math.floor(Date.now() / 1000);
             const isStale = (currentTimestamp - oracleTimestamp) > this.maxStaleness;

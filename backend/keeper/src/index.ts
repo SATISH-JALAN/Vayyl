@@ -9,15 +9,18 @@ const deployPath = path.join(__dirname, '../../../deployments', `${NETWORK}.json
 const deployments = JSON.parse(fs.readFileSync(deployPath, 'utf8'));
 const LIQUIDATION_ENGINE_ID = deployments.liquidation;
 
-const WATCHED_POSITIONS_FILE = path.join(__dirname, 'watched_positions.json');
+const INDEXER_URL = process.env.INDEXER_URL || 'http://localhost:3001';
 
 async function getWatchedPositions() {
     try {
-        if (fs.existsSync(WATCHED_POSITIONS_FILE)) {
-            return JSON.parse(fs.readFileSync(WATCHED_POSITIONS_FILE, 'utf8'));
+        const res = await fetch(`${INDEXER_URL}/positions`);
+        if (res.ok) {
+            const data = await res.json();
+            // Filter only active positions
+            return data.positions.filter((p: any) => !p.is_closed);
         }
     } catch (e) {
-        console.error("Error reading watched positions:", e);
+        console.error("Error fetching watched positions from indexer:", e);
     }
     return [];
 }

@@ -159,6 +159,11 @@
   grid-template-columns: repeat(2, minmax(260px, 1fr));
 }
 
+.dapp-grid--positions {
+  grid-template-columns: minmax(320px, 480px) minmax(0, 1fr);
+  align-items: start;
+}
+
 @media (max-width: 980px) {
   .dapp-shell {
     grid-template-columns: 1fr;
@@ -222,6 +227,7 @@
 
   .dapp-grid--overview,
   .dapp-grid--pool,
+  .dapp-grid--positions,
   .dapp-grid--settings {
     grid-template-columns: 1fr;
   }

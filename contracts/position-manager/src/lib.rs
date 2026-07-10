@@ -28,6 +28,8 @@ pub struct PositionOpen {
     #[topic]
     pub owner: Address,
     pub commitment: BytesN<32>,
+    pub direction: u32,
+    pub size: i128,
 }
 
 #[contractevent]
@@ -92,9 +94,21 @@ fn i128_to_field_bytes(value: i128) -> Result<[u8; 32], Error> {
     Ok(out)
 }
 
-#[soroban_sdk::contractclient(name = "OracleInterfaceClient")]
-pub trait OracleInterface {
-    fn get_last_price(env: Env) -> (i128, u64);
+#[contracttype]
+pub enum Asset {
+    Stellar(Address),
+    Other(soroban_sdk::Symbol),
+}
+
+#[contracttype]
+pub struct PriceData {
+    pub price: i128,
+    pub timestamp: u64,
+}
+
+#[soroban_sdk::contractclient(name = "ReflectorClient")]
+pub trait ReflectorInterface {
+    fn lastprice(env: Env, asset: Asset) -> Option<PriceData>;
 }
 
 #[soroban_sdk::contractclient(name = "Groth16VerifierClient")]
@@ -184,6 +198,8 @@ impl PositionManager {
         nullifier: BytesN<32>,
         position_commitment: BytesN<32>,
         meta_hash: BytesN<32>,
+        direction: u32,
+        size: i128,
     ) -> Result<(), Error> {
         owner.require_auth();
 
@@ -220,6 +236,8 @@ impl PositionManager {
             position_id,
             owner,
             commitment: position_commitment,
+            direction,
+            size,
         }
         .publish(&env);
 
@@ -238,8 +256,11 @@ impl PositionManager {
         let mut state: PositionState = env.storage().persistent().get(&DataKey::Position(position_id.clone())).ok_or(Error::PositionNotFound)?;
 
         // 1. Fetch current oracle price and timestamp
-        let oracle_client = OracleInterfaceClient::new(&env, &oracle);
-        let (price, timestamp) = oracle_client.get_last_price();
+        let oracle_client = ReflectorClient::new(&env, &oracle);
+        let price_data = oracle_client.lastprice(&Asset::Other(soroban_sdk::Symbol::new(&env, "XLM")))
+            .ok_or(Error::InvalidAmount)?; // Or maybe a dedicated Error::OracleError
+        let price = price_data.price;
+        let timestamp = price_data.timestamp;
 
         // 2. Verify ZK Proof for PositionHealth
         let verifier_client = Groth16VerifierClient::new(&env, &verifier);
@@ -304,8 +325,10 @@ impl PositionManager {
         state.owner.require_auth();
 
         // 1. Fetch settlement oracle price
-        let oracle_client = OracleInterfaceClient::new(&env, &oracle);
-        let (price, _timestamp) = oracle_client.get_last_price();
+        let oracle_client = ReflectorClient::new(&env, &oracle);
+        let price_data = oracle_client.lastprice(&Asset::Other(soroban_sdk::Symbol::new(&env, "XLM")))
+            .ok_or(Error::InvalidAmount)?;
+        let price = price_data.price;
 
         // 2. Mark position nullifier
         Self::mark_nullifier(&env, position_nullifier.clone())?;
@@ -533,8 +556,11 @@ mod test {
     pub struct MockOracle;
     #[sdk_contractimpl]
     impl MockOracle {
-        pub fn get_last_price(_env: Env) -> (i128, u64) {
-            (1000i128, 0u64)
+        pub fn lastprice(_env: Env, _asset: super::Asset) -> Option<super::PriceData> {
+            Some(super::PriceData {
+                price: 1000i128,
+                timestamp: 0u64,
+            })
         }
     }
 

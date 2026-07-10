@@ -7,6 +7,7 @@
 
 import { create } from 'zustand';
 import { useWalletStore } from './wallet';
+import { useToastStore } from './toast';
 import {
   randomFieldElement,
 } from '../lib/poseidon';
@@ -167,9 +168,11 @@ export const usePoolStore = create<PoolState>((set, get) => ({
       });
 
       set({ status: `Deposit confirmed: ${txHash.slice(0, 8)}…` });
+      useToastStore.getState().addToast(`Deposit confirmed! Transaction: ${txHash.slice(0, 8)}…`, 'success');
       await get().fetchState();
     } catch (e: any) {
       set({ status: `Deposit failed: ${e.message}` });
+      useToastStore.getState().addToast(`Deposit failed: ${e.message}`, 'error');
       throw e;
     } finally {
       set({ isProving: false });
@@ -248,9 +251,11 @@ export const usePoolStore = create<PoolState>((set, get) => ({
         timestamp: Date.now(),
       });
       set({ status: `Withdraw confirmed: ${txHash.slice(0, 8)}…` });
+      useToastStore.getState().addToast(`Withdraw confirmed! Transaction: ${txHash.slice(0, 8)}…`, 'success');
       await get().fetchState();
     } catch (e: any) {
       set({ status: `Withdraw failed: ${e.message}` });
+      useToastStore.getState().addToast(`Withdraw failed: ${e.message}`, 'error');
       throw e;
     } finally {
       set({ isProving: false });
