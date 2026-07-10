@@ -3,6 +3,8 @@ import { useEffect, useState } from 'react';
 import Button from './components/common/Button';
 import ToastContainer from './components/common/ToastContainer';
 import { useWalletStore } from './store/wallet';
+import { usePoolStore } from './store/pool';
+import { usePositionsStore } from './store/positions';
 
 import Dashboard from './pages/Dashboard';
 import Pool from './pages/Pool';
@@ -46,7 +48,7 @@ function renderRoute(route: RouteKey) {
 }
 
 export default function App({ initialRoute = 'dashboard' }: { initialRoute?: RouteKey }) {
-  const { address, network, isConnecting, isUnlocking, error, connect, disconnect } = useWalletStore();
+  const { address, network, keys, isConnecting, isUnlocking, error, connect, disconnect, unlockShieldedKeys } = useWalletStore();
   const [route, setRoute] = useState<RouteKey>(() =>
     typeof window === 'undefined' ? initialRoute : routeFromLocation(initialRoute),
   );
@@ -59,6 +61,20 @@ export default function App({ initialRoute = 'dashboard' }: { initialRoute?: Rou
       window.removeEventListener('popstate', syncRoute);
     };
   }, [initialRoute]);
+
+  useEffect(() => {
+    useWalletStore.getState().autoConnect();
+  }, []);
+
+  const handleUnlock = async () => {
+    try {
+      await unlockShieldedKeys();
+      usePoolStore.getState().fetchState();
+      usePositionsStore.getState().fetchState();
+    } catch (e) {
+      console.error('Failed to unlock keys:', e);
+    }
+  };
 
   return (
     <div className="dapp-shell">
@@ -110,6 +126,11 @@ export default function App({ initialRoute = 'dashboard' }: { initialRoute?: Rou
                   <span className="dapp-label-text">Wallet</span>
                   <strong>{shortAddress(address)}</strong>
                 </div>
+                {!keys && (
+                  <Button onClick={handleUnlock} disabled={isUnlocking}>
+                    {isUnlocking ? 'Unlocking...' : 'Unlock Workspace'}
+                  </Button>
+                )}
                 <Button variant="ghost" onClick={disconnect}>
                   Disconnect
                 </Button>

@@ -64,3 +64,4 @@ rs-soroban-poseidon/
 /.playwright-mcp/
 /vayyl-next-landing-*.png
 /vayyl-hero-polish-*.png
+.pnpm-store/

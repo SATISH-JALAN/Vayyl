@@ -49,6 +49,8 @@ export interface OpenPositionArgs {
   nullifier: string;
   positionCommitment: string;
   metaHash: string;
+  direction: number | bigint;
+  size: number | bigint;
   useRelayer?: boolean;
 }
 
@@ -61,6 +63,8 @@ export async function submitPositionOpen(a: OpenPositionArgs): Promise<string> {
     bytesN(a.nullifier),
     bytesN(a.positionCommitment),
     bytesN(a.metaHash),
+    nativeToScVal(Number(a.direction), { type: 'u32' }),
+    nativeToScVal(BigInt(a.size), { type: 'i128' }),
   ];
   return buildSignSubmit(a.source, POSITION_MANAGER_ID, 'open_position', args, a.useRelayer);
 }

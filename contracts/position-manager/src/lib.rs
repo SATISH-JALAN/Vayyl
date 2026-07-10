@@ -94,21 +94,9 @@ fn i128_to_field_bytes(value: i128) -> Result<[u8; 32], Error> {
     Ok(out)
 }
 
-#[contracttype]
-pub enum Asset {
-    Stellar(Address),
-    Other(soroban_sdk::Symbol),
-}
-
-#[contracttype]
-pub struct PriceData {
-    pub price: i128,
-    pub timestamp: u64,
-}
-
 #[soroban_sdk::contractclient(name = "ReflectorClient")]
 pub trait ReflectorInterface {
-    fn lastprice(env: Env, asset: Asset) -> Option<PriceData>;
+    fn get_last_price(env: Env) -> (i128, u64);
 }
 
 #[soroban_sdk::contractclient(name = "Groth16VerifierClient")]
@@ -257,10 +245,7 @@ impl PositionManager {
 
         // 1. Fetch current oracle price and timestamp
         let oracle_client = ReflectorClient::new(&env, &oracle);
-        let price_data = oracle_client.lastprice(&Asset::Other(soroban_sdk::Symbol::new(&env, "XLM")))
-            .ok_or(Error::InvalidAmount)?; // Or maybe a dedicated Error::OracleError
-        let price = price_data.price;
-        let timestamp = price_data.timestamp;
+        let (price, timestamp) = oracle_client.get_last_price();
 
         // 2. Verify ZK Proof for PositionHealth
         let verifier_client = Groth16VerifierClient::new(&env, &verifier);
@@ -326,9 +311,7 @@ impl PositionManager {
 
         // 1. Fetch settlement oracle price
         let oracle_client = ReflectorClient::new(&env, &oracle);
-        let price_data = oracle_client.lastprice(&Asset::Other(soroban_sdk::Symbol::new(&env, "XLM")))
-            .ok_or(Error::InvalidAmount)?;
-        let price = price_data.price;
+        let (price, _timestamp) = oracle_client.get_last_price();
 
         // 2. Mark position nullifier
         Self::mark_nullifier(&env, position_nullifier.clone())?;
@@ -556,11 +539,8 @@ mod test {
     pub struct MockOracle;
     #[sdk_contractimpl]
     impl MockOracle {
-        pub fn lastprice(_env: Env, _asset: super::Asset) -> Option<super::PriceData> {
-            Some(super::PriceData {
-                price: 1000i128,
-                timestamp: 0u64,
-            })
+        pub fn get_last_price(_env: Env) -> (i128, u64) {
+            (1000i128, 0u64)
         }
     }
 

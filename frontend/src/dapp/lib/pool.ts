@@ -172,6 +172,9 @@ export async function buildSignSubmit(
     if (!res.ok || !data.success) {
       throw new Error(`Relayer failed: ${data.error || JSON.stringify(data)}`);
     }
+    if (data.response?.status === 'ERROR') {
+      throw new Error(`Relayer failed to submit transaction to network: ${JSON.stringify(data.response.errorResult || data.response)}`);
+    }
     // The relayer response contains the fee bump transaction hash
     const hash = data.response?.hash;
     if (!hash) throw new Error('Relayer did not return a transaction hash');

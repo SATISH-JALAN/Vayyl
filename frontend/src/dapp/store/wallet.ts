@@ -1,7 +1,9 @@
 import { create } from 'zustand';
 import {
   getAddress,
-  requestAccess
+  requestAccess,
+  isConnected,
+  isAllowed
 } from '@stellar/freighter-api';
 import { deriveViewingKey, deriveShieldedKeys, type ShieldedKeys } from '../lib/crypto';
 
@@ -17,6 +19,7 @@ interface WalletState {
   /** Derive the shielded viewing/spend keys (prompts a Freighter signature). */
   unlockShieldedKeys: () => Promise<ShieldedKeys>;
   disconnect: () => void;
+  autoConnect: () => Promise<void>;
 }
 
 export const useWalletStore = create<WalletState>((set, get) => ({
@@ -67,5 +70,18 @@ export const useWalletStore = create<WalletState>((set, get) => ({
 
   disconnect: () => {
     set({ address: null, keys: null });
+  },
+
+  autoConnect: async () => {
+    try {
+      if (await isConnected() && await isAllowed()) {
+        const res = await getAddress();
+        if (res.address) {
+          set({ address: res.address });
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to auto-connect wallet', e);
+    }
   }
 }));

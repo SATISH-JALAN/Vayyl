@@ -97,7 +97,7 @@ export function decodePoolEvent(topic: xdr.ScVal[], value: xdr.ScVal): PoolEvent
         commitment2: hex(c2),
       };
     }
-    case 'PositionOpen': {
+    case 'position_open': {
       if (topic.length < 3) return null;
       const c = data.commitment as Buffer | Uint8Array | undefined;
       const hex = (b?: Buffer | Uint8Array) =>
@@ -111,7 +111,7 @@ export function decodePoolEvent(topic: xdr.ScVal[], value: xdr.ScVal): PoolEvent
         size: BigInt((data.size as bigint | number | string) ?? 0),
       };
     }
-    case 'PositionHealth': {
+    case 'position_health': {
       if (topic.length < 2) return null;
       return {
         kind: 'PositionHealth',
@@ -119,7 +119,7 @@ export function decodePoolEvent(topic: xdr.ScVal[], value: xdr.ScVal): PoolEvent
         timestamp: Number(data.timestamp ?? 0),
       };
     }
-    case 'PositionClose': {
+    case 'position_close': {
       if (topic.length < 2) return null;
       const nc = data.new_commitment as Buffer | Uint8Array | undefined;
       const oc = data.output_note_commitment as Buffer | Uint8Array | undefined;

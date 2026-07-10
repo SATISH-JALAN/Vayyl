@@ -4,8 +4,8 @@ export class OracleAdapter {
     private server: StellarSdk.rpc.Server;
     private oracleContractId: string;
     
-    // Max staleness in seconds (e.g., 5 minutes)
-    private maxStaleness: number = 300; 
+    // Max staleness in seconds (set to 1 year for testnet mock oracle)
+    private maxStaleness: number = 31536000;
 
     constructor(rpcUrl: string, oracleContractId: string) {
         this.server = new StellarSdk.rpc.Server(rpcUrl);
@@ -18,15 +18,8 @@ export class OracleAdapter {
 
             const contract = new StellarSdk.Contract(this.oracleContractId);
 
-            // Reflector uses Asset::Other(Symbol) for non-Stellar native assets
-            // In XDR, this is represented as a Vec with the variant name 'Other' followed by the symbol
-            const assetArg = StellarSdk.xdr.ScVal.scvVec([
-                StellarSdk.xdr.ScVal.scvSymbol('Other'),
-                StellarSdk.xdr.ScVal.scvSymbol(asset)
-            ]);
-
-            // Build the lastprice() invocation
-            const call = contract.call('lastprice', assetArg);
+            // Build the get_last_price() invocation (no arguments needed for dummy oracle)
+            const call = contract.call('get_last_price');
 
             // Simulate the transaction to read the return value without submitting
             const simResult = await this.server.simulateTransaction(
@@ -58,17 +51,16 @@ export class OracleAdapter {
                 throw new Error('No return value from simulation');
             }
 
-            // Reflector returns Option<PriceData> where PriceData is a struct { price: i128, timestamp: u64 }
-            // scValToNative handles this beautifully
+            // Dummy oracle returns a tuple (i128, u64)
             const nativeResult = StellarSdk.scValToNative(returnValue);
             
-            if (!nativeResult) {
-                throw new Error(`Oracle returned no data for asset ${asset}`);
+            if (!nativeResult || !Array.isArray(nativeResult) || nativeResult.length !== 2) {
+                throw new Error(`Oracle returned invalid tuple data for asset ${asset}`);
             }
 
-            // Extracted values
-            const price = Number(nativeResult.price);
-            const oracleTimestamp = Number(nativeResult.timestamp);
+            // Extracted values from tuple
+            const price = Number(nativeResult[0]);
+            const oracleTimestamp = Number(nativeResult[1]);
             
             const currentTimestamp = Math.floor(Date.now() / 1000);
             const isStale = (currentTimestamp - oracleTimestamp) > this.maxStaleness;

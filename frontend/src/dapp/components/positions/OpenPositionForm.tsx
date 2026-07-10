@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useState, useEffect, type FormEvent } from 'react';
 
 import Button from '../common/Button';
 import Card from '../common/Card';
@@ -6,6 +6,7 @@ import Input from '../common/Input';
 import { usePositionsStore } from '../../store/positions';
 import { useWalletStore } from '../../store/wallet';
 import { usePoolStore } from '../../store/pool';
+import { useOracleStore } from '../../store/oracle';
 
 const LEVERAGE_OPTIONS = [2, 5, 10, 20] as const;
 type Direction = 'Long' | 'Short';
@@ -17,7 +18,15 @@ export default function OpenPositionForm() {
   const { openPosition, isProving, status } = usePositionsStore();
   const { address } = useWalletStore();
   const { shieldedBalance } = usePoolStore();
+  const { startPolling, stopPolling, prices } = useOracleStore();
   const isError = !!status && /failed|error/i.test(status);
+
+  useEffect(() => {
+    startPolling('XLM');
+    return () => stopPolling('XLM');
+  }, [startPolling, stopPolling]);
+
+  const livePrice = prices['XLM'];
 
   const computedSize = collateral ? Number(collateral) * leverage : 0;
 
@@ -44,7 +53,14 @@ export default function OpenPositionForm() {
             Collateralize a shielded note and open leveraged exposure with a ZK proof.
           </p>
         </div>
-        <span className="dapp-badge dapp-badge--success">Trade</span>
+        <div style={{ textAlign: 'right' }}>
+          <span className="dapp-badge dapp-badge--success">Trade</span>
+          {livePrice ? (
+            <div style={{ marginTop: '8px', fontSize: '13px', color: 'var(--dapp-text-muted)' }}>
+              Mark: <strong style={{ color: 'var(--dapp-text-base)' }}>${(livePrice / 1e4).toFixed(4)}</strong>
+            </div>
+          ) : null}
+        </div>
       </div>
 
       <form className="dapp-form" onSubmit={handleSubmit}>

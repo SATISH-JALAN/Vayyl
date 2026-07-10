@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { useWalletStore } from './wallet';
 import { useToastStore } from './toast';
-import { getNotes, markNoteSpent } from '../lib/storage';
+import { getNotes, markNoteSpent, addNote } from '../lib/storage';
 import { fetchCommitments } from '../lib/pool';
 import { submitPositionOpen, submitPositionClose } from '../lib/position';
 
@@ -15,6 +15,8 @@ export interface Position {
   health: string;
   status: 'Active' | 'Closed';
   commitment: string;
+  entry_price?: string;
+  collateral?: string;
 }
 
 interface PositionsState {
@@ -58,17 +60,36 @@ export const usePositionsStore = create<PositionsState>((set, get) => ({
       const res = await fetch(`${INDEXER_URL}/positions?owner=${wallet.address}`);
       if (!res.ok) return;
       const data = await res.json();
-      const positions = data.positions.map((p: any) => ({
-        id: p.id.toString(),
-        position_id: p.position_id,
-        asset: 'USDC', // Assuming USDC for MVP
-        type: p.direction === 1 ? 'Long' : (p.direction === 0 ? 'Short' : 'Long'),
-        leverage: '10x', // We don't store leverage directly, just size and collateral
-        size: p.size ? p.size.toString() : '500',
-        health: p.is_closed ? '0%' : '100%',
-        status: p.is_closed ? 'Closed' : 'Active',
-        commitment: p.commitment
-      }));
+      const positions = data.positions.map((p: any) => {
+        let entryPrice = '2000';
+        let collateral = '1000';
+        let isLocallyClosed = false;
+        try {
+          const localData = localStorage.getItem('vayyl_pos_' + p.position_id);
+          if (localData) {
+            const parsed = JSON.parse(localData);
+            if (parsed.entryPrice) entryPrice = String(parsed.entryPrice);
+            if (parsed.collateral) collateral = String(parsed.collateral);
+            if (parsed.closed) isLocallyClosed = true;
+          }
+        } catch (e) {}
+
+        const isEffectivelyClosed = p.is_closed || isLocallyClosed;
+
+        return {
+          id: p.id.toString(),
+          position_id: p.position_id,
+          asset: 'XLM',
+          type: p.direction === 1 ? 'Long' : (p.direction === 0 ? 'Short' : 'Long'),
+          leverage: '10x', // We don't store leverage directly, just size and collateral
+          size: p.size ? p.size.toString() : '500',
+          health: isEffectivelyClosed ? '0%' : '100%',
+          status: isEffectivelyClosed ? 'Closed' : 'Active',
+          commitment: p.commitment,
+          entry_price: entryPrice,
+          collateral: collateral
+        };
+      });
       set({ positions });
     } catch (e) {
       console.error('fetchState positions failed', e);
@@ -137,8 +158,17 @@ export const usePositionsStore = create<PositionsState>((set, get) => ({
         nullifier: proveResult.nullifier,
         positionCommitment: proveResult.position_commitment,
         metaHash: "0",
+        direction,
+        size,
         useRelayer: true,
       });
+
+      try {
+        localStorage.setItem(`vayyl_pos_${positionIdHex}`, JSON.stringify({ 
+          entryPrice: Number(entry_price),
+          collateral: Number(note.amount)
+        }));
+      } catch (e) {}
 
       await markNoteSpent(keys.viewingKey, note.id);
       
@@ -188,11 +218,17 @@ export const usePositionsStore = create<PositionsState>((set, get) => ({
       
       const old_size = BigInt(pos.size.replace(/[^0-9]/g, ''));
       const old_direction = pos.type === 'Long' ? 1n : 0n;
-      const old_entry_price = 2000n; // Note: We don't have entry price stored on the position, so we fallback for MVP
-      const old_collateral = 500n; // Assuming standard note amount 500
+      const old_entry_price = BigInt(pos.entry_price || '2000');
+      const old_collateral = BigInt(pos.collateral || '1000');
       const old_blindness = 4n;
 
-      const note_amount = 251000n; // PnL calculation mock matching E2E
+      let pnl = 0n;
+      if (old_direction === 1n) {
+        pnl = old_size * (closeOraclePrice - old_entry_price);
+      } else {
+        pnl = old_size * (old_entry_price - closeOraclePrice);
+      }
+      const note_amount = old_collateral + pnl;
       const note_blindness = 33333n;
 
       set({ status: 'Generating close proof…' });
@@ -231,9 +267,41 @@ export const usePositionsStore = create<PositionsState>((set, get) => ({
         useRelayer: true,
       });
 
+      // Save the new note to storage so it shows up in Dashboard
+      await addNote(keys.viewingKey, {
+        id: proveResult.output_note_commitment.toString(),
+        amount: Number(note_amount),
+        asset: pos.asset,
+        commitment: proveResult.output_note_commitment.toString(),
+        nullifier: '0',
+        pubX: keys.pubX.toString(),
+        pubY: keys.pubY.toString(),
+        blindness: note_blindness.toString(),
+        leafIndex: -1, // will be synced later
+        isSpent: false,
+        createdAt: Date.now()
+      });
+
+      try {
+        const localData = localStorage.getItem(`vayyl_pos_${pos.position_id}`);
+        let parsed = localData ? JSON.parse(localData) : {};
+        parsed.closed = true;
+        localStorage.setItem(`vayyl_pos_${pos.position_id}`, JSON.stringify(parsed));
+      } catch (e) {}
+
+      // Optimistic update in Zustand store
+      set({ 
+        positions: state.positions.map(p => 
+          p.position_id === pos.position_id ? { ...p, status: 'Closed', health: '0%' } : p
+        )
+      });
+
       set({ status: 'Position closed successfully.' });
       useToastStore.getState().addToast(`Position closed successfully!`, 'success');
-      await get().fetchState();
+      
+      // Still fetch state to sync other data, but our optimistic update will protect the status
+      get().fetchState().catch(() => {});
+
     } catch (e: any) {
       console.error("Position close failed", e);
       set({ status: `Position close failed: ${e.message}` });

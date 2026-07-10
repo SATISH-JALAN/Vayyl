@@ -2,11 +2,19 @@ version: '3.8'
 
 x-common-node: &common-node
   image: node:20
-  working_dir: /app/backend
+  working_dir: /app
   volumes:
     - ..:/app
+    - /app/node_modules
+    - /app/backend/indexer/node_modules
+    - /app/backend/relayer/node_modules
+    - /app/backend/oracle-adapter/node_modules
+    - /app/backend/keeper/node_modules
   env_file:
     - .env.testnet
+  environment:
+    - CI=true
+    - INDEXER_URL=http://indexer:3001
 
 services:
   postgres:
@@ -20,7 +28,7 @@ services:
 
   indexer:
     <<: *common-node
-    command: sh -c "npm install -g pnpm && pnpm install && pnpm --filter @vayyl/indexer run dev"
+    command: sh -c "npm install -g pnpm && pnpm --dir backend/indexer install && pnpm --dir backend/indexer run dev"
     ports:
       - "3001:3001"
     depends_on:
@@ -28,16 +36,16 @@ services:
 
   relayer:
     <<: *common-node
-    command: sh -c "npm install -g pnpm && pnpm install && pnpm --filter @vayyl/relayer run dev"
+    command: sh -c "npm install -g pnpm && pnpm --dir backend/relayer install && pnpm --dir backend/relayer run dev"
     ports:
       - "3002:3002"
 
   oracle-adapter:
     <<: *common-node
-    command: sh -c "npm install -g pnpm && pnpm install && pnpm --filter @vayyl/oracle-adapter run dev"
+    command: sh -c "npm install -g pnpm && pnpm --dir backend/oracle-adapter install && pnpm --dir backend/oracle-adapter run dev"
     ports:
       - "3003:3003"
 
   keeper:
     <<: *common-node
-    command: sh -c "npm install -g pnpm && pnpm install && pnpm --filter @vayyl/keeper run dev"
+    command: sh -c "npm install -g pnpm && pnpm --dir backend/keeper install && pnpm --dir backend/keeper run dev"

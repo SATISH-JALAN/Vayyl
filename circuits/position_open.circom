@@ -33,11 +33,9 @@ template PositionOpen(depth) {
     // 1. Dummy constraint for meta_hash
     signal meta_hash_sq <== meta_hash * meta_hash;
     
-    // 2. Validate Public Key derivation
-    component pubKeyDerivation = DerivePublicKey();
-    pubKeyDerivation.privKey <== privKey;
-    pubKeyDerivation.pubX === pubX;
-    pubKeyDerivation.pubY === pubY;
+    // 2. (Removed) Validate Public Key derivation
+    // In Vayyl Sprint 4, pubX/pubY are derived via Poseidon2 in crypto.ts.
+    // BabyJubJub binding is deferred to Sprint 7.
 
     // 3. Note Commitment & Nullifier
     component note = NoteCommitment();

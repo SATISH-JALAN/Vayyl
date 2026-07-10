@@ -112,7 +112,7 @@ export class Database {
 
     async updatePositionClose(positionId: string, newCommitment: string) {
         await this.pool.query(
-            `UPDATE positions SET commitment = $2, updated_at = CURRENT_TIMESTAMP WHERE position_id = $1`,
+            `UPDATE positions SET commitment = $2, is_closed = TRUE, updated_at = CURRENT_TIMESTAMP WHERE position_id = $1`,
             [positionId, newCommitment]
         );
     }

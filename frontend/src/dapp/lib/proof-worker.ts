@@ -10,7 +10,7 @@
 // labels them as roadmap until real circuit inputs and contract paths exist.
 
 import * as snarkjs from 'snarkjs';
-import { computeCommitment, computeNullifier, poseidon2Hash2 } from './poseidon';
+import { computeCommitment, computeNullifier, poseidon2Hash2, poseidon2Hash4 } from './poseidon';
 import { buildMerklePath, zeroHashes, TREE_DEPTH } from './merkle';
 
 // ASP is ENFORCED on-chain: `vayyl-pool::deposit` calls
@@ -181,8 +181,8 @@ self.onmessage = async (e: MessageEvent) => {
         const entry_price = BigInt(p.entry_price);
         const position_blindness = BigInt(p.position_blindness);
         
-        const metaHash1 = await poseidon2Hash2(size, await poseidon2Hash2(direction, await poseidon2Hash2(entry_price, position_blindness)));
-        const pos_commit = await poseidon2Hash2(amount, await poseidon2Hash2(pubX, await poseidon2Hash2(pubY, metaHash1)));
+        const metaHash1 = await poseidon2Hash4(size, direction, entry_price, position_blindness);
+        const pos_commit = await poseidon2Hash4(amount, pubX, pubY, metaHash1);
         
         const input = {
           root: root.toString(),
@@ -217,7 +217,10 @@ self.onmessage = async (e: MessageEvent) => {
         const pubY = BigInt(p.pubY);
         const old_privKey = BigInt(p.old_privKey);
         
-        const position_nullifier = await poseidon2Hash2(BigInt(p.old_position_commitment), old_privKey);
+        const old_position_commitment = p.old_position_commitment.startsWith('0x') 
+          ? BigInt(p.old_position_commitment) 
+          : BigInt('0x' + p.old_position_commitment);
+        const position_nullifier = await poseidon2Hash2(old_position_commitment, old_privKey);
         
         const new_size = BigInt(p.new_size);
         const new_direction = BigInt(p.new_direction);
@@ -229,8 +232,8 @@ self.onmessage = async (e: MessageEvent) => {
         // Note: position_commitment hash ordering differs slightly between e2e and circuits sometimes. Wait, the e2e uses calculatePositionCommitment which is Hash4(collateral, pubX, pubY, Hash4(size, direction, entry_price, blindness)).
         // Let's match the e2e script exactly for the worker.
         
-        const metaHash1 = await poseidon2Hash2(new_size, await poseidon2Hash2(new_direction, await poseidon2Hash2(new_entry_price, new_blindness)));
-        const new_pos_commit_correct = await poseidon2Hash2(new_collateral, await poseidon2Hash2(pubX, await poseidon2Hash2(pubY, metaHash1)));
+        const metaHash1 = await poseidon2Hash4(new_size, new_direction, new_entry_price, new_blindness);
+        const new_pos_commit_correct = await poseidon2Hash4(new_collateral, pubX, pubY, metaHash1);
 
         const note_amount = BigInt(p.note_amount);
         const note_blindness = BigInt(p.note_blindness);
