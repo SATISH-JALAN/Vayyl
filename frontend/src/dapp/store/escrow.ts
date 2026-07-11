@@ -17,7 +17,6 @@ const runWorkerTask = (type: string, payload: any): Promise<any> => {
   });
 };
 import { useToastStore } from './toast';
-import { StrKey, xdr } from '@stellar/stellar-base';
 
 // Stub for now
 const NETWORK_PASSPHRASE = process.env.NEXT_PUBLIC_NETWORK_PASSPHRASE || "Test SDF Network ; September 2015";
