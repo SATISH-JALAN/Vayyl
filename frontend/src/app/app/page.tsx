@@ -12,7 +12,7 @@ type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
 
 function routeFromView(value: string | string[] | undefined): RouteKey {
   const view = Array.isArray(value) ? value[0] : value;
-  if (view === 'pool' || view === 'positions' || view === 'settings') return view;
+  if (view === 'pool' || view === 'positions' || view === 'escrow' || view === 'settings') return view;
   return 'dashboard';
 }
 

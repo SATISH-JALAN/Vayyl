@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { execSync } from 'child_process';
+import { parseStaleResponse } from './stale';
 
 const NETWORK = "testnet";
 const SOURCE = "deployer"; // Assuming keeper has its keys configured locally
@@ -29,7 +30,7 @@ function isStale(positionIdHex: string): boolean {
     try {
         const cmd = `stellar contract invoke --id ${LIQUIDATION_ENGINE_ID} --network ${NETWORK} --source ${SOURCE} -- is_stale --position_id "{\\"bytes\\":\\"${positionIdHex}\\"}"`;
         const out = execSync(cmd, { encoding: 'utf8', stdio: 'pipe' });
-        return out.includes("true");
+        return parseStaleResponse(out);
     } catch (e: any) {
         // If there's an error calling it, might be stale or not found, let's just return false
         return false;

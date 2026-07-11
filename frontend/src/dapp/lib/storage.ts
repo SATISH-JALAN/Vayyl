@@ -11,6 +11,7 @@ import { get, set, del } from 'idb-keyval';
 export interface ShieldedNote {
   id: string; // = commitment (decimal string), unique per note
   amount: number;
+  amountStroops?: string; // exact contract amount; optional only for legacy local notes
   asset: string;
   // secrets needed to spend
   commitment: string; // decimal field element

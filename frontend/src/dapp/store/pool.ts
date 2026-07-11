@@ -18,6 +18,7 @@ import {
   fetchSpentNullifiers,
   computeWithdrawBinding,
 } from '../lib/pool';
+import { xlmToStroops } from '../lib/amount';
 import {
   addNote,
   getNotes,
@@ -36,8 +37,8 @@ interface PoolState {
   isProving: boolean;
   status: string | null;
   fetchState: () => Promise<void>;
-  deposit: (amount: number, asset: string) => Promise<void>;
-  withdraw: (amount: number, asset: string, destination: string) => Promise<void>;
+  deposit: (amount: string, asset: string) => Promise<void>;
+  withdraw: (amount: string, asset: string, destination: string) => Promise<void>;
   transfer: (amount: number, asset: string, recipient: string) => Promise<void>;
 }
 
@@ -56,9 +57,6 @@ const runWorkerTask = (type: string, payload: any): Promise<any> =>
     };
     worker.postMessage({ type, payload, id: taskId });
   });
-
-const RELAYER_PLACEHOLDER =
-  'GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF5'; // null-account when self-submitting
 
 export const usePoolStore = create<PoolState>((set, get) => ({
   shieldedBalance: 0,
@@ -107,16 +105,18 @@ export const usePoolStore = create<PoolState>((set, get) => ({
     }
   },
 
-  deposit: async (amount: number, asset: string) => {
+  deposit: async (amount: string, asset: string) => {
     const wallet = useWalletStore.getState();
     if (!wallet.address) throw new Error('Connect your wallet first');
     const keys = await wallet.unlockShieldedKeys();
 
+    const amountStroops = xlmToStroops(amount);
+    const amountXlm = Number(amount);
     set({ isProving: true, status: 'Generating deposit proof…' });
     try {
       const blindness = randomFieldElement().toString();
       const proveResult = await runWorkerTask('PROVE_DEPOSIT', {
-        amount: amount.toString(),
+        amount: amountStroops.toString(),
         pubX: keys.pubX.toString(),
         pubY: keys.pubY.toString(),
         blindness,
@@ -137,7 +137,7 @@ export const usePoolStore = create<PoolState>((set, get) => ({
         depositor: wallet.address,
         proof: proveResult.proof,
         commitment: proveResult.commitment,
-        publicAmount: BigInt(amount),
+        publicAmount: amountStroops,
         // Must match the proof's asp_root public signal exactly (derived in the
         // worker), and be a root the ASP contract has produced — else the on-chain
         // is_known_root gate rejects the deposit (Error #8).
@@ -154,7 +154,8 @@ export const usePoolStore = create<PoolState>((set, get) => ({
       const existing = await getNotes(keys.viewingKey);
       await addNote(keys.viewingKey, {
         id: commitment,
-        amount,
+        amount: amountXlm,
+        amountStroops: amountStroops.toString(),
         asset,
         commitment,
         nullifier: nullifier.toString(),
@@ -167,7 +168,7 @@ export const usePoolStore = create<PoolState>((set, get) => ({
         txHash,
       });
 
-      set({ status: `Deposit confirmed: ${txHash.slice(0, 8)}…` });
+      set({ status: `Deposit confirmed: ${txHash}` });
       useToastStore.getState().addToast(`Deposit confirmed! Transaction: ${txHash.slice(0, 8)}…`, 'success');
       await get().fetchState();
     } catch (e: any) {
@@ -179,7 +180,7 @@ export const usePoolStore = create<PoolState>((set, get) => ({
     }
   },
 
-  withdraw: async (amount: number, asset: string, destination: string) => {
+  withdraw: async (amount: string, asset: string, destination: string) => {
     const wallet = useWalletStore.getState();
     if (!wallet.address) throw new Error('Connect your wallet first');
     const keys = await wallet.unlockShieldedKeys();
@@ -189,21 +190,20 @@ export const usePoolStore = create<PoolState>((set, get) => ({
       const notes = await getNotes(keys.viewingKey);
       // Minimal note selection: one unspent note of exactly `amount` (single-note
       // withdraw — the MVP vertical; multi-note aggregation is post-MVP).
-      const note = notes.find((n) => !n.isSpent && n.amount === amount && n.asset === asset);
+      const requestedStroops = xlmToStroops(amount);
+      const note = notes.find((n) =>
+        !n.isSpent &&
+        n.asset === asset &&
+        BigInt(n.amountStroops ?? xlmToStroops(String(n.amount))) === requestedStroops,
+      );
       if (!note) {
         throw new Error(
-          `No single unspent ${asset} note of ${amount} found. (MVP withdraws a whole note.)`,
+          `No single unspent ${asset} note of ${amount} found. Vault v1 withdraws one whole note.`,
         );
       }
 
-      // Fetch relayer pubkey
-      const relayerRes = await fetch(`${process.env.NEXT_PUBLIC_RELAYER_URL || 'http://localhost:3002'}/health`);
-      if (!relayerRes.ok) throw new Error('Relayer health check failed');
-      const relayerData = await relayerRes.json();
-      const relayerPubkey = relayerData.address;
-
-      const fee = 0n; // Relayer subsidizes the fee
-      const publicAmount = BigInt(amount);
+      const fee = 0n;
+      const publicAmount = BigInt(note.amountStroops ?? xlmToStroops(String(note.amount)));
       const withdrawBinding = await computeWithdrawBinding(destination, publicAmount);
 
       // Reconstruct the tree from the indexer's ordered commitments.
@@ -215,7 +215,7 @@ export const usePoolStore = create<PoolState>((set, get) => ({
 
       set({ status: 'Generating withdraw proof…' });
       const proveResult = await runWorkerTask('PROVE_WITHDRAW', {
-        amount: note.amount.toString(),
+        amount: publicAmount.toString(),
         pubX: note.pubX,
         pubY: note.pubY,
         blindness: note.blindness,
@@ -227,7 +227,7 @@ export const usePoolStore = create<PoolState>((set, get) => ({
         leaves: leaves.map((c) => c.toString()),
       });
 
-      set({ status: 'Submitting via Relayer…' });
+      set({ status: 'Submitting to Mainnet…' });
       const txHash = await submitWithdraw({
         source: wallet.address,
         proof: proveResult.proof,
@@ -236,9 +236,9 @@ export const usePoolStore = create<PoolState>((set, get) => ({
         recipient: destination,
         root: proveResult.root,
         fee,
-        relayer: relayerPubkey,
+        relayer: wallet.address,
         asset,
-        useRelayer: true,
+        useRelayer: false,
       });
 
       await markNoteSpent(keys.viewingKey, note.id);
@@ -250,7 +250,7 @@ export const usePoolStore = create<PoolState>((set, get) => ({
         txHash,
         timestamp: Date.now(),
       });
-      set({ status: `Withdraw confirmed: ${txHash.slice(0, 8)}…` });
+      set({ status: `Withdraw confirmed: ${txHash}` });
       useToastStore.getState().addToast(`Withdraw confirmed! Transaction: ${txHash.slice(0, 8)}…`, 'success');
       await get().fetchState();
     } catch (e: any) {
@@ -268,5 +268,3 @@ export const usePoolStore = create<PoolState>((set, get) => ({
     throw new Error('Transfer is on the roadmap and not enabled in this build.');
   },
 }));
-
-void RELAYER_PLACEHOLDER;

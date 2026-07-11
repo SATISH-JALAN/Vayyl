@@ -8,16 +8,19 @@ import { useWalletStore } from '../../store/wallet';
 
 export default function DepositForm() {
   const [amount, setAmount] = useState('');
-  const { deposit, isProving, status } = usePoolStore();
+  const { deposit, isProving, notes, status } = usePoolStore();
   const { address } = useWalletStore();
   const isError = !!status && /failed|error/i.test(status);
+  const confirmedHash =
+    status?.match(/^Deposit confirmed: ([a-f0-9]{64})$/i)?.[1] ??
+    [...notes].sort((a, b) => b.createdAt - a.createdAt).find((note) => note.txHash)?.txHash;
 
   const handleDeposit = async (e: FormEvent) => {
     e.preventDefault();
     if (!amount) return;
 
     try {
-      await deposit(Number(amount), 'XLM');
+      await deposit(amount, 'XLM');
       setAmount('');
     } catch (error) {
       console.error(error);
@@ -42,9 +45,9 @@ export default function DepositForm() {
             label="Amount"
             type="number"
             inputMode="decimal"
-            min="0"
-            step="1"
-            placeholder="0"
+            min="0.0000001"
+            step="0.0000001"
+            placeholder="0.10"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
             disabled={isProving}
@@ -57,7 +60,17 @@ export default function DepositForm() {
           {!address ? 'Connect wallet first' : isProving ? 'Generating proof' : 'Shield XLM'}
         </Button>
 
-        {status && <p className={`dapp-status ${isError ? 'dapp-status--error' : 'dapp-status--success'}`}>{status}</p>}
+        {confirmedHash ? (
+          <div className="dapp-transaction-confirmation">
+            <strong>{status?.startsWith('Deposit confirmed') ? 'Deposit confirmed on Mainnet' : 'Latest shield transaction'}</strong>
+            <a href={`https://stellar.expert/explorer/public/tx/${confirmedHash}`} target="_blank" rel="noreferrer">
+              <code>{confirmedHash}</code>
+              <span>View in Stellar Expert</span>
+            </a>
+          </div>
+        ) : status ? (
+          <p className={`dapp-status ${isError ? 'dapp-status--error' : 'dapp-status--success'}`}>{status}</p>
+        ) : null}
       </form>
     </Card>
   );

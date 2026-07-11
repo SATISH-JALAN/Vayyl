@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "release": "vayyl-vault-v1",
+  "demo_only": true,
+  "network": "mainnet",
+  "network_profile": "vayyl-mainnet-onfinality",
+  "network_passphrase": "Public Global Stellar Network ; September 2015",
+  "source_account": "GBMH5RK4SK4LWMU3I4WFIEMTJXRK6GI44W3U5NCFOTWMQX32OCNQWCEF",
+  "asset": "CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA",
+  "verifier": "CATKJ2WBLQXGNVMGZ6E4JEZVTRMVJO2SKA3H7VH53TVD2HJPSBQ46MRD",
+  "asp_membership": "CBJWADSNYX52I6GEASN5P7MS6NWQ4O5WWQJOPTNSKCRHYTK2BYET6YB3",
+  "asp_non_membership": "CBJSFSZOEOEBSBTUZPTFZNAMP37PU7GKVFRERYSBTMYY7KPG6QKMAAQE",
+  "pool": "CB2NWPFWW5YLD6UYWR4RFERECSMBF6SB62P7RRP2LF2P2EMDSDLAZ3OW",
+  "registered_circuits": [
+    "Deposit",
+    "Withdraw"
+  ],
+  "settlement_authorities": [],
+  "demo_asp_enrollment": {
+    "leaf_index": 0,
+    "root": "0e2efa7ab901d19cd95b85265e2d8745018c0ba7457ebf7e06836a482fb68f7c",
+    "transaction": "d58e0121e8c17b56efe3c0b38021d9185aab8e94b5975b72237b259123c490ac"
+  },
+  "trusted_setup": "single-party handover artifacts; hackathon demo only",
+  "deployed_at": "2026-07-11T00:38:32.8255656Z",
+  "verified_at": "2026-07-11T00:43:55.2743882Z",
+  "verification_transactions": {
+    "Deposit": "c4f2092ded23035d02406af72635b55ed100158ba6b2a85556192fb0c3e6e011",
+    "Withdraw": "4331b65e2bd9c1821f0775c9c4c5a9eba37f438372bd2762445f407dd063d7a6"
+  },
+  "artifacts": {
+    "contracts/target/wasm32v1-none/release/groth16_verifier.wasm": "a1958317689414cd12a68e0a212476f65d1b6fcb448e8e40d1102598c635a943",
+    "contracts/target/wasm32v1-none/release/asp_membership.wasm": "311bbbeae3b7b24e40ac442ae670256a78a9c9ee399114a2918f8618bd74dfc6",
+    "contracts/target/wasm32v1-none/release/asp_non_membership.wasm": "d37035409b010c3ffb3274c780a0ddd1a25ae65301996115ffc73158e38fe2db",
+    "contracts/target/wasm32v1-none/release/vayyl_pool.wasm": "ae388dd5f0f805defa4fa76c5c4c0c74fd54c2086fab1b11da6172ef90976b62",
+    "circuits/build/vkey/deposit_stellar_vkey.json": "e0ff37f0be35435b2aef7ebff79590de5f31ca81249e33267feb643b1d2ce0d8",
+    "circuits/build/vkey/withdraw_stellar_vkey.json": "c5bcc3402a8b96aa7b10c38899531bbadcfd260f6ed5f4c0a0a70dee5ef0e96b"
+  }
+}

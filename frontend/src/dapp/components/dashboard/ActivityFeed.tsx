@@ -20,7 +20,7 @@ function shortHash(hash: string): string {
   return `${hash.slice(0, 8)}...${hash.slice(-6)}`;
 }
 
-const EXPLORER = 'https://stellar.expert/explorer/testnet/tx';
+const EXPLORER = 'https://stellar.expert/explorer/public/tx';
 
 export default function ActivityFeed({ activityCount }: ActivityFeedProps) {
   const { activity } = usePoolStore();

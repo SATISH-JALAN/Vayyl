@@ -9,7 +9,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 soroban-sdk = { workspace = true }
-soroban-poseidon = { path = "../../rs-soroban-poseidon" }
+soroban-poseidon = { git = "https://github.com/stellar/rs-soroban-poseidon.git", rev = "b4bf706b7d0d602f9389280d259c0fb9f19983bf" }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }

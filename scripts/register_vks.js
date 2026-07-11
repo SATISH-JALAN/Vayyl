@@ -31,7 +31,10 @@ function resolveVerifierId() {
             console.warn(`Could not parse ${deployFile}: ${e.message}`);
         }
     }
-    return "CAITE7BPXCMYW2I5GKJIV5PKYFNYUBZOJX2PS467EPXSTJO45YFQZIBQ"; // stale fallback
+    if (NETWORK === 'testnet') {
+        return "CAITE7BPXCMYW2I5GKJIV5PKYFNYUBZOJX2PS467EPXSTJO45YFQZIBQ"; // legacy testnet fallback
+    }
+    throw new Error(`Verifier id not found for ${NETWORK}; set VERIFIER_ID explicitly.`);
 }
 const VERIFIER_ID = resolveVerifierId();
 
@@ -92,10 +95,15 @@ const V1_CIRCUITS = new Set([
     "SealedOrder",
 ]);
 const registerAll = process.env.REGISTER_ALL === "1";
+const vaultOnly = process.env.REGISTER_VAULT_ONLY === "1";
 
 console.log(`Target verifier: ${VERIFIER_ID} (network=${NETWORK}${DRY_RUN ? ", DRY_RUN" : ""})`);
 
 for (const [name, config] of Object.entries(CIRCUITS)) {
+    if (vaultOnly && name !== 'Deposit' && name !== 'Withdraw') {
+        console.log(`Skipping ${name}: outside Vault v1 scope.`);
+        continue;
+    }
     if (!registerAll && !V1_CIRCUITS.has(name)) {
         console.log(`Skipping ${name}: outside V1 scope (set REGISTER_ALL=1 to include).`);
         continue;

@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect } from 'react';
-import 'lenis/dist/lenis.css';
 
 import gsap from 'gsap';
 import { DrawSVGPlugin } from 'gsap/DrawSVGPlugin';

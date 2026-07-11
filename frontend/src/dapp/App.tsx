@@ -14,11 +14,11 @@ import Settings from './pages/Settings';
 
 export type RouteKey = 'dashboard' | 'pool' | 'positions' | 'escrow' | 'settings';
 
-const navItems: Array<{ route: RouteKey; href: string; label: string }> = [
+const navItems: Array<{ route: RouteKey; href: string; label: string; status?: string }> = [
   { route: 'dashboard', href: '/app', label: 'Dashboard' },
-  { route: 'pool', href: '/app?view=pool', label: 'Shielded Pool' },
-  { route: 'positions', href: '/app?view=positions', label: 'Positions' },
-  { route: 'escrow', href: '/app?view=escrow', label: 'Escrow & Agentic' },
+  { route: 'pool', href: '/app?view=pool', label: 'XLM Vault', status: 'Live' },
+  { route: 'positions', href: '/app?view=positions', label: 'Positions', status: 'Audit' },
+  { route: 'escrow', href: '/app?view=escrow', label: 'Settlements', status: 'Audit' },
   { route: 'settings', href: '/app?view=settings', label: 'Settings' },
 ];
 
@@ -83,7 +83,7 @@ export default function App({ initialRoute = 'dashboard' }: { initialRoute?: Rou
           <a href="/" className="dapp-sidebar__logo" aria-label="Back to Vayyl landing page">
             Vayyl
           </a>
-          <span className="dapp-badge dapp-badge--muted">Private Console</span>
+          <span className="dapp-badge dapp-badge--success">Mainnet</span>
         </div>
 
         <nav className="dapp-sidebar__nav">
@@ -98,7 +98,8 @@ export default function App({ initialRoute = 'dashboard' }: { initialRoute?: Rou
               }}
               className={`dapp-sidebar__link ${route === item.route ? 'is-active' : ''}`}
             >
-              {item.label}
+              <span>{item.label}</span>
+              {item.status && <small>{item.status}</small>}
             </a>
           ))}
         </nav>
@@ -107,7 +108,7 @@ export default function App({ initialRoute = 'dashboard' }: { initialRoute?: Rou
           <div className="dapp-network-card">
             <span className="dapp-label-text">Network</span>
             <strong>{network}</strong>
-            <p>Wallet-authorized proofs and local shielded key state.</p>
+            <p>Vault v1 · XLM · proof verification active.</p>
           </div>
         </div>
       </aside>
@@ -115,8 +116,8 @@ export default function App({ initialRoute = 'dashboard' }: { initialRoute?: Rou
       <main className="dapp-main">
         <header className="dapp-topbar">
           <div>
-            <span className="dapp-kicker">Confidential settlement workspace</span>
-            <p className="dapp-topbar__subtitle">Shield assets, manage positions, and settle privately.</p>
+            <span className="dapp-kicker">Vayyl Vault v1</span>
+            <p className="dapp-topbar__subtitle">Client-side proofs. Native XLM. Verified on Soroban Mainnet.</p>
           </div>
 
           <div className="dapp-wallet">

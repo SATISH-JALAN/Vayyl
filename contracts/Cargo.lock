@@ -1497,15 +1497,16 @@ dependencies = [
 [[package]]
 name = "soroban-poseidon"
 version = "26.0.0"
+source = "git+https://github.com/stellar/rs-soroban-poseidon.git?rev=b4bf706b7d0d602f9389280d259c0fb9f19983bf#b4bf706b7d0d602f9389280d259c0fb9f19983bf"
 dependencies = [
  "soroban-sdk",
 ]
 
 [[package]]
 name = "soroban-sdk"
-version = "26.1.0"
+version = "26.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c8c92772aaafb45bbfa8ea5baa5b453e84be4351ddb6383469acbcf3d64ddc8e"
+checksum = "5de6ad39b7070e8703d01c3abad13e75ea5e65b1a5ce5e86b98d724773282044"
 dependencies = [
  "arbitrary",
  "bytes-lit",

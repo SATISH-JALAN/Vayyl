@@ -5,9 +5,9 @@ export function createApi(db: Database, poolAddress: string): express.Express {
     const app = express();
 
     // The DApp fetches these read-only endpoints cross-origin (Vite on :3000 →
-    // indexer on :3001). Without CORS the browser blocks the response and the
+    // indexer on :3001 / Railway). Without CORS the browser blocks the response and the
     // withdraw Merkle-path reconstruction silently fails. Read-only public data,
-    // so a permissive origin is fine for testnet.
+    // so a permissive origin is fine for this read-only Mainnet demo API.
     app.use((req, res, next) => {
         res.header('Access-Control-Allow-Origin', '*');
         res.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
@@ -19,7 +19,7 @@ export function createApi(db: Database, poolAddress: string): express.Express {
     app.use(express.json());
 
     app.get('/health', (req, res) => {
-        res.json({ status: 'ok' });
+        res.json({ status: 'ok', network: 'mainnet', pool: poolAddress });
     });
 
     app.get('/commitments', async (req, res) => {

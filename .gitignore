@@ -8,7 +8,9 @@ dist/
 # Environment (contains secrets: DB passwords, connection strings, keys)
 .env
 .env.*
+wallet.env
 !.env.example
+!frontend/.env.mainnet.example
 
 # Agent customizations
 .claude
@@ -51,7 +53,7 @@ package-lock.json
 yarn.lock
 
 # External upstream reference repository (cloned for parameter generation/testing)
-rs-soroban-poseidon/
+/rs-soroban-poseidon/
 
 # Internal project documentation
 /.agents
@@ -60,8 +62,24 @@ rs-soroban-poseidon/
 /.impeccable/config.local.json
 /.impeccable/live/sessions/
 /
+# Local code-graph output
+/graphify-out/
+/.graphifyignore
+
 # Local visual verification artifacts
 /.playwright-mcp/
+/.playwright-cli/
+/frontend/.playwright-cli/
+/output/playwright/
 /vayyl-next-landing-*.png
 /vayyl-hero-polish-*.png
 .pnpm-store/
+
+# Local handover, tooling, and runtime artifacts
+/handover_request/
+/circuits/reference/
+/logs/
+/vayyl_handover_docs.md
+/vayyl_progress_report.md
+/stellar.exe
+/stellar.tar.gz

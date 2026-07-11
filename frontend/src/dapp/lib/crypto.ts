@@ -59,9 +59,11 @@ export async function deriveShieldedKeys(viewingKey: string): Promise<ShieldedKe
 export const VAYYL_AUTH_MESSAGE =
   'Authenticate with Vayyl to derive your private viewing key. DO NOT SIGN THIS on untrusted domains.';
 
-export const deriveViewingKey = async (): Promise<string> => {
+export const deriveViewingKey = async (address: string): Promise<string> => {
   const signatureResponse = await signMessage(VAYYL_AUTH_MESSAGE, {
-    networkPassphrase: 'Test SDF Network ; September 2015',
+    address,
+    networkPassphrase:
+      process.env.NEXT_PUBLIC_NETWORK_PASSPHRASE || 'Public Global Stellar Network ; September 2015',
   });
   if ((signatureResponse as { error?: string }).error) {
     throw new Error((signatureResponse as { error?: string }).error);

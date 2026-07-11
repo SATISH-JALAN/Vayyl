@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 import Card from '../components/common/Card';
 import ActivityFeed from '../components/dashboard/ActivityFeed';
@@ -13,10 +13,20 @@ export default function Dashboard() {
   const { shieldedBalance, notes, activity, status, fetchState } = usePoolStore();
   const { address, keys, isUnlocking } = useWalletStore();
   const activeNotes = notes.filter((note) => !note.isSpent);
+  const [indexerOnline, setIndexerOnline] = useState<boolean | null>(null);
+  const poolId = process.env.NEXT_PUBLIC_POOL_XLM ?? '';
+  const verifierId = process.env.NEXT_PUBLIC_VERIFIER ?? '';
+  const indexerUrl = process.env.NEXT_PUBLIC_INDEXER_URL ?? 'http://localhost:3001';
 
   useEffect(() => {
     if (address && keys) void fetchState();
   }, [address, keys, fetchState]);
+
+  useEffect(() => {
+    fetch(`${indexerUrl}/health`)
+      .then((response) => setIndexerOnline(response.ok))
+      .catch(() => setIndexerOnline(false));
+  }, [indexerUrl]);
 
   return (
     <div className="dapp-stack">
@@ -33,6 +43,19 @@ export default function Dashboard() {
           </a>
         </div>
       </header>
+
+      <section className="dapp-release" aria-label="Mainnet release status">
+        <div>
+          <span className="dapp-release__signal" aria-hidden="true" />
+          <div>
+            <strong>Vault v1 is live on Mainnet</strong>
+            <p>Deposit and whole-note withdrawal verification keys are registered.</p>
+          </div>
+        </div>
+        <span className={`dapp-badge ${indexerOnline ? 'dapp-badge--success' : indexerOnline === false ? 'dapp-badge--warning' : 'dapp-badge--muted'}`}>
+          Indexer {indexerOnline ? 'online' : indexerOnline === false ? 'offline' : 'checking'}
+        </span>
+      </section>
 
       {!address ? (
         <Card className="dapp-card--strong">
@@ -103,6 +126,24 @@ export default function Dashboard() {
 
             <ActivityFeed activityCount={activity.length} />
           </div>
+
+          <Card>
+            <div className="dapp-card__header">
+              <div>
+                <h2 className="dapp-card__title">Mainnet evidence</h2>
+                <p className="dapp-card__description">Frozen Vault v1 deployment used by this interface.</p>
+              </div>
+              <span className="dapp-badge dapp-badge--success">Verified</span>
+            </div>
+            <div className="dapp-contract-list">
+              <a href={`https://stellar.expert/explorer/public/contract/${poolId}`} target="_blank" rel="noreferrer">
+                <span>Shielded XLM pool</span><code>{noteLabel(poolId)}</code>
+              </a>
+              <a href={`https://stellar.expert/explorer/public/contract/${verifierId}`} target="_blank" rel="noreferrer">
+                <span>Groth16 verifier</span><code>{noteLabel(verifierId)}</code>
+              </a>
+            </div>
+          </Card>
         </>
       )}
     </div>

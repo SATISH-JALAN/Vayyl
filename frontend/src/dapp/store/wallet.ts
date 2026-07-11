@@ -3,9 +3,22 @@ import {
   getAddress,
   requestAccess,
   isConnected,
-  isAllowed
+  isAllowed,
+  getNetworkDetails,
 } from '@stellar/freighter-api';
 import { deriveViewingKey, deriveShieldedKeys, type ShieldedKeys } from '../lib/crypto';
+
+const EXPECTED_NETWORK_PASSPHRASE =
+  process.env.NEXT_PUBLIC_NETWORK_PASSPHRASE || 'Public Global Stellar Network ; September 2015';
+
+async function getExpectedNetwork(): Promise<string> {
+  const details = await getNetworkDetails();
+  if (details.error) throw new Error(details.error);
+  if (details.networkPassphrase !== EXPECTED_NETWORK_PASSPHRASE) {
+    throw new Error('Switch Freighter to Stellar Mainnet before using Vayyl Vault.');
+  }
+  return details.network || 'PUBLIC';
+}
 
 interface WalletState {
   address: string | null;
@@ -24,7 +37,7 @@ interface WalletState {
 
 export const useWalletStore = create<WalletState>((set, get) => ({
   address: null,
-  network: 'TESTNET',
+  network: 'MAINNET',
   isConnecting: false,
   error: null,
   keys: null,
@@ -37,7 +50,8 @@ export const useWalletStore = create<WalletState>((set, get) => ({
       if (isAllowed) {
         const res = await getAddress();
         if (res.address) {
-          set({ address: res.address });
+          const network = await getExpectedNetwork();
+          set({ address: res.address, network });
         } else if (res.error) {
           set({ error: res.error });
         }
@@ -56,7 +70,9 @@ export const useWalletStore = create<WalletState>((set, get) => ({
     if (existing) return existing;
     set({ isUnlocking: true, error: null });
     try {
-      const viewingKey = await deriveViewingKey();
+      if (!get().address) throw new Error('Connect your wallet first');
+      await getExpectedNetwork();
+      const viewingKey = await deriveViewingKey(get().address!);
       const keys = await deriveShieldedKeys(viewingKey);
       set({ keys });
       return keys;
@@ -77,7 +93,8 @@ export const useWalletStore = create<WalletState>((set, get) => ({
       if (await isConnected() && await isAllowed()) {
         const res = await getAddress();
         if (res.address) {
-          set({ address: res.address });
+          const network = await getExpectedNetwork();
+          set({ address: res.address, network });
         }
       }
     } catch (e) {

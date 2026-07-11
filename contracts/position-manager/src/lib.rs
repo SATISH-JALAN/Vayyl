@@ -202,7 +202,7 @@ impl PositionManager {
         // Public inputs: [root, nullifier, position_commitment, meta_hash]
         let mut public_inputs = Vec::new(&env);
         public_inputs.push_back(root);
-        public_inputs.push_back(nullifier);
+        public_inputs.push_back(nullifier.clone());
         public_inputs.push_back(position_commitment.clone());
         public_inputs.push_back(meta_hash);
 
@@ -211,7 +211,27 @@ impl PositionManager {
             return Err(Error::InvalidProof);
         }
 
-        // 3. Store Position State
+        // 3. Consume the collateral note in the pool's canonical nullifier set.
+        // Tracking it only in PositionManager leaves the same note withdrawable
+        // from VayylPool after it has already been committed as collateral.
+        let pool_addr: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Pool)
+            .ok_or(Error::NotInitialized)?;
+        let pool_client = VayylPoolClient::new(&env, &pool_addr);
+        let mut spent_nullifiers = Vec::new(&env);
+        spent_nullifiers.push_back(nullifier);
+        let no_commitments: Vec<BytesN<32>> = Vec::new(&env);
+        pool_client.execute_settlement(
+            &env.current_contract_address(),
+            &spent_nullifiers,
+            &no_commitments,
+            &None,
+            &0i128,
+        );
+
+        // 4. Store Position State
         let state = PositionState {
             owner: owner.clone(),
             commitment: position_commitment.clone(),
@@ -593,8 +613,15 @@ mod test {
             &BytesN::from_array(&env, &[0x0A; 32]), // collateral nullifier
             &pos_commitment,
             &BytesN::from_array(&env, &[0x0F; 32]), // meta_hash
+            &1u32,                                  // direction
+            &100i128,                               // size
         );
         assert_eq!(pool.get_leaf_count(), 0, "open alone inserts no pool leaf");
+        env.as_contract(&pool_id, || {
+            assert!(env.storage().persistent().has(&vayyl_pool::DataKey::Nullifier(
+                BytesN::from_array(&env, &[0x0A; 32]),
+            )));
+        });
 
         // Close: the settled output note must be inserted into the pool tree.
         let output_note = BytesN::from_array(&env, &[0x0E; 32]);
@@ -655,6 +682,8 @@ mod test {
             &BytesN::from_array(&env, &[0x0A; 32]), // collateral nullifier
             &pos_commitment,
             &BytesN::from_array(&env, &[0x0F; 32]), // meta_hash
+            &1u32,                                  // direction
+            &100i128,                               // size
         );
         
         assert_eq!(result, Err(Ok(Error::InvalidProof)));

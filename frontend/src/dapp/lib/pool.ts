@@ -35,6 +35,7 @@ export const POOL_IDS: Record<string, string | undefined> = {
 };
 
 export const server = new rpc.Server(RPC_URL, { allowHttp: true });
+const INCLUSION_FEE = NETWORK_PASSPHRASE === Networks.PUBLIC ? '10000' : BASE_FEE;
 
 export function poolIdForAsset(asset: string): string {
   const id = POOL_IDS[asset];
@@ -146,7 +147,7 @@ export async function buildSignSubmit(
   const contract = new Contract(contractId);
 
   const tx = new TransactionBuilder(source, {
-    fee: BASE_FEE,
+    fee: INCLUSION_FEE,
     networkPassphrase: NETWORK_PASSPHRASE,
   })
     .addOperation(contract.call(method, ...args))

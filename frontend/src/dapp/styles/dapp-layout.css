@@ -3,9 +3,7 @@
   grid-template-columns: 248px minmax(0, 1fr);
   min-height: 100vh;
   min-height: 100dvh;
-  background:
-    radial-gradient(circle at 18% 0%, rgba(244, 111, 115, 0.08), transparent 32rem),
-    var(--bg-primary);
+  background: var(--bg-primary);
 }
 
 .dapp-sidebar {
@@ -56,6 +54,10 @@
     background-color var(--dur-fast) var(--ease-out),
     color var(--dur-fast) var(--ease-out);
 }
+
+.dapp-sidebar__link span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dapp-sidebar__link small { margin-left: auto; color: var(--text-disabled); font-size: 0.65rem; font-weight: 700; }
+.dapp-sidebar__link.is-active small { color: var(--coral); }
 
 .dapp-sidebar__link:hover,
 .dapp-sidebar__link.is-active {
@@ -167,6 +169,8 @@
 @media (max-width: 980px) {
   .dapp-shell {
     grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
+    align-content: start;
   }
 
   .dapp-sidebar {
@@ -275,5 +279,9 @@
 
   .dapp-sidebar__link {
     font-size: 0.7rem;
+  }
+
+  .dapp-sidebar__link small {
+    display: none;
   }
 }

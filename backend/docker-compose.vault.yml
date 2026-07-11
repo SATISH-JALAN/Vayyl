@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: vault_demo
+      POSTGRES_DB: vayyl_vault
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d vayyl_vault"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+    volumes:
+      - vayyl_vault_pg:/var/lib/postgresql/data
+
+volumes:
+  vayyl_vault_pg:

@@ -22,7 +22,7 @@ import { dirname, resolve } from 'node:path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CIRCUITS = resolve(__dirname, '..');
-const PARAMS_RS = resolve(CIRCUITS, '../rs-soroban-poseidon/src/poseidon2/params.rs');
+const PARAMS_RS = resolve(CIRCUITS, 'reference/rs-soroban-poseidon/params.rs');
 
 // ---- helpers ---------------------------------------------------------------
 
