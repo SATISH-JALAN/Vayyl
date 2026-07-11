@@ -13,6 +13,21 @@ The only active Mainnet feature is:
 
 Private positions, liquidations, hidden orders, relayer settlement, and agentic settlement are visible in the interface as roadmap/audit surfaces only. They are not live product flows.
 
+## Planned contract suite
+
+The repository already contains the contract modules for Vayyl's broader product surface. They are the next deployment candidates after their feature-specific security, circuit, oracle, and operational gates are completed:
+
+| Contract | Intended feature | Next deployment gate |
+| --- | --- | --- |
+| `vayyl-pool-factory` | Creates a dedicated shielded pool per supported asset. | Asset policy, initialization controls, and a staged deployment plan. |
+| `position-manager` | Coordinates private position open, health-attestation, and close lifecycle proofs. | End-to-end proof/balance testing and public-input review. |
+| `liquidation-engine` | Handles liquidation after a position misses a required health attestation. | Redesign and test proof-bound payout logic before any deployment. |
+| `hidden-order-registry` | Stores commitments for sealed conditional orders. | Trigger-proof validation, execution-path testing, and keeper integration. |
+| `agentic-settlement-hub` | Settlement and reward-claim surface for agent-driven flows. | Claim authorization, economic rules, and end-to-end settlement tests. |
+| `asp-non-membership` | Compliance primitive for proving absence from a restricted set. | Integration into a defined compliance flow and circuit. |
+
+These modules are **not** being described as production-ready or “deploy-only.” The remaining work is documented in [`MAINNET_READINESS.md`](MAINNET_READINESS.md); especially the liquidation payout binding, trusted-setup provenance, oracle/keeper behavior, and full Mainnet integration tests.
+
 ## Mainnet evidence
 
 | Component | Contract / endpoint |
