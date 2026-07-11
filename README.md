@@ -4,18 +4,17 @@
 
 Vayyl is a privacy-focused settlement application for Stellar Soroban. It uses shielded pools, commitments, nullifiers, Circom/Groth16 proofs, Poseidon2 hashing, and Soroban's native BN254 host functions so users and protocols can prove a settlement is valid without publishing the underlying amount, identity, or strategy.
 
-The application combines a marketing site with a browser DApp at `/app`. The DApp is designed around four product areas: a shielded vault, private positions, conditional settlement, and account/settings controls.
 
 ## Product surface
 
 | Product area | User goal | Current release state |
 | --- | --- | --- |
-| **Shielded Vault** | Shield XLM into a private note and withdraw that exact note to a public Stellar address. | **Live Mainnet demo** |
+| **Shielded Vault** | Shield XLM into a private note and withdraw that exact note to a public Stellar address. | **Live on Mainnet** |
 | **Private Positions** | Open, attest, and close positions without broadcasting collateral, size, or direction. | Contract/circuit implementation track; not deployed |
 | **Conditional Settlement** | Commit hidden orders and execute them once a proved condition is met. | Contract/circuit implementation track; not deployed |
 | **Liquidation protection** | Require health attestations and settle a position when a valid liquidation condition is proved. | Requires security redesign before deployment |
 | **Agentic settlement** | Enable authorized reward and settlement claims for agent-driven workflows. | Contract implementation track; not deployed |
-| **Compliance controls** | Prove membership or non-membership in an approval set without exposing identity. | Membership is live for the Vault demo; broader flow is not deployed |
+| **Compliance controls** | Prove membership or non-membership in an approval set without exposing identity. | Membership is live for the Vault release; broader flow is not deployed |
 
 ## System architecture
 
@@ -41,9 +40,9 @@ Supporting services
   └─ proof bridge: proof-format interoperability tooling
 ```
 
-## Mainnet Vault v1
+## Mainnet deployment
 
-Vault v1 is the deployed foundation of the wider Vayyl application. It supports a self-funded, end-to-end Mainnet demonstration of private XLM deposit and whole-note withdrawal.
+Vault v1 is the deployed foundation of the wider Vayyl application. It currently supports private XLM deposit and whole-note withdrawal while the broader application continues through staged Mainnet development.
 
 | Component | Contract / endpoint |
 | --- | --- |
@@ -70,13 +69,13 @@ The wider application is backed by the following in-repository modules. They are
 | `asp-non-membership` | Proves absence from a restricted compliance set. | Integration into a complete policy and circuit flow. |
 | `vayyl-mock-token` | Development-only token support for local/test flows. | Replace with approved Mainnet assets. |
 
-The full release boundary is in [`MAINNET_READINESS.md`](MAINNET_READINESS.md). In particular, the future suite needs trusted-setup provenance, complete oracle/keeper behavior, liquidation payout binding, and full Mainnet integration testing before deployment.
+Before deployment, the future suite needs trusted-setup provenance, complete oracle/keeper behavior, liquidation payout binding, and full Mainnet integration testing.
 
 ## Repository layout
 
 | Path | Contents |
 | --- | --- |
-| `frontend/` | Next.js marketing site and client-side React DApp (`/app`) |
+| `frontend/` | Next.js and client-side React DApp (`/app`) |
 | `contracts/` | Soroban contracts for the full Vayyl protocol surface |
 | `circuits/` | Circom circuits, proving utilities, and verification-key tooling |
 | `backend/indexer/` | Mainnet event indexer and read-only HTTP API |
@@ -120,7 +119,7 @@ pnpm test
 4. Copy public variables from [`frontend/.env.mainnet.example`](frontend/.env.mainnet.example) into Vercel's Production environment.
 5. Deploy from `main`.
 
-Vercel hosts the product site and DApp. `NEXT_PUBLIC_*` values are public configuration only; never add private keys, database URLs, relayer secrets, or wallet material.
+
 
 ### Indexer: Railway
 
@@ -143,10 +142,4 @@ Set the generated Railway domain as `NEXT_PUBLIC_INDEXER_URL` in Vercel.
 
 ## Security and release boundary
 
-- Vault v1 is a hackathon demonstration using a self-funded wallet. It is unaudited and must not accept third-party or production funds.
-- Current proving artifacts came from a single-party handover; production requires independently reviewed, reproducible, multi-party ceremony artifacts.
-- The public repository excludes local secrets, wallet files, proving output, build artifacts, handover data, logs, and downloaded CLI binaries.
-
-## Demo
-
-See [`DEMO_GUIDE.md`](DEMO_GUIDE.md) for the recording flow. Only public explorer transactions and contract data should appear in a demo.
+- Vayyl is a Mainnet application under active development. Vault v1 is unaudited and must not be used as third-party custody infrastructure.

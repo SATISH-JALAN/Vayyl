@@ -11,6 +11,7 @@ type PoolMode = 'deposit' | 'withdraw';
 export default function Pool() {
   const [activeMode, setActiveMode] = useState<PoolMode>('deposit');
   const [aspLeaf, setAspLeaf] = useState('');
+  const [copied, setCopied] = useState(false);
   const keys = useWalletStore((state) => state.keys);
 
   useEffect(() => {
@@ -38,12 +39,17 @@ export default function Pool() {
           <span className="dapp-release__signal" aria-hidden="true" />
           <div>
             <strong>{aspLeaf ? 'Shielded eligibility key ready' : 'Unlock your workspace first'}</strong>
-            <p>{aspLeaf ? 'This public leaf is used once to enroll the demo wallet in the Vault v1 ASP.' : 'Freighter signs a fixed message locally to derive your shielded identity.'}</p>
+            <p>{aspLeaf ? 'This public leaf is used to enroll the connected wallet in the Vault v1 access set.' : 'Freighter signs a fixed message locally to derive your shielded identity.'}</p>
           </div>
         </div>
         {aspLeaf && (
-          <button className="dapp-copy" type="button" onClick={() => navigator.clipboard.writeText(aspLeaf)} title={aspLeaf}>
-            Copy ASP leaf
+          <button className="dapp-copy" type="button" onClick={() => {
+            void navigator.clipboard.writeText(aspLeaf).then(() => {
+              setCopied(true);
+              window.setTimeout(() => setCopied(false), 1800);
+            });
+          }} title={aspLeaf}>
+            {copied ? 'Copied' : 'Copy ASP leaf'}
           </button>
         )}
       </section>

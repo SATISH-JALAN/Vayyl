@@ -17,8 +17,8 @@ export type RouteKey = 'dashboard' | 'pool' | 'positions' | 'escrow' | 'settings
 const navItems: Array<{ route: RouteKey; href: string; label: string; status?: string }> = [
   { route: 'dashboard', href: '/app', label: 'Dashboard' },
   { route: 'pool', href: '/app?view=pool', label: 'XLM Vault', status: 'Live' },
-  { route: 'positions', href: '/app?view=positions', label: 'Positions', status: 'Audit' },
-  { route: 'escrow', href: '/app?view=escrow', label: 'Settlements', status: 'Audit' },
+  { route: 'positions', href: '/app?view=positions', label: 'Positions', status: 'Planned' },
+  { route: 'escrow', href: '/app?view=escrow', label: 'Settlements', status: 'Planned' },
   { route: 'settings', href: '/app?view=settings', label: 'Settings' },
 ];
 
@@ -116,7 +116,7 @@ export default function App({ initialRoute = 'dashboard' }: { initialRoute?: Rou
       <main className="dapp-main">
         <header className="dapp-topbar">
           <div>
-            <span className="dapp-kicker">Vayyl Vault v1</span>
+            <span className="dapp-kicker">Vayyl Mainnet</span>
             <p className="dapp-topbar__subtitle">Client-side proofs. Native XLM. Verified on Soroban Mainnet.</p>
           </div>
 

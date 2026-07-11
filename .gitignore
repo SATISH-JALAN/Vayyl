@@ -83,3 +83,14 @@ yarn.lock
 /vayyl_progress_report.md
 /stellar.exe
 /stellar.tar.gz
+
+# Internal release and design notes
+/DEMO_GUIDE.md
+/MAINNET_READINESS.md
+/PRODUCT.md
+/DESIGN.md
+
+# Browser proving assets are runtime files, not local build output.
+!frontend/public/circuits/
+!frontend/public/circuits/*.wasm
+!frontend/public/circuits/*.zkey

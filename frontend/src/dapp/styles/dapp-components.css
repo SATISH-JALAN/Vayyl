@@ -88,7 +88,8 @@
 .dapp-input:focus-visible,
 .dapp-select:focus-visible,
 .dapp-segment__button:focus-visible,
-.dapp-sidebar__link:focus-visible {
+.dapp-sidebar__link:focus-visible,
+.dapp-copy:focus-visible {
   outline: 3px solid var(--focus-ring);
   outline-offset: 2px;
 }
