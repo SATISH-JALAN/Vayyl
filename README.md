@@ -1,63 +1,90 @@
-# Vayyl Vault v1
+# Vayyl
 
-Private XLM deposits and whole-note withdrawals on Stellar Soroban, using client-side Groth16 proofs and native BN254 verification.
+## Confidential settlement infrastructure for Stellar
 
-## Status
+Vayyl is a privacy-focused settlement application for Stellar Soroban. It uses shielded pools, commitments, nullifiers, Circom/Groth16 proofs, Poseidon2 hashing, and Soroban's native BN254 host functions so users and protocols can prove a settlement is valid without publishing the underlying amount, identity, or strategy.
 
-**Mainnet demo release.** Vault v1 is deployed and demonstrated end-to-end with a self-funded wallet. It is not audited and must not accept third-party or production funds.
+The application combines a marketing site with a browser DApp at `/app`. The DApp is designed around four product areas: a shielded vault, private positions, conditional settlement, and account/settings controls.
 
-The only active Mainnet feature is:
+## Product surface
 
-- Shield native XLM into one private note.
-- Withdraw that exact unspent note to a public Stellar address.
-
-Private positions, liquidations, hidden orders, relayer settlement, and agentic settlement are visible in the interface as roadmap/audit surfaces only. They are not live product flows.
-
-## Planned contract suite
-
-The repository already contains the contract modules for Vayyl's broader product surface. They are the next deployment candidates after their feature-specific security, circuit, oracle, and operational gates are completed:
-
-| Contract | Intended feature | Next deployment gate |
+| Product area | User goal | Current release state |
 | --- | --- | --- |
-| `vayyl-pool-factory` | Creates a dedicated shielded pool per supported asset. | Asset policy, initialization controls, and a staged deployment plan. |
-| `position-manager` | Coordinates private position open, health-attestation, and close lifecycle proofs. | End-to-end proof/balance testing and public-input review. |
-| `liquidation-engine` | Handles liquidation after a position misses a required health attestation. | Redesign and test proof-bound payout logic before any deployment. |
-| `hidden-order-registry` | Stores commitments for sealed conditional orders. | Trigger-proof validation, execution-path testing, and keeper integration. |
-| `agentic-settlement-hub` | Settlement and reward-claim surface for agent-driven flows. | Claim authorization, economic rules, and end-to-end settlement tests. |
-| `asp-non-membership` | Compliance primitive for proving absence from a restricted set. | Integration into a defined compliance flow and circuit. |
+| **Shielded Vault** | Shield XLM into a private note and withdraw that exact note to a public Stellar address. | **Live Mainnet demo** |
+| **Private Positions** | Open, attest, and close positions without broadcasting collateral, size, or direction. | Contract/circuit implementation track; not deployed |
+| **Conditional Settlement** | Commit hidden orders and execute them once a proved condition is met. | Contract/circuit implementation track; not deployed |
+| **Liquidation protection** | Require health attestations and settle a position when a valid liquidation condition is proved. | Requires security redesign before deployment |
+| **Agentic settlement** | Enable authorized reward and settlement claims for agent-driven workflows. | Contract implementation track; not deployed |
+| **Compliance controls** | Prove membership or non-membership in an approval set without exposing identity. | Membership is live for the Vault demo; broader flow is not deployed |
 
-These modules are **not** being described as production-ready or “deploy-only.” The remaining work is documented in [`MAINNET_READINESS.md`](MAINNET_READINESS.md); especially the liquidation payout binding, trusted-setup provenance, oracle/keeper behavior, and full Mainnet integration tests.
+## System architecture
 
-## Mainnet evidence
+```text
+Freighter + browser DApp
+  ├─ derives a shielded identity locally
+  ├─ generates Groth16 proofs in a Web Worker
+  └─ submits signed Soroban transactions
+
+Soroban contracts
+  ├─ Groth16 verifier
+  ├─ per-asset shielded pools and pool factory
+  ├─ ASP membership / non-membership
+  ├─ position manager and liquidation engine
+  ├─ hidden order registry
+  └─ agentic settlement hub
+
+Supporting services
+  ├─ indexer: public events, commitments, nullifiers → Postgres
+  ├─ relayer: optional fee-bump submission path
+  ├─ keeper: future liquidation / order automation
+  ├─ oracle adapter: future price inputs
+  └─ proof bridge: proof-format interoperability tooling
+```
+
+## Mainnet Vault v1
+
+Vault v1 is the deployed foundation of the wider Vayyl application. It supports a self-funded, end-to-end Mainnet demonstration of private XLM deposit and whole-note withdrawal.
 
 | Component | Contract / endpoint |
 | --- | --- |
-| XLM pool | [`CB2NWPFWW5YLD6UYWR4RFERECSMBF6SB62P7RRP2LF2P2EMDSDLAZ3OW`](https://stellar.expert/explorer/public/contract/CB2NWPFWW5YLD6UYWR4RFERECSMBF6SB62P7RRP2LF2P2EMDSDLAZ3OW) |
+| XLM shielded pool | [`CB2NWPFWW5YLD6UYWR4RFERECSMBF6SB62P7RRP2LF2P2EMDSDLAZ3OW`](https://stellar.expert/explorer/public/contract/CB2NWPFWW5YLD6UYWR4RFERECSMBF6SB62P7RRP2LF2P2EMDSDLAZ3OW) |
 | Groth16 verifier | [`CATKJ2WBLQXGNVMGZ6E4JEZVTRMVJO2SKA3H7VH53TVD2HJPSBQ46MRD`](https://stellar.expert/explorer/public/contract/CATKJ2WBLQXGNVMGZ6E4JEZVTRMVJO2SKA3H7VH53TVD2HJPSBQ46MRD) |
 | ASP membership | [`CBJWADSNYX52I6GEASN5P7MS6NWQ4O5WWQJOPTNSKCRHYTK2BYET6YB3`](https://stellar.expert/explorer/public/contract/CBJWADSNYX52I6GEASN5P7MS6NWQ4O5WWQJOPTNSKCRHYTK2BYET6YB3) |
 | ASP non-membership | [`CBJSFSZOEOEBSBTUZPTFZNAMP37PU7GKVFRERYSBTMYY7KPG6QKMAAQE`](https://stellar.expert/explorer/public/contract/CBJSFSZOEOEBSBTUZPTFZNAMP37PU7GKVFRERYSBTMYY7KPG6QKMAAQE) |
 | Native XLM SAC | `CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA` |
-| Public indexer | [`/health`](https://vault-indexer-production.up.railway.app/health) |
+| Public indexer | [`vault-indexer-production.up.railway.app`](https://vault-indexer-production.up.railway.app/health) |
 
-The deployed artifact hashes, verification-key registration transactions, and demo-only constraints are recorded in [`deployments/mainnet-vault-v1.json`](deployments/mainnet-vault-v1.json).
+Deposit and Withdraw verification keys are registered in the deployed verifier. Artifact hashes and registration transactions are recorded in [`deployments/mainnet-vault-v1.json`](deployments/mainnet-vault-v1.json).
 
-## How it works
+## Planned contract suite
 
-1. Freighter signs a fixed local message to derive the user's shielded identity.
-2. The browser Web Worker generates the deposit or withdrawal Groth16 proof; secret inputs never leave the browser.
-3. Soroban verifies the proof and updates the XLM pool's Merkle tree/nullifier set.
-4. The Railway indexer exposes public commitments and spent nullifiers for withdrawal-path reconstruction.
+The wider application is backed by the following in-repository modules. They are planned deployment candidates, not claims of live production availability.
+
+| Contract | Role | Deployment prerequisite |
+| --- | --- | --- |
+| `vayyl-pool-factory` | Creates a dedicated shielded pool for each supported asset. | Asset policy, initialization review, staged deployment. |
+| `position-manager` | Coordinates private position open, health-attestation, and close proofs. | End-to-end proof/balance testing and public-input review. |
+| `liquidation-engine` | Handles settlement when a required position health attestation is missed. | Proof-bound payout redesign and adversarial tests. |
+| `hidden-order-registry` | Stores commitments for sealed conditional orders. | Trigger-proof validation, keeper integration, execution tests. |
+| `agentic-settlement-hub` | Supports authorized agent reward and settlement claims. | Claim authorization, economic rules, settlement tests. |
+| `asp-non-membership` | Proves absence from a restricted compliance set. | Integration into a complete policy and circuit flow. |
+| `vayyl-mock-token` | Development-only token support for local/test flows. | Replace with approved Mainnet assets. |
+
+The full release boundary is in [`MAINNET_READINESS.md`](MAINNET_READINESS.md). In particular, the future suite needs trusted-setup provenance, complete oracle/keeper behavior, liquidation payout binding, and full Mainnet integration testing before deployment.
 
 ## Repository layout
 
-| Path | Purpose |
+| Path | Contents |
 | --- | --- |
-| `frontend/` | Next.js marketing site and `/app` Vault v1 DApp |
-| `contracts/` | Soroban contracts |
-| `circuits/` | Circom circuits and proving scripts |
+| `frontend/` | Next.js marketing site and client-side React DApp (`/app`) |
+| `contracts/` | Soroban contracts for the full Vayyl protocol surface |
+| `circuits/` | Circom circuits, proving utilities, and verification-key tooling |
 | `backend/indexer/` | Mainnet event indexer and read-only HTTP API |
+| `backend/relayer/` | Optional fee-bump transaction submission service |
+| `backend/keeper/` | Future order/liquidation automation service |
+| `backend/oracle-adapter/` | Future external price-input adapter |
+| `backend/proof-bridge/` | Rust proof-format interoperability tooling |
 | `deployments/` | Public deployment manifests and artifact hashes |
-| `scripts/` | Contract deployment and verification-key registration helpers |
 
 ## Run locally
 
@@ -70,11 +97,9 @@ Copy-Item .env.mainnet.example .env.local
 pnpm dev
 ```
 
-Open `http://localhost:3000` for the site or `http://localhost:3000/app?view=pool` for Vault v1.
+Open `http://localhost:3000` for the product site and `http://localhost:3000/app?view=pool` for the live Vault flow.
 
-The Mainnet example uses the hosted indexer. Do not put recovery phrases, secret keys, private witness values, or `wallet.env` files in `frontend/.env.local`.
-
-Useful checks:
+The DApp keeps proof generation in a Web Worker. Do not put wallet seeds, recovery phrases, relayer secrets, database URLs, or private witness values in `.env.local`.
 
 ```powershell
 cd frontend
@@ -85,22 +110,21 @@ cd ../backend/indexer
 pnpm test
 ```
 
-## Deploy the frontend to Vercel
+## Deploy
 
-1. Push this repository and import it in Vercel.
-2. Set the Vercel **Root Directory** to `frontend`.
-3. Use `pnpm install` as the install command and `pnpm build` as the build command.
-4. Copy the public values from [`frontend/.env.mainnet.example`](frontend/.env.mainnet.example) into Vercel's Production environment variables.
-5. Deploy. Vercel hosts only the frontend; the indexer remains on Railway.
+### Frontend: Vercel
 
-`NEXT_PUBLIC_*` values are public application configuration, not secrets. Do not configure wallet seeds, relayer secrets, database URLs, or provider API keys in Vercel.
+1. Import this repository in Vercel.
+2. Set **Root Directory** to `frontend`.
+3. Use `pnpm install` and `pnpm build`.
+4. Copy public variables from [`frontend/.env.mainnet.example`](frontend/.env.mainnet.example) into Vercel's Production environment.
+5. Deploy from `main`.
 
-## Deploy the indexer to Railway
+Vercel hosts the product site and DApp. `NEXT_PUBLIC_*` values are public configuration only; never add private keys, database URLs, relayer secrets, or wallet material.
 
-The repository includes [`backend/indexer/railway.toml`](backend/indexer/railway.toml).
+### Indexer: Railway
 
-1. Create a Railway Postgres service and an empty `vault-indexer` service.
-2. Set the indexer variables:
+[`backend/indexer/railway.toml`](backend/indexer/railway.toml) configures the current indexer service. Create a Railway Postgres service and `vault-indexer` service, then set:
 
 ```text
 DATABASE_URL=${{Postgres.DATABASE_URL}}
@@ -109,23 +133,20 @@ POOL_ADDRESS=CB2NWPFWW5YLD6UYWR4RFERECSMBF6SB62P7RRP2EMDSDLAZ3OW
 RAILPACK_NODE_VERSION=22
 ```
 
-3. From `backend/indexer`, run:
+Deploy from `backend/indexer`:
 
 ```powershell
 railway up . --path-as-root --service vault-indexer --environment production
 ```
 
-4. Generate a Railway domain on port `8080`, verify `/health`, then set that URL as `NEXT_PUBLIC_INDEXER_URL` in Vercel.
+Set the generated Railway domain as `NEXT_PUBLIC_INDEXER_URL` in Vercel.
 
-The current demo indexer is hosted at `https://vault-indexer-production.up.railway.app`.
+## Security and release boundary
 
-## Security and release boundaries
-
-- Proof generation stays in a Web Worker; never move proving to the main thread.
-- The current proving artifacts came from a single-party handover. They are suitable only for a hackathon demo, not a public custody product.
-- Mainnet deployment used a self-funded wallet and a single enrolled ASP leaf. Do not enroll users or accept deposits without an independent review, multi-party trusted setup, circuit audit, and operational monitoring.
-- Local secrets, build output, proving artifacts, handover material, CLI binaries, and runtime logs are ignored by Git.
+- Vault v1 is a hackathon demonstration using a self-funded wallet. It is unaudited and must not accept third-party or production funds.
+- Current proving artifacts came from a single-party handover; production requires independently reviewed, reproducible, multi-party ceremony artifacts.
+- The public repository excludes local secrets, wallet files, proving output, build artifacts, handover data, logs, and downloaded CLI binaries.
 
 ## Demo
 
-See [`DEMO_GUIDE.md`](DEMO_GUIDE.md) for the local recording flow. A completed transaction should be shown in Stellar Expert; only public transaction/contract data belongs in a recording.
+See [`DEMO_GUIDE.md`](DEMO_GUIDE.md) for the recording flow. Only public explorer transactions and contract data should appear in a demo.
