@@ -61,7 +61,7 @@ export default function WithdrawForm() {
             <strong>{status?.startsWith('Withdraw confirmed') ? 'Withdrawal confirmed' : 'Latest withdrawal transaction'}</strong>
             <a href={`https://stellar.expert/explorer/testnet/tx/${confirmedHash}`} target="_blank" rel="noreferrer">
               <code>{confirmedHash}</code>
-              <span>View in Stellar Expert</span>
+              <span className="dapp-explorer-brand"><img src="/brands/stellar-expert.png" alt="" />View in Stellar Expert</span>
             </a>
           </div>
         ) : status ? (

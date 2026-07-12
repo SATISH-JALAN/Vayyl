@@ -60,7 +60,7 @@ export default function ActivityFeed({ activityCount }: ActivityFeedProps) {
                     target="_blank"
                     rel="noreferrer"
                   >
-                    {shortHash(act.txHash)}
+                    <span className="dapp-explorer-brand dapp-explorer-brand--compact"><img src="/brands/stellar-expert.png" alt="" />{shortHash(act.txHash)}</span>
                   </a>
                 ) : (
                   <p className="dapp-helper">Local</p>

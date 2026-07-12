@@ -238,6 +238,32 @@
   font-size: var(--text-caption);
 }
 
+.dapp-explorer-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: fit-content;
+}
+
+.dapp-explorer-brand img {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+  border-radius: var(--radius-s);
+  background: var(--ivory);
+}
+
+.dapp-explorer-brand--compact {
+  margin-top: var(--space-1);
+  font-family: var(--font-mono);
+  font-size: var(--text-caption);
+}
+
+.dapp-explorer-brand--compact img {
+  width: 18px;
+  height: 18px;
+}
+
 .dapp-alert {
   margin-bottom: var(--space-4);
   padding: var(--space-3) var(--space-4);
@@ -704,6 +730,150 @@
   gap: var(--space-1);
 }
 
+.dapp-position-card__stat span,
+.dapp-position-summary__row span {
+  color: var(--text-muted);
+  font-size: var(--text-caption);
+}
+
+.dapp-position-card__stat strong,
+.dapp-position-summary__row strong {
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--text-small);
+}
+
+.dapp-value-positive,
+.dapp-summary-strip .is-positive {
+  color: var(--success);
+}
+
+.dapp-health-track {
+  display: block;
+  width: 100%;
+  height: 4px;
+  border: 0;
+  overflow: hidden;
+  border-radius: var(--radius-pill);
+  background: var(--bg-muted);
+  appearance: none;
+}
+
+.dapp-health-track::-webkit-progress-bar {
+  background: var(--bg-muted);
+}
+
+.dapp-health-track::-webkit-progress-value,
+.dapp-health-track::-moz-progress-bar {
+  border-radius: inherit;
+  background: var(--success);
+}
+
+.dapp-preview-notice {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-m);
+  background: var(--bg-surface);
+}
+
+.dapp-preview-notice span {
+  flex: 0 0 auto;
+  color: var(--coral);
+  font-size: var(--text-caption);
+  font-weight: 750;
+}
+
+.dapp-preview-notice p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--text-small);
+}
+
+.dapp-summary-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-l);
+  background: var(--bg-surface);
+}
+
+.dapp-summary-strip > div {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-4);
+}
+
+.dapp-summary-strip > div + div {
+  border-left: 1px solid var(--border-subtle);
+}
+
+.dapp-summary-strip span {
+  color: var(--text-muted);
+  font-size: var(--text-caption);
+}
+
+.dapp-summary-strip strong {
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--text-body);
+}
+
+.dapp-settlement-list {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.dapp-settlement {
+  padding: var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-m);
+  background: var(--bg-primary);
+}
+
+.dapp-settlement header,
+.dapp-settlement header > div {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.dapp-settlement header {
+  justify-content: space-between;
+  margin-bottom: var(--space-4);
+}
+
+.dapp-settlement code {
+  color: var(--text-muted);
+  font-size: var(--text-caption);
+}
+
+.dapp-settlement dl {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin: 0;
+}
+
+.dapp-settlement dl > div {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.dapp-settlement dt {
+  color: var(--text-muted);
+  font-size: var(--text-caption);
+}
+
+.dapp-settlement dd {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--text-small);
+}
+
 .dapp-position-card__id {
   font-size: var(--text-caption);
   color: var(--text-muted);
@@ -741,6 +911,33 @@
 
   .dapp-position-card__body {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .dapp-summary-strip {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .dapp-summary-strip > div + div {
+    border-left: 0;
+  }
+
+  .dapp-summary-strip > div:nth-child(even) {
+    border-left: 1px solid var(--border-subtle);
+  }
+
+  .dapp-summary-strip > div:nth-child(n + 3) {
+    border-top: 1px solid var(--border-subtle);
+  }
+
+  .dapp-preview-notice,
+  .dapp-settlement header,
+  .dapp-settlement header > div {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .dapp-settlement dl {
+    grid-template-columns: 1fr;
   }
 
   .dapp-release,
