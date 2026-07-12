@@ -17,9 +17,9 @@ const runWorkerTask = (type: string, payload: any): Promise<any> => {
   });
 };
 import { useToastStore } from './toast';
+import { NETWORK_PASSPHRASE } from '../lib/network';
 
 // Stub for now
-const NETWORK_PASSPHRASE = process.env.NEXT_PUBLIC_NETWORK_PASSPHRASE || "Test SDF Network ; September 2015";
 const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || "https://soroban-testnet.stellar.org";
 
 export interface HiddenOrder {

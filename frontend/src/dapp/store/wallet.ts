@@ -7,17 +7,15 @@ import {
   getNetworkDetails,
 } from '@stellar/freighter-api';
 import { deriveViewingKey, deriveShieldedKeys, type ShieldedKeys } from '../lib/crypto';
-
-const EXPECTED_NETWORK_PASSPHRASE =
-  process.env.NEXT_PUBLIC_NETWORK_PASSPHRASE || 'Test SDF Network ; September 2015';
+import { isExpectedWalletNetwork, NETWORK } from '../lib/network';
 
 async function getExpectedNetwork(): Promise<string> {
   const details = await getNetworkDetails();
   if (details.error) throw new Error(details.error);
-  if (details.networkPassphrase !== EXPECTED_NETWORK_PASSPHRASE) {
+  if (!isExpectedWalletNetwork(details)) {
     throw new Error('Switch Freighter to Stellar Testnet to continue.');
   }
-  return details.network || 'PUBLIC';
+  return NETWORK;
 }
 
 interface WalletState {
@@ -37,7 +35,7 @@ interface WalletState {
 
 export const useWalletStore = create<WalletState>((set, get) => ({
   address: null,
-  network: 'TESTNET',
+  network: NETWORK,
   isConnecting: false,
   error: null,
   keys: null,

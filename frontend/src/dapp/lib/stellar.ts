@@ -1,6 +1,6 @@
-import { rpc, Networks, Horizon } from '@stellar/stellar-sdk';
+import { rpc, Horizon } from '@stellar/stellar-sdk';
+export { NETWORK_PASSPHRASE } from './network';
 
-export const NETWORK_PASSPHRASE = Networks.TESTNET;
 export const RPC_URL = 'https://soroban-testnet.stellar.org'; // Default testnet RPC
 
 export const server = new rpc.Server(RPC_URL, { allowHttp: true });

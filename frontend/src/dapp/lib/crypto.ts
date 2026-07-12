@@ -8,6 +8,7 @@
 
 import { signMessage } from '@stellar/freighter-api';
 import { poseidon2Hash2, FIELD_P, modP } from './poseidon';
+import { NETWORK_PASSPHRASE } from './network';
 
 export {
   poseidon2Hash2,
@@ -62,8 +63,7 @@ export const VAYYL_AUTH_MESSAGE =
 export const deriveViewingKey = async (address: string): Promise<string> => {
   const signatureResponse = await signMessage(VAYYL_AUTH_MESSAGE, {
     address,
-    networkPassphrase:
-      process.env.NEXT_PUBLIC_NETWORK_PASSPHRASE || 'Test SDF Network ; September 2015',
+    networkPassphrase: NETWORK_PASSPHRASE,
   });
   if ((signatureResponse as { error?: string }).error) {
     throw new Error((signatureResponse as { error?: string }).error);

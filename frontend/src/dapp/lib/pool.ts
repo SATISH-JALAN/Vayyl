@@ -18,17 +18,16 @@ import {
   nativeToScVal,
   xdr,
   rpc,
-  Networks,
   BASE_FEE,
   scValToNative,
   StrKey,
 } from '@stellar/stellar-sdk';
 import { signTransaction } from '@stellar/freighter-api';
+import { NETWORK_PASSPHRASE } from './network';
 
 // ---- config (env-overridable) ----------------------------------------------
 
 export const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || 'https://soroban-testnet.stellar.org';
-export const NETWORK_PASSPHRASE = process.env.NEXT_PUBLIC_NETWORK_PASSPHRASE || Networks.TESTNET;
 export const INDEXER_URL = process.env.NEXT_PUBLIC_INDEXER_URL || 'https://vault-v2-indexer-production.up.railway.app';
 export const RELAYER_URL = process.env.NEXT_PUBLIC_RELAYER_URL || 'https://vault-v2-relayer-production.up.railway.app';
 export const HORIZON_URL = process.env.NEXT_PUBLIC_HORIZON_URL || 'https://horizon-testnet.stellar.org';
@@ -44,7 +43,7 @@ export const POOL_IDS: Record<string, string | undefined> = {
 };
 
 export const server = new rpc.Server(RPC_URL, { allowHttp: true });
-const INCLUSION_FEE = NETWORK_PASSPHRASE === Networks.PUBLIC ? '10000' : BASE_FEE;
+const INCLUSION_FEE = BASE_FEE;
 
 export function poolIdForAsset(asset: string): string {
   const id = POOL_IDS[asset];
