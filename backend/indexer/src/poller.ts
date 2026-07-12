@@ -2,6 +2,10 @@ import * as StellarSdk from '@stellar/stellar-sdk';
 import { Database } from './db.js';
 import { decodePoolEvent } from './decode.js';
 
+// Public RPC nodes can return an empty page when getEvents spans too many
+// ledgers. Keep the initial query comfortably inside that practical limit.
+const RPC_EVENT_LOOKBACK_LEDGERS = 8_000;
+
 export class Poller {
     private server: StellarSdk.rpc.Server;
     private db: Database;
@@ -21,7 +25,7 @@ export class Poller {
     async start() {
         console.log(`Starting poller for pool: ${this.poolAddress} on RPC: ${this.rpcUrl}`);
         this.running = true;
-        let lastLedger = await this.db.getLastLedger();
+        let lastLedger = await this.db.getLastLedger(this.poolAddress);
 
         // If we have no cursor yet, start from the RPC's oldest retained ledger
         // (events are only retained ~7 days; older history must be backfilled
@@ -29,9 +33,7 @@ export class Poller {
         if (lastLedger <= 0) {
             try {
                 const latest = await this.server.getLatestLedger();
-                // getEvents requires a startLedger within retention; step back a
-                // safe window and let the RPC clamp/report the real oldest.
-                lastLedger = Math.max(1, latest.sequence - 17280); // ~1 day of ledgers
+                lastLedger = Math.max(1, latest.sequence - RPC_EVENT_LOOKBACK_LEDGERS);
             } catch (e) {
                 console.warn('Could not fetch latest ledger; starting from 1', e);
                 lastLedger = 1;
@@ -72,18 +74,13 @@ export class Poller {
                 contractIds.push(this.positionManagerAddress);
             }
 
-            const req: StellarSdk.rpc.Server.GetEventsRequest = {
-                filters: [
-                    {
-                        type: 'contract',
-                        contractIds: contractIds,
-                        topics: [],
-                    },
-                ],
-                limit: 100,
-            };
-            if (cursor) req.cursor = cursor;
-            else req.startLedger = fromLedger;
+            const filters: StellarSdk.rpc.Api.EventFilter[] = [{
+                type: 'contract',
+                contractIds,
+            }];
+            const req: StellarSdk.rpc.Server.GetEventsRequest = cursor
+                ? { filters, cursor, limit: 100 }
+                : { filters, startLedger: fromLedger, limit: 100 };
 
             const response = await this.server.getEvents(req);
             const events = response.events ?? [];
@@ -103,7 +100,7 @@ export class Poller {
                 // miss; otherwise stay at the last processed ledger + 1.
                 const head = response.latestLedger ?? processedThroughLedger;
                 const next = sawAny ? processedThroughLedger + 1 : head;
-                await this.db.setLastLedger(next);
+                await this.db.setLastLedger(this.poolAddress, next);
                 return next;
             }
         }

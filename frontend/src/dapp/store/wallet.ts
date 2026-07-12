@@ -9,13 +9,13 @@ import {
 import { deriveViewingKey, deriveShieldedKeys, type ShieldedKeys } from '../lib/crypto';
 
 const EXPECTED_NETWORK_PASSPHRASE =
-  process.env.NEXT_PUBLIC_NETWORK_PASSPHRASE || 'Public Global Stellar Network ; September 2015';
+  process.env.NEXT_PUBLIC_NETWORK_PASSPHRASE || 'Test SDF Network ; September 2015';
 
 async function getExpectedNetwork(): Promise<string> {
   const details = await getNetworkDetails();
   if (details.error) throw new Error(details.error);
   if (details.networkPassphrase !== EXPECTED_NETWORK_PASSPHRASE) {
-    throw new Error('Switch Freighter to Stellar Mainnet before using Vayyl Vault.');
+    throw new Error('Switch Freighter to Stellar Testnet to continue.');
   }
   return details.network || 'PUBLIC';
 }
@@ -37,7 +37,7 @@ interface WalletState {
 
 export const useWalletStore = create<WalletState>((set, get) => ({
   address: null,
-  network: 'MAINNET',
+  network: 'TESTNET',
   isConnecting: false,
   error: null,
   keys: null,

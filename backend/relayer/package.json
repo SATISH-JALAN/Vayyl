@@ -7,18 +7,21 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
-    "dev": "tsx watch src/index.ts"
+    "dev": "tsx watch src/index.ts",
+    "test": "tsx --test src/enrollment.test.ts"
   },
   "dependencies": {
-    "@stellar/stellar-sdk": "^13.0.0",
+    "@stellar/stellar-sdk": "^16.0.1",
+    "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
-    "cors": "^2.8.5"
+    "pg": "^8.22.0"
   },
   "devDependencies": {
+    "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
     "@types/node": "^22.0.0",
-    "@types/cors": "^2.8.17",
+    "@types/pg": "^8.20.0",
     "tsx": "^4.0.0",
     "typescript": "^5.4.5"
   }

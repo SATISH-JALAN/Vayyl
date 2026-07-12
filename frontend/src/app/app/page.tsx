@@ -5,7 +5,7 @@ import DappClient from './DappClient';
 
 export const metadata: Metadata = {
   title: 'Vayyl App - Confidential Settlement',
-  description: 'Connect Freighter on Stellar to use the Vayyl confidential settlement app.',
+  description: 'Shield, back up, restore, and settle XLM notes with Vayyl.',
 };
 
 type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;

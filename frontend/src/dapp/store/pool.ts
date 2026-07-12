@@ -12,18 +12,23 @@ import {
   randomFieldElement,
 } from '../lib/poseidon';
 import {
-  submitDeposit,
-  submitWithdraw,
+  submitDepositV2,
+  submitWithdrawV2,
   fetchCommitments,
   fetchSpentNullifiers,
   computeWithdrawBinding,
+  fetchV2AspLeafIndex,
+  fetchV2AspLeaves,
+  enrollV2AspLeaf,
+  assertV2ServicesReady,
+  V2_DENOMINATION_STROOPS,
+  V2_DENOMINATION_XLM,
+  V2_POOL_ID,
 } from '../lib/pool';
-import { xlmToStroops } from '../lib/amount';
 import {
   addNote,
   getNotes,
   markNoteSpent,
-  saveNotes,
   getActivity,
   addActivity,
   type ShieldedNote,
@@ -36,9 +41,12 @@ interface PoolState {
   activity: ActivityEvent[];
   isProving: boolean;
   status: string | null;
+  aspLeaf: string | null;
+  aspEligible: boolean | null;
+  aspLeafIndex: number | null;
   fetchState: () => Promise<void>;
-  deposit: (amount: string, asset: string) => Promise<void>;
-  withdraw: (amount: string, asset: string, destination: string) => Promise<void>;
+  deposit: () => Promise<void>;
+  withdraw: (destination: string) => Promise<void>;
   transfer: (amount: number, asset: string, recipient: string) => Promise<void>;
 }
 
@@ -64,22 +72,29 @@ export const usePoolStore = create<PoolState>((set, get) => ({
   activity: [],
   isProving: false,
   status: null,
+  aspLeaf: null,
+  aspEligible: null,
+  aspLeafIndex: null,
 
   fetchState: async () => {
     const keys = useWalletStore.getState().keys;
     if (!keys) return;
     try {
-      const [spent] = await Promise.all([fetchSpentNullifiers().catch(() => new Set<string>())]);
-      const notes = await getNotes(keys.viewingKey);
+      const [spent, identity] = await Promise.all([
+        fetchSpentNullifiers().catch(() => new Set<string>()),
+        runWorkerTask('PREPARE_V2_NOTE', { privKey: keys.spendKey.toString(), blindness: '0' }),
+      ]);
+      const aspLeafIndex = await fetchV2AspLeafIndex(identity.aspLeaf);
+      const notes = (await getNotes(keys.viewingKey)).filter(
+        (note) => note.protocol === 'v2' && note.pool === V2_POOL_ID,
+      );
       // Reconcile spent status against on-chain nullifiers.
-      let changed = false;
       for (const n of notes) {
         if (!n.isSpent && spent.has(n.nullifier)) {
           n.isSpent = true;
-          changed = true;
+          await markNoteSpent(keys.viewingKey, n.id);
         }
       }
-      if (changed) await saveNotes(keys.viewingKey, notes);
       const active = notes.filter((n) => !n.isSpent);
 
       // Build the activity feed: every note is a past Deposit; withdraws/transfers
@@ -89,80 +104,87 @@ export const usePoolStore = create<PoolState>((set, get) => ({
         type: 'Deposit',
         amount: n.amount,
         asset: n.asset,
+        protocol: 'v2',
+        pool: V2_POOL_ID,
         txHash: n.txHash,
         timestamp: n.createdAt,
       }));
-      const logged = await getActivity(keys.viewingKey);
+      const logged = (await getActivity(keys.viewingKey)).filter(
+        (event) => event.protocol === 'v2' && event.pool === V2_POOL_ID,
+      );
       const activity = [...deposits, ...logged].sort((a, b) => b.timestamp - a.timestamp);
 
       set({
         notes,
         activity,
         shieldedBalance: active.reduce((s, n) => s + n.amount, 0),
+        aspLeaf: identity.aspLeaf,
+        aspEligible: aspLeafIndex !== null,
+        aspLeafIndex,
       });
     } catch (e) {
       console.error('fetchState failed', e);
     }
   },
 
-  deposit: async (amount: string, asset: string) => {
+  deposit: async () => {
     const wallet = useWalletStore.getState();
     if (!wallet.address) throw new Error('Connect your wallet first');
     const keys = await wallet.unlockShieldedKeys();
 
-    const amountStroops = xlmToStroops(amount);
-    const amountXlm = Number(amount);
-    set({ isProving: true, status: 'Generating deposit proof…' });
+    set({ isProving: true, status: 'Preparing workspace…' });
     try {
+      const identity = await runWorkerTask('PREPARE_V2_NOTE', {
+        privKey: keys.spendKey.toString(),
+        blindness: '0',
+      });
+      let aspLeafIndex = await fetchV2AspLeafIndex(identity.aspLeaf);
+      set({ aspLeaf: identity.aspLeaf, aspEligible: aspLeafIndex !== null, aspLeafIndex });
+      let aspLeaves: string[];
+      if (aspLeafIndex === null) {
+        set({ status: 'Preparing private workspace…' });
+        const enrollment = await enrollV2AspLeaf(identity.aspLeaf);
+        aspLeafIndex = enrollment.leafIndex;
+        aspLeaves = enrollment.leaves;
+        set({ aspEligible: true, aspLeafIndex });
+      } else {
+        aspLeaves = await fetchV2AspLeaves();
+      }
+
       const blindness = randomFieldElement().toString();
-      const proveResult = await runWorkerTask('PROVE_DEPOSIT', {
-        amount: amountStroops.toString(),
-        pubX: keys.pubX.toString(),
-        pubY: keys.pubY.toString(),
+      set({ status: 'Generating fixed-note deposit proof…' });
+      const proveResult = await runWorkerTask('PROVE_DEPOSIT_V2', {
+        privKey: keys.spendKey.toString(),
         blindness,
+        aspLeafIndex,
+        aspLeaves,
       });
 
-      // ASP is enforced on-chain: the deposit reverts with Error #8 unless this
-      // key's leaf is in the ASP tree. Surface the leaf so an admin can insert it
-      // (scripts/asp_insert.js) — indispensable for diagnosing an Error #8.
-      console.info(
-        '[Vayyl] ASP leaf for this key:', proveResult.aspLeaf,
-        '\n  pubX:', keys.pubX.toString(),
-        '\n  pubY:', keys.pubY.toString(),
-        '\n  asp_root:', proveResult.aspRoot,
-      );
-
-      set({ status: 'Submitting transaction…' });
-      const txHash = await submitDeposit({
+      set({ status: 'Submitting 1 XLM deposit…' });
+      const txHash = await submitDepositV2({
         depositor: wallet.address,
         proof: proveResult.proof,
         commitment: proveResult.commitment,
-        publicAmount: amountStroops,
-        // Must match the proof's asp_root public signal exactly (derived in the
-        // worker), and be a root the ASP contract has produced — else the on-chain
-        // is_known_root gate rejects the deposit (Error #8).
         aspRoot: proveResult.aspRoot,
-        asset,
       });
 
       // Persist the spendable note. leafIndex is corrected from the indexer on
       // the next fetchState (event carries the true index).
       const commitment: string = proveResult.commitment;
-      const nullifier = await import('../lib/poseidon').then((m) =>
-        m.computeNullifier(BigInt(commitment), keys.spendKey),
-      );
-      const existing = await getNotes(keys.viewingKey);
+      const existing = (await getNotes(keys.viewingKey)).filter((note) => note.protocol === 'v2');
       await addNote(keys.viewingKey, {
         id: commitment,
-        amount: amountXlm,
-        amountStroops: amountStroops.toString(),
-        asset,
+        amount: V2_DENOMINATION_XLM,
+        amountStroops: V2_DENOMINATION_STROOPS.toString(),
+        asset: 'XLM',
+        protocol: 'v2',
+        pool: V2_POOL_ID,
         commitment,
-        nullifier: nullifier.toString(),
-        pubX: keys.pubX.toString(),
-        pubY: keys.pubY.toString(),
+        nullifier: proveResult.nullifier,
+        pubX: proveResult.pubX,
+        pubY: proveResult.pubY,
         blindness,
-        leafIndex: existing.filter((n) => n.asset === asset).length, // provisional
+        leafIndex: existing.length,
         isSpent: false,
         createdAt: Date.now(),
         txHash,
@@ -180,7 +202,7 @@ export const usePoolStore = create<PoolState>((set, get) => ({
     }
   },
 
-  withdraw: async (amount: string, asset: string, destination: string) => {
+  withdraw: async (destination: string) => {
     const wallet = useWalletStore.getState();
     if (!wallet.address) throw new Error('Connect your wallet first');
     const keys = await wallet.unlockShieldedKeys();
@@ -188,57 +210,38 @@ export const usePoolStore = create<PoolState>((set, get) => ({
     set({ isProving: true, status: 'Selecting note…' });
     try {
       const notes = await getNotes(keys.viewingKey);
-      // Minimal note selection: one unspent note of exactly `amount` (single-note
-      // withdraw — the MVP vertical; multi-note aggregation is post-MVP).
-      const requestedStroops = xlmToStroops(amount);
-      const note = notes.find((n) =>
-        !n.isSpent &&
-        n.asset === asset &&
-        BigInt(n.amountStroops ?? xlmToStroops(String(n.amount))) === requestedStroops,
-      );
+      const note = notes.find((n) => !n.isSpent && n.protocol === 'v2' && n.pool === V2_POOL_ID);
       if (!note) {
-        throw new Error(
-          `No single unspent ${asset} note of ${amount} found. Vault v1 withdraws one whole note.`,
-        );
+        throw new Error('No unspent 1 XLM note was found for this wallet.');
       }
 
-      const fee = 0n;
-      const publicAmount = BigInt(note.amountStroops ?? xlmToStroops(String(note.amount)));
-      const withdrawBinding = await computeWithdrawBinding(destination, publicAmount);
+      set({ status: 'Checking destination and relayer…' });
+      await assertV2ServicesReady(destination);
+      const withdrawBinding = await computeWithdrawBinding(destination, V2_DENOMINATION_STROOPS);
 
       // Reconstruct the tree from the indexer's ordered commitments.
       set({ status: 'Reconstructing Merkle path…' });
       const leaves = await fetchCommitments();
       // Locate this note's leaf index by matching its commitment.
       const idx = leaves.findIndex((c) => c.toString() === note.commitment);
-      const leafIndex = idx >= 0 ? idx : note.leafIndex;
+      if (idx < 0) throw new Error('This note is not indexed yet. Wait a few seconds and retry.');
 
       set({ status: 'Generating withdraw proof…' });
-      const proveResult = await runWorkerTask('PROVE_WITHDRAW', {
-        amount: publicAmount.toString(),
-        pubX: note.pubX,
-        pubY: note.pubY,
+      const proveResult = await runWorkerTask('PROVE_WITHDRAW_V2', {
         blindness: note.blindness,
         privKey: keys.spendKey.toString(),
-        leafIndex,
-        publicAmount: publicAmount.toString(),
-        fee: fee.toString(),
+        commitment: note.commitment,
+        leafIndex: idx,
         withdrawBinding,
         leaves: leaves.map((c) => c.toString()),
       });
 
-      set({ status: 'Submitting to Mainnet…' });
-      const txHash = await submitWithdraw({
-        source: wallet.address,
+      set({ status: 'Submitting withdrawal…' });
+      const txHash = await submitWithdrawV2({
         proof: proveResult.proof,
         nullifier: proveResult.nullifier,
-        publicAmount,
         recipient: destination,
         root: proveResult.root,
-        fee,
-        relayer: wallet.address,
-        asset,
-        useRelayer: false,
       });
 
       await markNoteSpent(keys.viewingKey, note.id);
@@ -246,7 +249,9 @@ export const usePoolStore = create<PoolState>((set, get) => ({
         id: txHash,
         type: 'Withdraw',
         amount: note.amount,
-        asset,
+        asset: 'XLM',
+        protocol: 'v2',
+        pool: V2_POOL_ID,
         txHash,
         timestamp: Date.now(),
       });

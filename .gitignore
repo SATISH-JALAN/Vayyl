@@ -77,6 +77,7 @@ yarn.lock
 
 # Local handover, tooling, and runtime artifacts
 /handover_request/
+/Vayyl-docs/
 /circuits/reference/
 /logs/
 /vayyl_handover_docs.md
@@ -94,3 +95,6 @@ yarn.lock
 !frontend/public/circuits/
 !frontend/public/circuits/*.wasm
 !frontend/public/circuits/*.zkey
+!frontend/public/circuits/v2/
+!frontend/public/circuits/v2/*.wasm
+!frontend/public/circuits/v2/*.zkey

@@ -1,0 +1,31 @@
+{
+  "network": "testnet",
+  "deployed_at": "2026-07-11T10:37:15.8795014Z",
+  "source_account": "GA7QKKGRKCKTLZ67ZMXI7U6VEG5LPFLNEFPDKAN5Z6WSDHOBJHAXMWEC",
+  "asset": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+  "verifier": "CA7VKFZRWSYIZTW34QXQCQJGON5R4PQSJGTUKJQIHLCCUILVGRI55PEP",
+  "asp_membership": "CCGQLQS5JZQWXG72FFPLM3PKPBPBAP636C7YSVTJY5VYA5UXGLR4Q4WZ",
+  "asp_non_membership": "CD3HTYBLAQVGQQSTONHPS5PQ4G4Y7T7ZRHH7FJ776W46MS7HYP6YAANY",
+  "pool": "CBUNTVFHCNN5CYNA3TLTSWPVYX5ED5V6W6X3Y5EAHUOZYJRUPYNAX33A",
+  "denomination_stroops": 10000000,
+  "verification_keys": {
+    "deposit_public_inputs": 2,
+    "withdraw_public_inputs": 3
+  },
+  "wasm_sha256": {
+    "pool": "d4d0d487d27dae9b9bf96185f4c0cdacd7d82e01ec8a50ec132fecf4848d30e6",
+    "verifier": "a1958317689414cd12a68e0a212476f65d1b6fcb448e8e40d1102598c635a943"
+  },
+  "services": {
+    "indexer": {
+      "url": "https://vault-v2-indexer-production.up.railway.app",
+      "railway_service_id": "ffbfd5ac-9ec8-4e3d-a332-fc7cd19d3c5e"
+    },
+    "relayer": {
+      "url": "https://vault-v2-relayer-production.up.railway.app",
+      "railway_service_id": "c6373c31-8a32-4177-81bb-4c9f17253c9b"
+    }
+  },
+  "evidence_file": "deployments/testnet-vault-v2-evidence.json",
+  "setup": "single-machine testnet proving setup; not a production ceremony"
+}

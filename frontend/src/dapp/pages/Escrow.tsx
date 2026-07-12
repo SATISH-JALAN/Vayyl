@@ -5,19 +5,19 @@ export default function Escrow() {
     <div className="dapp-stack">
       <header className="dapp-page-header">
         <div>
-          <h1 className="dapp-page-title">Conditional settlement</h1>
-          <p className="dapp-page-subtitle">Hidden orders and agent settlements are designed around the same proof-verified pool, but are not activated in Vault v1.</p>
+          <h1 className="dapp-page-title">Settlements</h1>
+          <p className="dapp-page-subtitle">Proof-bound orders and automated payouts.</p>
         </div>
-        <span className="dapp-badge dapp-badge--warning">Mainnet audit track</span>
+        <span className="dapp-badge dapp-badge--muted">Preview</span>
       </header>
       <Card className="dapp-card--strong">
         <div className="dapp-card__header">
-          <div><h2 className="dapp-card__title">Proof-bound recipients before activation</h2><p className="dapp-card__description">Order and quest payouts stay disabled until recipient and payout metadata are fully constrained by their proofs.</p></div>
+          <div><h2 className="dapp-card__title">Settlement workspace</h2><p className="dapp-card__description">Create conditions and settle when their proof is valid.</p></div>
         </div>
         <div className="dapp-roadmap-list">
-          <div className="dapp-roadmap-item"><strong>Hidden trigger</strong><span className="dapp-badge dapp-badge--warning">Binding review</span></div>
-          <div className="dapp-roadmap-item"><strong>Agent settlement</strong><span className="dapp-badge dapp-badge--warning">Binding review</span></div>
-          <div className="dapp-roadmap-item"><strong>Public payout</strong><span className="dapp-badge dapp-badge--muted">Disabled</span></div>
+          <div className="dapp-roadmap-item"><strong>Private condition</strong><span className="dapp-badge dapp-badge--muted">Preview</span></div>
+          <div className="dapp-roadmap-item"><strong>Agent settlement</strong><span className="dapp-badge dapp-badge--muted">Preview</span></div>
+          <div className="dapp-roadmap-item"><strong>Proof-bound payout</strong><span className="dapp-badge dapp-badge--muted">Preview</span></div>
         </div>
       </Card>
     </div>

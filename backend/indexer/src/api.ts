@@ -1,7 +1,7 @@
 import express from 'express';
 import { Database } from './db.js';
 
-export function createApi(db: Database, poolAddress: string): express.Express {
+export function createApi(db: Database, poolAddress: string, network: string): express.Express {
     const app = express();
 
     // The DApp fetches these read-only endpoints cross-origin (Vite on :3000 →
@@ -19,7 +19,7 @@ export function createApi(db: Database, poolAddress: string): express.Express {
     app.use(express.json());
 
     app.get('/health', (req, res) => {
-        res.json({ status: 'ok', network: 'mainnet', pool: poolAddress });
+        res.json({ status: 'ok', network, pool: poolAddress });
     });
 
     app.get('/commitments', async (req, res) => {

@@ -16,9 +16,9 @@ export type RouteKey = 'dashboard' | 'pool' | 'positions' | 'escrow' | 'settings
 
 const navItems: Array<{ route: RouteKey; href: string; label: string; status?: string }> = [
   { route: 'dashboard', href: '/app', label: 'Dashboard' },
-  { route: 'pool', href: '/app?view=pool', label: 'XLM Vault', status: 'Live' },
-  { route: 'positions', href: '/app?view=positions', label: 'Positions', status: 'Planned' },
-  { route: 'escrow', href: '/app?view=escrow', label: 'Settlements', status: 'Planned' },
+  { route: 'pool', href: '/app?view=pool', label: 'XLM Vault' },
+  { route: 'positions', href: '/app?view=positions', label: 'Positions', status: 'Preview' },
+  { route: 'escrow', href: '/app?view=escrow', label: 'Settlements', status: 'Preview' },
   { route: 'settings', href: '/app?view=settings', label: 'Settings' },
 ];
 
@@ -48,7 +48,7 @@ function renderRoute(route: RouteKey) {
 }
 
 export default function App({ initialRoute = 'dashboard' }: { initialRoute?: RouteKey }) {
-  const { address, network, keys, isConnecting, isUnlocking, error, connect, disconnect, unlockShieldedKeys } = useWalletStore();
+  const { address, keys, isConnecting, isUnlocking, error, connect, disconnect, unlockShieldedKeys } = useWalletStore();
   const [route, setRoute] = useState<RouteKey>(() =>
     typeof window === 'undefined' ? initialRoute : routeFromLocation(initialRoute),
   );
@@ -83,7 +83,6 @@ export default function App({ initialRoute = 'dashboard' }: { initialRoute?: Rou
           <a href="/" className="dapp-sidebar__logo" aria-label="Back to Vayyl landing page">
             Vayyl
           </a>
-          <span className="dapp-badge dapp-badge--success">Mainnet</span>
         </div>
 
         <nav className="dapp-sidebar__nav">
@@ -104,22 +103,10 @@ export default function App({ initialRoute = 'dashboard' }: { initialRoute?: Rou
           ))}
         </nav>
 
-        <div className="dapp-sidebar__footer">
-          <div className="dapp-network-card">
-            <span className="dapp-label-text">Network</span>
-            <strong>{network}</strong>
-            <p>Vault v1 · XLM · proof verification active.</p>
-          </div>
-        </div>
       </aside>
 
       <main className="dapp-main">
         <header className="dapp-topbar">
-          <div>
-            <span className="dapp-kicker">Vayyl Mainnet</span>
-            <p className="dapp-topbar__subtitle">Client-side proofs. Native XLM. Verified on Soroban Mainnet.</p>
-          </div>
-
           <div className="dapp-wallet">
             {address ? (
               <>

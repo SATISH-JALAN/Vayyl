@@ -1,11 +1,11 @@
 #![no_std]
 
-use vayyl_types::{CircuitId, Groth16Proof};
 use soroban_poseidon::poseidon2_hash;
 use soroban_sdk::{
     contract, contracterror, contractevent, contractimpl, contracttype, log, token, Address,
     BytesN, Env, Vec,
 };
+use vayyl_types::{CircuitId, Groth16Proof};
 
 /// C4: deposit event — topic `deposit` + the commitment; data carries the
 /// leaf index (for Merkle-path reconstruction) and the public amount.
@@ -53,7 +53,12 @@ pub struct Settlement {
 
 #[soroban_sdk::contractclient(name = "Groth16VerifierClient")]
 pub trait Groth16VerifierInterface {
-    fn verify(env: Env, circuit_id: CircuitId, proof: Groth16Proof, public_inputs: Vec<BytesN<32>>) -> Result<bool, soroban_sdk::Error>;
+    fn verify(
+        env: Env,
+        circuit_id: CircuitId,
+        proof: Groth16Proof,
+        public_inputs: Vec<BytesN<32>>,
+    ) -> Result<bool, soroban_sdk::Error>;
 }
 
 /// Decoupled client for the trusted `AspMembership` contract. The pool binds a
@@ -84,6 +89,10 @@ pub const TREE_DEPTH: u32 = 20;
 /// concurrent deposits landing between proof-generation and submission.
 pub const ROOT_HISTORY_SIZE: u32 = 32;
 
+/// Vault V2 uses one denomination per pool. The circuit hard-codes the same
+/// value, so neither deposit nor withdrawal accepts an amount chosen by a user.
+pub const V2_DENOMINATION: i128 = 10_000_000;
+
 /// H3: nullifier / tree persistence TTL. We extend to `PERSISTENT_TTL_EXTEND`
 /// whenever the remaining TTL drops below `PERSISTENT_TTL_THRESHOLD`, on every
 /// touch, so a spent-nullifier entry survives far past the old ~100k window.
@@ -104,6 +113,9 @@ pub enum DataKey {
     Verifier,
     Membership,
     NonMembership,
+    /// Presence of this key switches a fresh deployment into fixed-denomination
+    /// Vault V2 mode. Mainnet V1 deployments do not have this key.
+    Denomination,
     TreeNextIndex,
     TreeFrontier,
     TreeRoot,
@@ -111,6 +123,7 @@ pub enum DataKey {
     /// H4: ring buffer of the last `ROOT_HISTORY_SIZE` roots (oldest first).
     RootHistory,
     Nullifier(BytesN<32>),
+    Commitment(BytesN<32>),
     /// D1: allowlist of contracts permitted to call `execute_settlement`
     /// (position-manager, liquidation-engine, and later the order/agentic hubs).
     /// Admin-managed. Presence of the key = authorized.
@@ -137,6 +150,8 @@ pub enum Error {
     NotSettlementAuthority = 9,
     /// A spent nullifier is on the ASP blocklist (non-membership enforcement).
     NullifierBlocked = 10,
+    WrongPoolMode = 11,
+    CommitmentAlreadyExists = 12,
 }
 
 #[contract]
@@ -153,21 +168,27 @@ fn hash2(env: &Env, left: &BytesN<32>, right: &BytesN<32>) -> BytesN<32> {
     // Bn254Fr::from_u256(..).to_u256() applies the field's own reduction, which
     // matches how the Circom circuit interprets these signals (value mod p).
     let left_u256 = soroban_sdk::crypto::bn254::Bn254Fr::from_u256(
-        soroban_sdk::U256::from_be_bytes(env, &left_bytes)).to_u256();
+        soroban_sdk::U256::from_be_bytes(env, &left_bytes),
+    )
+    .to_u256();
     let right_u256 = soroban_sdk::crypto::bn254::Bn254Fr::from_u256(
-        soroban_sdk::U256::from_be_bytes(env, &right_bytes)).to_u256();
-    
+        soroban_sdk::U256::from_be_bytes(env, &right_bytes),
+    )
+    .to_u256();
+
     let mut inputs = soroban_sdk::Vec::new(env);
     inputs.push_back(left_u256);
     inputs.push_back(right_u256);
-    
+
     let result = poseidon2_hash::<3, soroban_sdk::crypto::bn254::Bn254Fr>(env, &inputs);
     let bytes = result.to_be_bytes();
     let mut array = [0u8; 32];
-    
+
     let copy_len = array.len().min(bytes.len() as usize);
-    bytes.slice(0..copy_len as u32).copy_into_slice(&mut array[32 - copy_len..]);
-    
+    bytes
+        .slice(0..copy_len as u32)
+        .copy_into_slice(&mut array[32 - copy_len..]);
+
     BytesN::from_array(env, &array)
 }
 
@@ -235,6 +256,46 @@ impl VayylPool {
         membership: Address,
         non_membership: Address,
     ) -> Result<(), Error> {
+        Self::initialize_state(
+            &env,
+            admin,
+            asset,
+            verifier,
+            membership,
+            non_membership,
+            false,
+        )
+    }
+
+    /// Initialize a separate fixed-denomination Vault V2 deployment.
+    pub fn initialize_v2(
+        env: Env,
+        admin: Address,
+        asset: Address,
+        verifier: Address,
+        membership: Address,
+        non_membership: Address,
+    ) -> Result<(), Error> {
+        Self::initialize_state(
+            &env,
+            admin,
+            asset,
+            verifier,
+            membership,
+            non_membership,
+            true,
+        )
+    }
+
+    fn initialize_state(
+        env: &Env,
+        admin: Address,
+        asset: Address,
+        verifier: Address,
+        membership: Address,
+        non_membership: Address,
+        v2: bool,
+    ) -> Result<(), Error> {
         if env.storage().instance().has(&DataKey::Asset) {
             return Err(Error::AlreadyInitialized);
         }
@@ -242,10 +303,17 @@ impl VayylPool {
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::Asset, &asset);
         env.storage().instance().set(&DataKey::Verifier, &verifier);
-        env.storage().instance().set(&DataKey::Membership, &membership);
+        env.storage()
+            .instance()
+            .set(&DataKey::Membership, &membership);
         env.storage()
             .instance()
             .set(&DataKey::NonMembership, &non_membership);
+        if v2 {
+            env.storage()
+                .instance()
+                .set(&DataKey::Denomination, &V2_DENOMINATION);
+        }
 
         // Initialize tree state
         env.storage().instance().set(&DataKey::TreeNextIndex, &0u32);
@@ -253,19 +321,19 @@ impl VayylPool {
         // Precompute zero hashes for each level of the tree.
         // zeros[0] = 0 (empty leaf)
         // zeros[i] = Poseidon2(zeros[i-1], zeros[i-1])
-        let mut zeros: Vec<BytesN<32>> = Vec::new(&env);
-        let zero_leaf = BytesN::from_array(&env, &[0u8; 32]);
+        let mut zeros: Vec<BytesN<32>> = Vec::new(env);
+        let zero_leaf = BytesN::from_array(env, &[0u8; 32]);
         zeros.push_back(zero_leaf.clone());
 
         let mut current_zero = zero_leaf;
         for _ in 1..=TREE_DEPTH {
-            current_zero = hash2(&env, &current_zero, &current_zero);
+            current_zero = hash2(env, &current_zero, &current_zero);
             zeros.push_back(current_zero.clone());
         }
         env.storage().persistent().set(&DataKey::TreeZeros, &zeros);
 
         // Initialize empty frontier (TREE_DEPTH entries, all unset)
-        let empty_frontier: Vec<BytesN<32>> = Vec::new(&env);
+        let empty_frontier: Vec<BytesN<32>> = Vec::new(env);
         env.storage()
             .persistent()
             .set(&DataKey::TreeFrontier, &empty_frontier);
@@ -275,9 +343,27 @@ impl VayylPool {
             .instance()
             .set(&DataKey::TreeRoot, &current_zero);
 
-        log!(&env, "VayylPool initialized. Empty root computed at depth {}", TREE_DEPTH);
+        log!(
+            env,
+            "VayylPool initialized. Empty root computed at depth {}",
+            TREE_DEPTH
+        );
 
         Ok(())
+    }
+
+    fn assert_v1(env: &Env) -> Result<(), Error> {
+        if env.storage().instance().has(&DataKey::Denomination) {
+            return Err(Error::WrongPoolMode);
+        }
+        Ok(())
+    }
+
+    fn v2_denomination(env: &Env) -> Result<i128, Error> {
+        env.storage()
+            .instance()
+            .get(&DataKey::Denomination)
+            .ok_or(Error::WrongPoolMode)
     }
 
     /// Insert a leaf into the Merkle tree using frontier-based insertion.
@@ -301,11 +387,7 @@ impl VayylPool {
             return Err(Error::TreeFull);
         }
 
-        let zeros: Vec<BytesN<32>> = env
-            .storage()
-            .persistent()
-            .get(&DataKey::TreeZeros)
-            .unwrap();
+        let zeros: Vec<BytesN<32>> = env.storage().persistent().get(&DataKey::TreeZeros).unwrap();
 
         let mut frontier: Vec<BytesN<32>> = env
             .storage()
@@ -343,9 +425,7 @@ impl VayylPool {
         env.storage()
             .persistent()
             .set(&DataKey::TreeFrontier, &frontier);
-        env.storage()
-            .instance()
-            .set(&DataKey::TreeRoot, &new_root);
+        env.storage().instance().set(&DataKey::TreeRoot, &new_root);
 
         // H4: append the new root to the historical-roots ring buffer, keeping
         // at most ROOT_HISTORY_SIZE entries (drop the oldest). In-flight
@@ -432,18 +512,18 @@ impl VayylPool {
         use soroban_sdk::xdr::ToXdr;
         let mut bytes = soroban_sdk::Bytes::new(env);
         bytes.append(&relayer.to_xdr(env));
-        
+
         let mut fee_bytes = [0u8; 16];
         fee_bytes[0..16].copy_from_slice(&fee.to_be_bytes());
         bytes.append(&soroban_sdk::Bytes::from_array(env, &fee_bytes));
-        
+
         let sha_hash = env.crypto().sha256(&bytes);
-        
+
         // Poseidon2 expects field elements. A 32-byte SHA256 hash might be >= BN254 prime.
         // We clear the top 3 bits to ensure it fits in BN254 scalar field.
         let mut hash_bytes = sha_hash.to_array();
         hash_bytes[0] &= 0x1F;
-        
+
         BytesN::from_array(env, &hash_bytes)
     }
 
@@ -453,17 +533,17 @@ impl VayylPool {
         use soroban_sdk::xdr::ToXdr;
         let mut bytes = soroban_sdk::Bytes::new(env);
         bytes.append(&recipient.to_xdr(env));
-        
+
         let mut amt_bytes = [0u8; 16];
         amt_bytes[0..16].copy_from_slice(&amount.to_be_bytes());
         bytes.append(&soroban_sdk::Bytes::from_array(env, &amt_bytes));
-        
+
         let sha_hash = env.crypto().sha256(&bytes);
-        
+
         // Clear top 3 bits to fit in BN254 scalar field
         let mut hash_bytes = sha_hash.to_array();
         hash_bytes[0] &= 0x1F;
-        
+
         BytesN::from_array(env, &hash_bytes)
     }
 
@@ -476,9 +556,14 @@ impl VayylPool {
         public_amount: i128,
         asp_root: BytesN<32>,
     ) -> Result<(), Error> {
+        Self::assert_v1(&env)?;
         depositor.require_auth();
 
-        let asset: Address = env.storage().instance().get(&DataKey::Asset).ok_or(Error::NotInitialized)?;
+        let asset: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Asset)
+            .ok_or(Error::NotInitialized)?;
         let verifier: Address = env.storage().instance().get(&DataKey::Verifier).unwrap();
 
         // C3: bind `asp_root` to the trusted ASP set BEFORE the expensive Groth16
@@ -499,7 +584,10 @@ impl VayylPool {
 
         // Build public inputs: [amount, commitment, asp_root]  (M2: full i128)
         let mut public_inputs = Vec::new(&env);
-        public_inputs.push_back(BytesN::from_array(&env, &i128_to_field_bytes(public_amount)?));
+        public_inputs.push_back(BytesN::from_array(
+            &env,
+            &i128_to_field_bytes(public_amount)?,
+        ));
         public_inputs.push_back(commitment.clone());
         public_inputs.push_back(asp_root);
 
@@ -533,6 +621,78 @@ impl VayylPool {
         Ok(())
     }
 
+    /// Deposit one fixed 1-XLM note into a Vault V2 pool.
+    pub fn deposit_v2(
+        env: Env,
+        depositor: Address,
+        proof: Groth16Proof,
+        commitment: BytesN<32>,
+        asp_root: BytesN<32>,
+    ) -> Result<(), Error> {
+        let denomination = Self::v2_denomination(&env)?;
+        depositor.require_auth();
+
+        let commitment_key = DataKey::Commitment(commitment.clone());
+        if env.storage().persistent().has(&commitment_key) {
+            return Err(Error::CommitmentAlreadyExists);
+        }
+
+        let membership: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Membership)
+            .ok_or(Error::NotInitialized)?;
+        if !AspMembershipClient::new(&env, &membership).is_known_root(&asp_root) {
+            return Err(Error::InvalidAspRoot);
+        }
+
+        let verifier: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Verifier)
+            .ok_or(Error::NotInitialized)?;
+        let public_inputs = Vec::from_array(&env, [commitment.clone(), asp_root]);
+        if !Groth16VerifierClient::new(&env, &verifier).verify(
+            &CircuitId::Deposit,
+            &proof,
+            &public_inputs,
+        ) {
+            return Err(Error::InvalidProof);
+        }
+
+        let asset: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Asset)
+            .ok_or(Error::NotInitialized)?;
+        token::Client::new(&env, &asset).transfer(
+            &depositor,
+            &env.current_contract_address(),
+            &denomination,
+        );
+
+        let leaf_index = env
+            .storage()
+            .instance()
+            .get::<DataKey, u32>(&DataKey::TreeNextIndex)
+            .unwrap_or(0);
+        Self::insert_leaf(&env, commitment.clone())?;
+        env.storage().persistent().set(&commitment_key, &true);
+        env.storage().persistent().extend_ttl(
+            &commitment_key,
+            PERSISTENT_TTL_THRESHOLD,
+            PERSISTENT_TTL_EXTEND,
+        );
+
+        Deposit {
+            commitment,
+            leaf_index,
+            amount: denomination,
+        }
+        .publish(&env);
+        Ok(())
+    }
+
     /// Transfer shielded funds (2-in / 2-out)
     pub fn transfer(
         env: Env,
@@ -545,7 +705,12 @@ impl VayylPool {
         fee: i128,
         relayer: Address,
     ) -> Result<(), Error> {
-        let asset: Address = env.storage().instance().get(&DataKey::Asset).ok_or(Error::NotInitialized)?;
+        Self::assert_v1(&env)?;
+        let asset: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Asset)
+            .ok_or(Error::NotInitialized)?;
         let verifier: Address = env.storage().instance().get(&DataKey::Verifier).unwrap();
 
         // H4: accept the caller-supplied root only if it is the current root or
@@ -620,7 +785,12 @@ impl VayylPool {
         fee: i128,
         relayer: Address,
     ) -> Result<(), Error> {
-        let asset: Address = env.storage().instance().get(&DataKey::Asset).ok_or(Error::NotInitialized)?;
+        Self::assert_v1(&env)?;
+        let asset: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Asset)
+            .ok_or(Error::NotInitialized)?;
         let verifier: Address = env.storage().instance().get(&DataKey::Verifier).unwrap();
 
         // H4: accept the proof's bound root if it is current or still in-window.
@@ -645,7 +815,10 @@ impl VayylPool {
         public_inputs.push_back(root);
         public_inputs.push_back(nullifier.clone());
 
-        public_inputs.push_back(BytesN::from_array(&env, &i128_to_field_bytes(public_amount)?)); // M2
+        public_inputs.push_back(BytesN::from_array(
+            &env,
+            &i128_to_field_bytes(public_amount)?,
+        )); // M2
         public_inputs.push_back(BytesN::from_array(&env, &i128_to_field_bytes(fee)?)); // M2
 
         public_inputs.push_back(withdraw_binding);
@@ -672,8 +845,62 @@ impl VayylPool {
         }
         .publish(&env);
 
-        log!(&env, "Withdraw of {} completed to recipient.", public_amount);
+        log!(
+            &env,
+            "Withdraw of {} completed to recipient.",
+            public_amount
+        );
 
+        Ok(())
+    }
+
+    /// Withdraw one fixed 1-XLM note. No depositor authorization is required:
+    /// possession of a valid recipient-bound proof authorizes a relayer to submit.
+    pub fn withdraw_v2(
+        env: Env,
+        proof: Groth16Proof,
+        nullifier: BytesN<32>,
+        recipient: Address,
+        root: BytesN<32>,
+    ) -> Result<(), Error> {
+        let denomination = Self::v2_denomination(&env)?;
+        if !Self::is_known_root(&env, &root) {
+            return Err(Error::UnknownRoot);
+        }
+        assert_nullifier_not_blocked(&env, &nullifier)?;
+        Self::mark_nullifier(&env, nullifier.clone())?;
+
+        let binding = Self::compute_withdraw_binding(&env, &recipient, denomination);
+        let verifier: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Verifier)
+            .ok_or(Error::NotInitialized)?;
+        let public_inputs = Vec::from_array(&env, [root, nullifier.clone(), binding]);
+        if !Groth16VerifierClient::new(&env, &verifier).verify(
+            &CircuitId::Withdraw,
+            &proof,
+            &public_inputs,
+        ) {
+            return Err(Error::InvalidProof);
+        }
+
+        let asset: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Asset)
+            .ok_or(Error::NotInitialized)?;
+        token::Client::new(&env, &asset).transfer(
+            &env.current_contract_address(),
+            &recipient,
+            &denomination,
+        );
+        Withdraw {
+            nullifier,
+            recipient,
+            amount: denomination,
+        }
+        .publish(&env);
         Ok(())
     }
 
@@ -704,6 +931,7 @@ impl VayylPool {
         payout_recipient: Option<Address>,
         payout_amount: i128,
     ) -> Result<(), Error> {
+        Self::assert_v1(&env)?;
         // The authority contract authorizes its own sub-call into the pool.
         authority.require_auth();
 
@@ -744,11 +972,7 @@ impl VayylPool {
         if payout_amount > 0 {
             if let Some(recipient) = payout_recipient {
                 let token_client = token::Client::new(&env, &asset);
-                token_client.transfer(
-                    &env.current_contract_address(),
-                    &recipient,
-                    &payout_amount,
-                );
+                token_client.transfer(&env.current_contract_address(), &recipient, &payout_amount);
             }
         }
 
@@ -806,6 +1030,7 @@ impl VayylPool {
         depositor: Address,
         amount: i128,
     ) -> Result<(), Error> {
+        Self::assert_v1(&env)?;
         authority.require_auth();
         if !env
             .storage()
@@ -843,6 +1068,10 @@ impl VayylPool {
             .instance()
             .get(&DataKey::TreeNextIndex)
             .unwrap_or(0)
+    }
+
+    pub fn get_denomination(env: Env) -> Result<i128, Error> {
+        Self::v2_denomination(&env)
     }
 
     /// Get the admin authorized to upgrade this pool.

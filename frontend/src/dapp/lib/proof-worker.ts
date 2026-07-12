@@ -12,6 +12,28 @@
 import * as snarkjs from 'snarkjs';
 import { computeCommitment, computeNullifier, poseidon2Hash2, poseidon2Hash4 } from './poseidon';
 import { buildMerklePath, zeroHashes, TREE_DEPTH } from './merkle';
+import buildWitnessCalculator from './witness_calculator.js';
+
+const V2_AMOUNT = '10000000';
+
+let v2NoteCalculator: ReturnType<typeof buildWitnessCalculator> | null = null;
+
+async function deriveV2Note(privKey: string, blindness: string) {
+  v2NoteCalculator ??= fetch('/circuits/v2/note.wasm')
+    .then((response) => {
+      if (!response.ok) throw new Error(`Failed to load V2 note circuit (${response.status})`);
+      return response.arrayBuffer();
+    })
+    .then((wasm) => buildWitnessCalculator(wasm));
+  const calculator = await v2NoteCalculator;
+  const witness = await calculator.calculateWitness({ privKey, amount: V2_AMOUNT, blindness }, true);
+  return {
+    pubX: witness[1].toString(),
+    pubY: witness[2].toString(),
+    commitment: witness[3].toString(),
+    nullifier: witness[4].toString(),
+  };
+}
 
 // ASP is ENFORCED on-chain: `vayyl-pool::deposit` calls
 // `asp_membership.is_known_root(asp_root)` and aborts with Error #8 unless the
@@ -76,11 +98,80 @@ interface WithdrawPayload {
   leaves: string[]; // ordered commitment field elements (decimal)
 }
 
+interface V2DepositPayload {
+  privKey: string;
+  blindness: string;
+  aspLeafIndex: number;
+  aspLeaves: string[];
+}
+
+interface V2WithdrawPayload {
+  privKey: string;
+  blindness: string;
+  commitment: string;
+  leafIndex: number;
+  withdrawBinding: string;
+  leaves: string[];
+}
+
 self.onmessage = async (e: MessageEvent) => {
   const { type, payload, id } = e.data;
   try {
     let result;
     switch (type) {
+      case 'PREPARE_V2_NOTE': {
+        const p = payload as Pick<V2DepositPayload, 'privKey' | 'blindness'>;
+        const note = await deriveV2Note(p.privKey, p.blindness);
+        result = { ...note, aspLeaf: (await poseidon2Hash2(BigInt(note.pubX), BigInt(note.pubY))).toString() };
+        break;
+      }
+
+      case 'PROVE_DEPOSIT_V2': {
+        const p = payload as V2DepositPayload;
+        const note = await deriveV2Note(p.privKey, p.blindness);
+        const aspLeaf = await poseidon2Hash2(BigInt(note.pubX), BigInt(note.pubY));
+        const aspLeaves = p.aspLeaves.map(BigInt);
+        if (aspLeaves[p.aspLeafIndex] !== aspLeaf) {
+          throw new Error('The workspace membership path does not match this shielded identity.');
+        }
+        const aspPath = await buildMerklePath(aspLeaves, p.aspLeafIndex);
+        const input = {
+          commitment: note.commitment,
+          asp_root: aspPath.root.toString(),
+          privKey: p.privKey,
+          blindness: p.blindness,
+          asp_pathElements: aspPath.pathElements.map(String),
+          asp_pathIndices: aspPath.pathIndices.map(String),
+        };
+        const { proof, publicSignals } = await snarkjs.groth16.fullProve(
+          input, '/circuits/v2/deposit_v2.wasm', '/circuits/v2/deposit_v2_final.zkey',
+        );
+        result = { ...note, proof, publicSignals, aspLeaf: aspLeaf.toString(), aspRoot: aspPath.root.toString() };
+        break;
+      }
+
+      case 'PROVE_WITHDRAW_V2': {
+        const p = payload as V2WithdrawPayload;
+        const note = await deriveV2Note(p.privKey, p.blindness);
+        if (note.commitment !== p.commitment) throw new Error('The local note does not belong to this workspace.');
+        const leaves = p.leaves.map(BigInt);
+        const path = await buildMerklePath(leaves, p.leafIndex);
+        const input = {
+          root: path.root.toString(),
+          nullifier: note.nullifier,
+          withdraw_binding: p.withdrawBinding,
+          privKey: p.privKey,
+          blindness: p.blindness,
+          pathElements: path.pathElements.map(String),
+          pathIndices: path.pathIndices.map(String),
+        };
+        const { proof, publicSignals } = await snarkjs.groth16.fullProve(
+          input, '/circuits/v2/withdraw_v2.wasm', '/circuits/v2/withdraw_v2_final.zkey',
+        );
+        result = { proof, publicSignals, nullifier: note.nullifier, root: path.root.toString() };
+        break;
+      }
+
       case 'PROVE_DEPOSIT': {
         const p = payload as DepositPayload;
         const commitment = await computeCommitment(

@@ -2,8 +2,15 @@ import pg from 'pg';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { createHash } from 'crypto';
 
 const { Pool } = pg;
+
+function cursorKey(poolAddress: string): string {
+    const namespace = process.env.INDEXER_CURSOR_NAMESPACE ?? '';
+    const scopedAddress = namespace ? `${namespace}:${poolAddress}` : poolAddress;
+    return createHash('sha256').update(scopedAddress).digest('hex');
+}
 
 export class Database {
     private pool: pg.Pool;
@@ -30,10 +37,10 @@ export class Database {
         console.log('Database initialized with schema');
     }
 
-    async getLastLedger(): Promise<number> {
+    async getLastLedger(poolAddress: string): Promise<number> {
         const result = await this.pool.query(
             'SELECT value FROM indexer_state WHERE key = $1',
-            ['last_ledger']
+            [cursorKey(poolAddress)]
         );
         if (result.rows.length > 0) {
             return parseInt(result.rows[0].value, 10);
@@ -41,11 +48,11 @@ export class Database {
         return 0; // Or genesis ledger if known
     }
 
-    async setLastLedger(ledger: number) {
+    async setLastLedger(poolAddress: string, ledger: number) {
         await this.pool.query(
-            `INSERT INTO indexer_state (key, value) VALUES ('last_ledger', $1)
+            `INSERT INTO indexer_state (key, value) VALUES ($1, $2)
              ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
-            [ledger.toString()]
+            [cursorKey(poolAddress), ledger.toString()]
         );
     }
 

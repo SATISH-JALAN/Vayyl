@@ -3,56 +3,29 @@ import { useEffect, useState } from 'react';
 import Card from '../components/common/Card';
 import DepositForm from '../components/pool/DepositForm';
 import WithdrawForm from '../components/pool/WithdrawForm';
-import { poseidon2Hash2 } from '../lib/poseidon';
+import { usePoolStore } from '../store/pool';
 import { useWalletStore } from '../store/wallet';
 
 type PoolMode = 'deposit' | 'withdraw';
 
 export default function Pool() {
   const [activeMode, setActiveMode] = useState<PoolMode>('deposit');
-  const [aspLeaf, setAspLeaf] = useState('');
-  const [copied, setCopied] = useState(false);
   const keys = useWalletStore((state) => state.keys);
+  const { fetchState } = usePoolStore();
 
   useEffect(() => {
-    if (!keys) {
-      setAspLeaf('');
-      return;
-    }
-    void poseidon2Hash2(keys.pubX, keys.pubY).then((leaf) => setAspLeaf(leaf.toString()));
-  }, [keys]);
+    if (keys) void fetchState();
+  }, [keys, fetchState]);
 
   return (
     <div className="dapp-stack">
       <header className="dapp-page-header">
         <div>
-          <h1 className="dapp-page-title">Private XLM vault</h1>
-          <p className="dapp-page-subtitle">
-            Shield native XLM into a private note, then settle that exact note to a public Stellar address.
-          </p>
+          <h1 className="dapp-page-title">XLM Vault</h1>
+          <p className="dapp-page-subtitle">Shield, back up, and restore a 1 XLM note.</p>
         </div>
-        <span className="dapp-badge dapp-badge--success">Active</span>
+        <span className="dapp-badge">1 XLM note</span>
       </header>
-
-      <section className="dapp-release dapp-release--quiet" aria-label="Vault eligibility">
-        <div>
-          <span className="dapp-release__signal" aria-hidden="true" />
-          <div>
-            <strong>{aspLeaf ? 'Shielded eligibility key ready' : 'Unlock your workspace first'}</strong>
-            <p>{aspLeaf ? 'This public leaf is used to enroll the connected wallet in the Vault v1 access set.' : 'Freighter signs a fixed message locally to derive your shielded identity.'}</p>
-          </div>
-        </div>
-        {aspLeaf && (
-          <button className="dapp-copy" type="button" onClick={() => {
-            void navigator.clipboard.writeText(aspLeaf).then(() => {
-              setCopied(true);
-              window.setTimeout(() => setCopied(false), 1800);
-            });
-          }} title={aspLeaf}>
-            {copied ? 'Copied' : 'Copy ASP leaf'}
-          </button>
-        )}
-      </section>
 
       <div className="dapp-grid dapp-grid--pool">
         <div className="dapp-stack">
@@ -83,16 +56,17 @@ export default function Pool() {
         <Card>
           <div className="dapp-card__header">
             <div>
-              <h2 className="dapp-card__title">Proof flow</h2>
-              <p className="dapp-card__description">Sensitive values stay client-side while proofs verify settlement state.</p>
+              <h2 className="dapp-card__title">Your note</h2>
+              <p className="dapp-card__description">Everything needed to recover the note stays with your encrypted backup.</p>
             </div>
           </div>
           <div className="dapp-proof-steps">
-            <div className="dapp-proof-step">Freighter authorizes shielded key derivation for the connected wallet.</div>
-            <div className="dapp-proof-step">The proof worker creates a Groth16 proof off the main thread.</div>
-            <div className="dapp-proof-step">Soroban verifies the proof against the pool contract.</div>
-            <div className="dapp-proof-step">Spendable note state is kept with the connected shielded identity.</div>
+            <div className="dapp-proof-step">Create a note from the connected wallet.</div>
+            <div className="dapp-proof-step">Export an encrypted backup from Settings.</div>
+            <div className="dapp-proof-step">Import it later with the same wallet.</div>
+            <div className="dapp-proof-step">Unshield to any funded Stellar account.</div>
           </div>
+          <a className="dapp-button dapp-button--ghost dapp-card-action" href="/app?view=settings">Manage backup</a>
         </Card>
       </div>
     </div>

@@ -1,14 +1,15 @@
-import { useState } from 'react';
+import { useRef, useState, type ChangeEvent } from 'react';
 
 import Button from '../components/common/Button';
 import Card from '../components/common/Card';
-import { clearNotes } from '../lib/storage';
+import { clearV2Notes, exportV2Backup, importV2Backup } from '../lib/storage';
 import { usePoolStore } from '../store/pool';
 import { useWalletStore } from '../store/wallet';
 
 export default function Settings() {
   const [message, setMessage] = useState<string | null>(null);
-  const { address, keys, network } = useWalletStore();
+  const importInput = useRef<HTMLInputElement>(null);
+  const { address, keys } = useWalletStore();
   const { fetchState } = usePoolStore();
 
   const handleClearLocalNotes = async () => {
@@ -17,9 +18,34 @@ export default function Settings() {
       return;
     }
 
-    await clearNotes(keys.viewingKey);
+    await clearV2Notes(keys.viewingKey);
     await fetchState();
-    setMessage('Local notes and local activity were cleared for this viewing key.');
+    setMessage('Local notes and activity were cleared.');
+  };
+
+  const handleExport = async () => {
+    if (!keys) return setMessage('Unlock this workspace before exporting its encrypted backup.');
+    const blob = new Blob([await exportV2Backup(keys.viewingKey)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `vayyl-note-backup-${Date.now()}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+    setMessage('Encrypted backup exported. It can only be opened with this wallet.');
+  };
+
+  const handleImport = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file || !keys) return setMessage('Unlock this workspace before importing a backup.');
+    try {
+      const count = await importV2Backup(keys.viewingKey, await file.text());
+      await fetchState();
+      setMessage(`Imported ${count} note${count === 1 ? '' : 's'}.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Backup import failed.');
+    }
   };
 
   return (
@@ -27,9 +53,7 @@ export default function Settings() {
       <header className="dapp-page-header">
         <div>
           <h1 className="dapp-page-title">Settings</h1>
-          <p className="dapp-page-subtitle">
-            Manage wallet authorization, connected network state, and shielded data for this device.
-          </p>
+          <p className="dapp-page-subtitle">Back up or restore your notes.</p>
         </div>
       </header>
 
@@ -37,24 +61,8 @@ export default function Settings() {
         <Card>
           <div className="dapp-card__header">
             <div>
-              <h2 className="dapp-card__title">Network</h2>
-              <p className="dapp-card__description">Current network for wallet-authorized settlement activity.</p>
-            </div>
-            <span className="dapp-badge">{network}</span>
-          </div>
-          <p className="dapp-status">
-            Network selection follows the connected wallet and deployment configuration.
-          </p>
-        </Card>
-
-        <Card>
-          <div className="dapp-card__header">
-            <div>
-              <h2 className="dapp-card__title">Local shielded data</h2>
-              <p className="dapp-card__description">
-                Notes are stored per viewing key in this browser. Clearing them can remove spendable
-                local state.
-              </p>
+              <h2 className="dapp-card__title">Note backup</h2>
+              <p className="dapp-card__description">Backups are encrypted and bound to the connected wallet.</p>
             </div>
           </div>
           <div className="dapp-setting-list">
@@ -65,9 +73,12 @@ export default function Settings() {
                   {keys ? 'Shielded keys are unlocked for this session.' : 'Shielded keys are not unlocked.'}
                 </p>
               </div>
-              <Button variant="ghost" type="button" onClick={handleClearLocalNotes}>
-                Clear local notes
-              </Button>
+              <div className="dapp-setting-actions">
+                <Button variant="ghost" type="button" onClick={handleExport}>Export backup</Button>
+                <Button variant="ghost" type="button" onClick={() => importInput.current?.click()}>Import backup</Button>
+                <input ref={importInput} className="dapp-file-input" type="file" accept="application/json,.json" onChange={handleImport} />
+                <Button variant="ghost" type="button" onClick={handleClearLocalNotes}>Clear local notes</Button>
+              </div>
             </div>
           </div>
           {message && <p className="dapp-status">{message}</p>}

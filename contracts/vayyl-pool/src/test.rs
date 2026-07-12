@@ -25,6 +25,7 @@ use soroban_sdk::{
 #[derive(Clone)]
 enum MockKey {
     Result,
+    PublicInputs,
 }
 
 /// A stand-in for `Groth16Verifier`. Its `verify` returns whatever boolean was
@@ -43,13 +44,23 @@ impl MockVerifier {
         env: Env,
         _circuit_id: CircuitId,
         _proof: Groth16Proof,
-        _public_inputs: Vec<BytesN<32>>,
+        public_inputs: Vec<BytesN<32>>,
     ) -> Result<bool, soroban_sdk::Error> {
+        env.storage()
+            .instance()
+            .set(&MockKey::PublicInputs, &public_inputs);
         Ok(env
             .storage()
             .instance()
             .get(&MockKey::Result)
             .unwrap_or(true))
+    }
+
+    pub fn public_inputs(env: Env) -> Vec<BytesN<32>> {
+        env.storage()
+            .instance()
+            .get(&MockKey::PublicInputs)
+            .unwrap_or_else(|| Vec::new(&env))
     }
 }
 
@@ -84,6 +95,14 @@ fn commitment(env: &Env, seed: u8) -> BytesN<32> {
 }
 
 fn setup() -> Fixture {
+    setup_mode(false)
+}
+
+fn setup_v2() -> Fixture {
+    setup_mode(true)
+}
+
+fn setup_mode(v2: bool) -> Fixture {
     let env = Env::default();
     env.mock_all_auths();
 
@@ -108,7 +127,11 @@ fn setup() -> Fixture {
     asp.insert_leaf(&BytesN::from_array(&env, &[0xA1; 32]));
 
     let non_membership = Address::generate(&env);
-    pool.initialize(&admin, &asset, &verifier_id, &asp_id, &non_membership);
+    if v2 {
+        pool.initialize_v2(&admin, &asset, &verifier_id, &asp_id, &non_membership);
+    } else {
+        pool.initialize(&admin, &asset, &verifier_id, &asp_id, &non_membership);
+    }
     let _ = asset_admin; // SAC admin auth is covered by mock_all_auths.
 
     Fixture {
@@ -119,6 +142,77 @@ fn setup() -> Fixture {
         asset,
         admin,
     }
+}
+
+// ---- Vault V2 fixed-denomination mode ------------------------------------
+
+#[test]
+fn test_v2_deposit_is_fixed_and_rejects_duplicate_commitment() {
+    let f = setup_v2();
+    let depositor = Address::generate(&f.env);
+    fund(&f, &depositor, V2_DENOMINATION * 2);
+    let note = commitment(&f.env, 0x21);
+    let asp_root = f.asp_root();
+
+    f.pool
+        .deposit_v2(&depositor, &dummy_proof(&f.env), &note, &asp_root);
+
+    assert_eq!(f.pool.get_denomination(), V2_DENOMINATION);
+    assert_eq!(balance(&f, &depositor), V2_DENOMINATION);
+    assert_eq!(balance(&f, &f.pool.address), V2_DENOMINATION);
+    assert_eq!(f.pool.get_leaf_count(), 1);
+
+    let inputs = f.verifier.public_inputs();
+    assert_eq!(inputs.len(), 2);
+    assert_eq!(inputs.get(0).unwrap(), note);
+    assert_eq!(inputs.get(1).unwrap(), asp_root);
+
+    let duplicate = f
+        .pool
+        .try_deposit_v2(&depositor, &dummy_proof(&f.env), &note, &f.asp_root());
+    assert_eq!(duplicate, Err(Ok(Error::CommitmentAlreadyExists)));
+}
+
+#[test]
+fn test_v2_withdraw_is_fixed_and_rejects_double_spend() {
+    let f = setup_v2();
+    let depositor = Address::generate(&f.env);
+    fund(&f, &depositor, V2_DENOMINATION);
+    f.pool.deposit_v2(
+        &depositor,
+        &dummy_proof(&f.env),
+        &commitment(&f.env, 0x31),
+        &f.asp_root(),
+    );
+
+    let recipient = Address::generate(&f.env);
+    let nullifier = commitment(&f.env, 0x32);
+    let root = f.pool.get_root();
+    f.pool
+        .withdraw_v2(&dummy_proof(&f.env), &nullifier, &recipient, &root);
+
+    assert_eq!(balance(&f, &recipient), V2_DENOMINATION);
+    assert_eq!(balance(&f, &f.pool.address), 0);
+    assert_eq!(f.verifier.public_inputs().len(), 3);
+
+    let duplicate = f
+        .pool
+        .try_withdraw_v2(&dummy_proof(&f.env), &nullifier, &recipient, &root);
+    assert_eq!(duplicate, Err(Ok(Error::NullifierAlreadyUsed)));
+}
+
+#[test]
+fn test_v1_entrypoint_is_disabled_on_v2_pool() {
+    let f = setup_v2();
+    let depositor = Address::generate(&f.env);
+    let result = f.pool.try_deposit(
+        &depositor,
+        &dummy_proof(&f.env),
+        &commitment(&f.env, 0x41),
+        &V2_DENOMINATION,
+        &f.asp_root(),
+    );
+    assert_eq!(result, Err(Ok(Error::WrongPoolMode)));
 }
 
 fn fund(f: &Fixture, to: &Address, amount: i128) {
@@ -593,7 +687,8 @@ fn test_execute_settlement_inserts_note_and_pays_out() {
     let mut nfs: Vec<BytesN<32>> = Vec::new(&f.env);
     nfs.push_back(commitment(&f.env, 7)); // a spent nullifier
 
-    f.pool.execute_settlement(&authority, &nfs, &outs, &Some(recipient.clone()), &600i128);
+    f.pool
+        .execute_settlement(&authority, &nfs, &outs, &Some(recipient.clone()), &600i128);
 
     // Output note inserted into the tree, payout delivered, pool debited.
     assert_eq!(f.pool.get_leaf_count(), 1);
@@ -614,7 +709,8 @@ fn test_execute_settlement_reshield_moves_no_tokens() {
     outs.push_back(commitment(&f.env, 11));
     let nfs: Vec<BytesN<32>> = Vec::new(&f.env);
 
-    f.pool.execute_settlement(&authority, &nfs, &outs, &None::<Address>, &0i128);
+    f.pool
+        .execute_settlement(&authority, &nfs, &outs, &None::<Address>, &0i128);
 
     assert_eq!(f.pool.get_leaf_count(), 1);
     assert_eq!(balance(&f, &f.pool.address), 1_000); // nothing left the pool
@@ -626,7 +722,9 @@ fn test_execute_settlement_rejects_non_authority() {
     let f = setup();
     let outsider = Address::generate(&f.env);
     let empty: Vec<BytesN<32>> = Vec::new(&f.env);
-    let res = f.pool.try_execute_settlement(&outsider, &empty, &empty, &None::<Address>, &0i128);
+    let res = f
+        .pool
+        .try_execute_settlement(&outsider, &empty, &empty, &None::<Address>, &0i128);
     assert_eq!(res, Err(Ok(Error::NotSettlementAuthority)));
 }
 
@@ -640,9 +738,12 @@ fn test_execute_settlement_rejects_double_spend_nullifier() {
     let mut nfs: Vec<BytesN<32>> = Vec::new(&f.env);
     nfs.push_back(commitment(&f.env, 21));
 
-    f.pool.execute_settlement(&authority, &nfs, &empty, &None::<Address>, &0i128);
+    f.pool
+        .execute_settlement(&authority, &nfs, &empty, &None::<Address>, &0i128);
     // Re-spending the same nullifier through settlement is rejected.
-    let res = f.pool.try_execute_settlement(&authority, &nfs, &empty, &None::<Address>, &0i128);
+    let res = f
+        .pool
+        .try_execute_settlement(&authority, &nfs, &empty, &None::<Address>, &0i128);
     assert_eq!(res, Err(Ok(Error::NullifierAlreadyUsed)));
 }
 
@@ -653,9 +754,9 @@ fn test_execute_settlement_rejects_negative_payout() {
     f.pool.add_settlement_authority(&authority);
     let recipient = Address::generate(&f.env);
     let empty: Vec<BytesN<32>> = Vec::new(&f.env);
-    let res =
-        f.pool
-            .try_execute_settlement(&authority, &empty, &empty, &Some(recipient), &-5i128);
+    let res = f
+        .pool
+        .try_execute_settlement(&authority, &empty, &empty, &Some(recipient), &-5i128);
     assert_eq!(res, Err(Ok(Error::InvalidAmount)));
 }
 
@@ -670,7 +771,9 @@ fn test_remove_settlement_authority_revokes_access() {
     assert!(!f.pool.is_settlement_authority(&authority));
 
     let empty: Vec<BytesN<32>> = Vec::new(&f.env);
-    let res = f.pool.try_execute_settlement(&authority, &empty, &empty, &None::<Address>, &0i128);
+    let res = f
+        .pool
+        .try_execute_settlement(&authority, &empty, &empty, &None::<Address>, &0i128);
     assert_eq!(res, Err(Ok(Error::NotSettlementAuthority)));
 }
 

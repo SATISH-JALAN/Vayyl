@@ -21,10 +21,10 @@ export const landingMarkup = String.raw`
 
     <div class="hero__content">
       <p class="hero__kicker">Shielded pools / Groth16 / Soroban BN254</p>
-      <h1 class="hero__title display-hero" id="hero-title">Private positions.<br />Public proofs.</h1>
+      <h1 class="hero__title display-hero" id="hero-title">Private notes.<br />Public proofs.</h1>
 
       <p class="hero__subtitle" id="hero-subtitle">
-        Vayyl turns deposits, positions, and orders into commitments and nullifiers, then verifies Groth16 proofs on Stellar Soroban so the chain sees validity, not strategy.
+        Shield XLM into a private note, keep an encrypted backup, and settle through a proof verified on Stellar.
       </p>
 
       <div class="hero__actions">
@@ -57,7 +57,7 @@ export const landingMarkup = String.raw`
           <span class="reveal__eyebrow">The Protocol</span>
           <h2 class="reveal__title">The settlement layer that keeps secrets</h2>
           <p class="reveal__body">
-            Vayyl is a confidential settlement protocol on Stellar Soroban. Groth16 zero-knowledge proofs, Circom circuits, and Poseidon2 hashing, verified natively on-chain, let you move value, hold positions, and execute orders without exposing what matters.
+            Vayyl combines private notes, client-side proving, and Soroban verification in one self-custodied vault. The same foundation extends to positions, orders, and automated settlement.
           </p>
           <a href="#features" class="btn btn--ghost-dark">
             <span>See what's possible</span>
@@ -73,15 +73,15 @@ export const landingMarkup = String.raw`
     <div class="reveal__curtain" id="reveal-curtain">
       <div class="reveal__curtain-bg"></div>
       <div class="reveal__curtain-content">
-        <p class="reveal__curtain-text">Move value and hold positions on Stellar without exposing amount, identity, or strategy.</p>
+        <p class="reveal__curtain-text">Hold the note. Prove the spend. Settle on Stellar.</p>
       </div>
     </div>
   </section>
 
   <section class="how-it-works" id="how-it-works">
     <div class="how-it-works__header">
-      <h2 class="display-h2">Three moves, zero exposure</h2>
-      <p class="text-body-large">From deposit to settlement, every step shielded by zero-knowledge proofs.</p>
+      <h2 class="display-h2">Three moves, one private note</h2>
+      <p class="text-body-large">A simple path from deposit to recovery and settlement.</p>
     </div>
 
     <div class="how-it-works__track-wrapper" id="how-track-wrapper">
@@ -90,7 +90,7 @@ export const landingMarkup = String.raw`
           <div>
             <span class="process-card__step">01</span>
             <h3 class="process-card__title">Shield</h3>
-            <p class="process-card__text">Deposit assets into a shielded pool. Your commitment is recorded on-chain; your amount stays off it. Each pool isolates one asset, keeping costs proportional to activity, not system size.</p>
+            <p class="process-card__text">Deposit 1 XLM and create a private note. The pool records its commitment while the note stays with your wallet.</p>
           </div>
           <div class="process-card__visual">
             <img src="/images/process-shield.webp" alt="Shield step visualization" loading="lazy" />
@@ -100,8 +100,8 @@ export const landingMarkup = String.raw`
         <article class="process-card">
           <div>
             <span class="process-card__step">02</span>
-            <h3 class="process-card__title">Route</h3>
-            <p class="process-card__text">Transfer, position, or order: all proven in zero knowledge. Nullifiers prevent double-spending. Merkle paths prove inclusion. Amounts balance without being seen.</p>
+            <h3 class="process-card__title">Keep</h3>
+            <p class="process-card__text">Export an encrypted backup, clear the local copy, and restore it later with the same connected wallet.</p>
           </div>
           <div class="process-card__visual">
             <img src="/images/process-route.webp" alt="Route step visualization" loading="lazy" />
@@ -112,7 +112,7 @@ export const landingMarkup = String.raw`
           <div>
             <span class="process-card__step">03</span>
             <h3 class="process-card__title">Settle</h3>
-            <p class="process-card__text">Withdraw to any address, or settle between protocols. Relayers submit fee-bumped transactions. The chain sees a valid proof. Nothing more.</p>
+            <p class="process-card__text">Prove ownership locally and unshield through a relayer to any funded Stellar account.</p>
           </div>
           <div class="process-card__visual">
             <img src="/images/process-settle.webp" alt="Settle step visualization" loading="lazy" />
@@ -137,8 +137,8 @@ export const landingMarkup = String.raw`
             <path d="M2 12l10 5 10-5"></path>
           </svg>
         </div>
-        <h3 class="card__title">Confidential Payments</h3>
-        <p class="card__text">Two-in, two-out transfers where amounts balance in zero knowledge. The chain verifies the math without seeing the numbers.</p>
+        <h3 class="card__title">Private Notes</h3>
+        <p class="card__text">Create, back up, restore, and spend self-custodied notes through proof-verified settlement.</p>
       </article>
 
       <article class="card" id="feature-positions">
@@ -277,23 +277,12 @@ export const landingMarkup = String.raw`
   <section class="cta" id="cta">
     <div class="cta__glow"></div>
     <div class="cta__content">
-      <h2 class="cta__title" id="cta-title">Step behind the veil.</h2>
-      <p class="cta__subtitle">Vayyl is in active development. Request early access to the testnet and developer documentation.</p>
-      <form class="form-group" id="cta-form" action="#" method="POST">
-        <input
-          type="email"
-          class="form-input"
-          id="cta-email"
-          placeholder="you@protocol.xyz"
-          required
-          autocomplete="email"
-          aria-label="Email address"
-        />
-        <button type="submit" class="btn btn--primary" id="cta-submit">
-          <span id="cta-submit-text">Request access</span>
-          <span class="btn__arrow">-&gt;</span>
-        </button>
-      </form>
+      <h2 class="cta__title" id="cta-title">Open your vault.</h2>
+      <p class="cta__subtitle">Connect a Stellar wallet and create your first private note.</p>
+      <div class="hero__actions">
+        <a href="/app?view=pool" class="btn btn--primary"><span>Launch App</span><span class="btn__arrow">-&gt;</span></a>
+        <a href="https://github.com/akm2006/Vayyl-docs" class="btn btn--ghost" target="_blank" rel="noreferrer"><span>Read Docs</span><span class="btn__arrow">-&gt;</span></a>
+      </div>
     </div>
   </section>
 
@@ -313,30 +302,24 @@ export const landingMarkup = String.raw`
         </div>
         <div>
           <h4 class="footer__col-title">Developers</h4>
-          <a href="#" class="footer__link">Documentation</a>
-          <a href="#" class="footer__link">SDK Reference</a>
-          <a href="#" class="footer__link">Circuits</a>
-          <a href="#" class="footer__link">Audits</a>
+          <a href="https://github.com/akm2006/Vayyl-docs" class="footer__link" target="_blank" rel="noreferrer">Documentation</a>
+          <a href="https://github.com/akm2006/Vayyl" class="footer__link" target="_blank" rel="noreferrer">Source</a>
+          <a href="https://github.com/akm2006/Vayyl/tree/main/circuits" class="footer__link" target="_blank" rel="noreferrer">Circuits</a>
+          <a href="https://github.com/akm2006/Vayyl/tree/main/deployments" class="footer__link" target="_blank" rel="noreferrer">Deployments</a>
         </div>
         <div>
           <h4 class="footer__col-title">Community</h4>
-          <a href="#" class="footer__link">Discord</a>
-          <a href="#" class="footer__link">Twitter / X</a>
-          <a href="#" class="footer__link">GitHub</a>
-          <a href="#" class="footer__link">Blog</a>
+          <a href="/app" class="footer__link">Open App</a>
+          <a href="https://github.com/akm2006/Vayyl" class="footer__link" target="_blank" rel="noreferrer">GitHub</a>
+          <a href="https://stellar.expert/explorer/testnet/contract/CBUNTVFHCNN5CYNA3TLTSWPVYX5ED5V6W6X3Y5EAHUOZYJRUPYNAX33A" class="footer__link" target="_blank" rel="noreferrer">Pool Contract</a>
+          <a href="https://github.com/akm2006/Vayyl-docs" class="footer__link" target="_blank" rel="noreferrer">Protocol Vision</a>
         </div>
       </div>
       <div class="footer__bottom">
         <span class="footer__copy">Copyright 2026 Vayyl. All rights reserved.</span>
         <div class="footer__socials">
-          <a href="#" class="footer__social" aria-label="Twitter">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"></path></svg>
-          </a>
-          <a href="#" class="footer__social" aria-label="GitHub">
+          <a href="https://github.com/akm2006/Vayyl" class="footer__social" aria-label="GitHub" target="_blank" rel="noreferrer">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.17 6.839 9.49.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.604-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.464-1.11-1.464-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0112 6.836c.85.004 1.705.115 2.504.337 1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.167 22 16.418 22 12c0-5.523-4.477-10-10-10z"></path></svg>
-          </a>
-          <a href="#" class="footer__social" aria-label="Discord">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M20.317 4.37a19.791 19.791 0 00-4.885-1.515.074.074 0 00-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 00-5.487 0 12.64 12.64 0 00-.617-1.25.077.077 0 00-.079-.037A19.736 19.736 0 003.677 4.37a.07.07 0 00-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 00.031.057 19.9 19.9 0 005.993 3.03.078.078 0 00.084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 00-.041-.106 13.107 13.107 0 01-1.872-.892.077.077 0 01-.008-.128 10.2 10.2 0 00.372-.292.074.074 0 01.077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 01.078.01c.12.098.246.198.373.292a.077.077 0 01-.006.127 12.299 12.299 0 01-1.873.892.077.077 0 00-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 00.084.028 19.839 19.839 0 006.002-3.03.077.077 0 00.032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 00-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.095 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.095 2.157 2.42 0 1.333-.947 2.418-2.157 2.418z"></path></svg>
           </a>
         </div>
       </div>

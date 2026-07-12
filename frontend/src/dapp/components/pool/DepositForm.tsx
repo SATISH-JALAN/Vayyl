@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { type FormEvent } from 'react';
 
 import Button from '../common/Button';
 import Card from '../common/Card';
@@ -7,8 +7,7 @@ import { usePoolStore } from '../../store/pool';
 import { useWalletStore } from '../../store/wallet';
 
 export default function DepositForm() {
-  const [amount, setAmount] = useState('');
-  const { deposit, isProving, notes, status } = usePoolStore();
+  const { deposit, isProving, notes, status, aspEligible } = usePoolStore();
   const { address } = useWalletStore();
   const isError = !!status && /failed|error/i.test(status);
   const confirmedHash =
@@ -17,11 +16,8 @@ export default function DepositForm() {
 
   const handleDeposit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!amount) return;
-
     try {
-      await deposit(amount, 'XLM');
-      setAmount('');
+      await deposit();
     } catch (error) {
       console.error(error);
     }
@@ -33,7 +29,7 @@ export default function DepositForm() {
         <div>
           <h2 className="dapp-card__title">Shield XLM</h2>
           <p className="dapp-card__description">
-            Deposit XLM into the pool and create a locally spendable shielded note.
+            Create a spendable note for this wallet.
           </p>
         </div>
         <span className="dapp-badge dapp-badge--success">Deposit</span>
@@ -43,27 +39,22 @@ export default function DepositForm() {
         <div className="dapp-form-row">
           <Input
             label="Amount"
-            type="number"
-            inputMode="decimal"
-            min="0.0000001"
-            step="0.0000001"
-            placeholder="0.10"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            disabled={isProving}
-            helperText="Use an amount that can be settled as a single shielded note."
+            value="1"
+            disabled
+            readOnly
+            helperText="Fixed at 1 XLM."
           />
           <Input label="Asset" value="XLM" disabled readOnly />
         </div>
 
-        <Button type="submit" disabled={isProving || !amount || !address}>
-          {!address ? 'Connect wallet first' : isProving ? 'Generating proof' : 'Shield XLM'}
+        <Button type="submit" disabled={isProving || !address}>
+          {!address ? 'Connect wallet first' : isProving ? 'Generating proof' : aspEligible === false ? 'Prepare & shield 1 XLM' : 'Shield 1 XLM'}
         </Button>
 
         {confirmedHash ? (
           <div className="dapp-transaction-confirmation">
-            <strong>{status?.startsWith('Deposit confirmed') ? 'Deposit confirmed on Mainnet' : 'Latest shield transaction'}</strong>
-            <a href={`https://stellar.expert/explorer/public/tx/${confirmedHash}`} target="_blank" rel="noreferrer">
+            <strong>{status?.startsWith('Deposit confirmed') ? 'Deposit confirmed' : 'Latest shield transaction'}</strong>
+            <a href={`https://stellar.expert/explorer/testnet/tx/${confirmedHash}`} target="_blank" rel="noreferrer">
               <code>{confirmedHash}</code>
               <span>View in Stellar Expert</span>
             </a>

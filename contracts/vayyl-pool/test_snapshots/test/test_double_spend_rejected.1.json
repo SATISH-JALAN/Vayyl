@@ -281,7 +281,36 @@
                   "executable": {
                     "wasm": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
                   },
-                  "storage": null
+                  "storage": [
+                    {
+                      "key": {
+                        "vec": [
+                          {
+                            "symbol": "PublicInputs"
+                          }
+                        ]
+                      },
+                      "val": {
+                        "vec": [
+                          {
+                            "bytes": "1577b47c368ac0a6efbc10f59c30614a8758e91995fa4f3bf01e287c1ad1c3c8"
+                          },
+                          {
+                            "bytes": "4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d"
+                          },
+                          {
+                            "bytes": "000000000000000000000000000000000000000000000000000000000000000a"
+                          },
+                          {
+                            "bytes": "0000000000000000000000000000000000000000000000000000000000000000"
+                          },
+                          {
+                            "bytes": "1196ca62129b8416e02255c0d443a4ec8fa9b3f19bb7a8b14aedc2ed5f3a3c32"
+                          }
+                        ]
+                      }
+                    }
+                  ]
                 }
               }
             }

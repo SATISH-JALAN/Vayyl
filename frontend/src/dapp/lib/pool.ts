@@ -20,6 +20,8 @@ import {
   rpc,
   Networks,
   BASE_FEE,
+  scValToNative,
+  StrKey,
 } from '@stellar/stellar-sdk';
 import { signTransaction } from '@stellar/freighter-api';
 
@@ -27,10 +29,17 @@ import { signTransaction } from '@stellar/freighter-api';
 
 export const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || 'https://soroban-testnet.stellar.org';
 export const NETWORK_PASSPHRASE = process.env.NEXT_PUBLIC_NETWORK_PASSPHRASE || Networks.TESTNET;
-export const INDEXER_URL = process.env.NEXT_PUBLIC_INDEXER_URL || 'http://localhost:3001';
-export const RELAYER_URL = process.env.NEXT_PUBLIC_RELAYER_URL || 'http://localhost:3002';
+export const INDEXER_URL = process.env.NEXT_PUBLIC_INDEXER_URL || 'https://vault-v2-indexer-production.up.railway.app';
+export const RELAYER_URL = process.env.NEXT_PUBLIC_RELAYER_URL || 'https://vault-v2-relayer-production.up.railway.app';
+export const HORIZON_URL = process.env.NEXT_PUBLIC_HORIZON_URL || 'https://horizon-testnet.stellar.org';
+export const V2_POOL_ID = process.env.NEXT_PUBLIC_POOL_XLM || 'CBUNTVFHCNN5CYNA3TLTSWPVYX5ED5V6W6X3Y5EAHUOZYJRUPYNAX33A';
+export const V2_VERIFIER_ID = process.env.NEXT_PUBLIC_VERIFIER || 'CA7VKFZRWSYIZTW34QXQCQJGON5R4PQSJGTUKJQIHLCCUILVGRI55PEP';
+export const V2_ASP_MEMBERSHIP_ID = process.env.NEXT_PUBLIC_ASP_MEMBERSHIP || 'CCGQLQS5JZQWXG72FFPLM3PKPBPBAP636C7YSVTJY5VYA5UXGLR4Q4WZ';
+export const V2_DENOMINATION_STROOPS = 10_000_000n;
+export const V2_DENOMINATION_XLM = 1;
+const VIEW_SOURCE = 'GA7QKKGRKCKTLZ67ZMXI7U6VEG5LPFLNEFPDKAN5Z6WSDHOBJHAXMWEC';
 export const POOL_IDS: Record<string, string | undefined> = {
-  XLM: process.env.NEXT_PUBLIC_POOL_XLM,
+  XLM: V2_POOL_ID,
   USDC: process.env.NEXT_PUBLIC_POOL_USDC,
 };
 
@@ -236,6 +245,15 @@ export async function submitDeposit(a: DepositArgs): Promise<string> {
   return buildSignSubmit(a.depositor, poolIdForAsset(a.asset), 'deposit', args, a.useRelayer);
 }
 
+export async function submitDepositV2(a: Omit<DepositArgs, 'publicAmount' | 'asset'>): Promise<string> {
+  return buildSignSubmit(a.depositor, V2_POOL_ID, 'deposit_v2', [
+    addr(a.depositor),
+    proofScVal(a.proof),
+    bytesN(a.commitment),
+    bytesN(a.aspRoot),
+  ]);
+}
+
 export interface WithdrawArgs {
   source: string; // account that pays fees / submits (connected wallet or relayer)
   proof: SnarkjsProof;
@@ -260,6 +278,87 @@ export async function submitWithdraw(a: WithdrawArgs): Promise<string> {
     addr(a.relayer),
   ];
   return buildSignSubmit(a.source, poolIdForAsset(a.asset), 'withdraw', args, a.useRelayer);
+}
+
+export async function submitWithdrawV2(a: Pick<WithdrawArgs, 'proof' | 'nullifier' | 'recipient' | 'root'>): Promise<string> {
+  const response = await fetch(`${RELAYER_URL}/v2/withdraw`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pool: V2_POOL_ID, ...a }),
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok || !body.success || !body.hash) {
+    throw new Error(body.error || `Relayer request failed (${response.status})`);
+  }
+  return body.hash as string;
+}
+
+async function simulateRead(contractId: string, method: string, args: xdr.ScVal[]) {
+  const source = await server.getAccount(VIEW_SOURCE);
+  const tx = new TransactionBuilder(source, {
+    fee: BASE_FEE,
+    networkPassphrase: NETWORK_PASSPHRASE,
+  })
+    .addOperation(new Contract(contractId).call(method, ...args))
+    .setTimeout(30)
+    .build();
+  const result = await server.simulateTransaction(tx);
+  if (rpc.Api.isSimulationError(result) || !result.result) {
+    throw new Error(rpc.Api.isSimulationError(result) ? result.error : 'Contract read returned no result');
+  }
+  return scValToNative(result.result.retval);
+}
+
+export async function fetchV2AspLeafIndex(leaf: string): Promise<number | null> {
+  try {
+    return Number(await simulateRead(V2_ASP_MEMBERSHIP_ID, 'get_leaf_index', [bytesN(leaf)]));
+  } catch {
+    return null;
+  }
+}
+
+export interface V2EnrollmentResult {
+  leafIndex: number;
+  txHash: string | null;
+  leaves: string[];
+}
+
+export async function fetchV2AspLeaves(): Promise<string[]> {
+  const response = await fetch(`${RELAYER_URL}/v2/asp/leaves`);
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok || !Array.isArray(body.leaves)) {
+    throw new Error(body.error || 'Membership state is unavailable.');
+  }
+  return body.leaves as string[];
+}
+
+export async function enrollV2AspLeaf(leaf: string): Promise<V2EnrollmentResult> {
+  const response = await fetch(`${RELAYER_URL}/v2/enroll`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ leaf }),
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok || !body.success || !Number.isInteger(body.leafIndex) || !Array.isArray(body.leaves)) {
+    throw new Error(body.error || 'Workspace enrollment failed.');
+  }
+  return body as V2EnrollmentResult;
+}
+
+export async function assertV2ServicesReady(recipient: string): Promise<void> {
+  if (!StrKey.isValidEd25519PublicKey(recipient)) {
+    throw new Error('Enter a valid funded Stellar account address beginning with G.');
+  }
+  const [account, relayer] = await Promise.all([
+    fetch(`${HORIZON_URL}/accounts/${recipient}`),
+    fetch(`${RELAYER_URL}/health`).then((response) => response.ok ? response.json() : null),
+  ]);
+  if (!account.ok) {
+    throw new Error('The destination account is not active on this network. Fund it before withdrawing.');
+  }
+  if (!relayer || relayer.status !== 'ok' || Number(relayer.nativeBalance ?? 0) < 1) {
+    throw new Error('The settlement service is unavailable. Try again shortly.');
+  }
 }
 
 // ---- indexer reads ---------------------------------------------------------

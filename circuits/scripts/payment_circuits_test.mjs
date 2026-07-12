@@ -125,8 +125,11 @@ async function expectFail(label, name, input) {
 console.log('=== Payment-circuit soundness (deposit + withdraw) ===\n');
 
 compile('oracle_note', resolve(CIRCUITS, 'test', 'oracle_note.circom'));
+compile('test_note', resolve(CIRCUITS, 'test', 'test_note.circom'));
 compile('deposit', resolve(CIRCUITS, 'deposit.circom'));
 compile('withdraw', resolve(CIRCUITS, 'withdraw.circom'));
+compile('deposit_v2', resolve(CIRCUITS, 'deposit_v2.circom'));
+compile('withdraw_v2', resolve(CIRCUITS, 'withdraw_v2.circom'));
 
 // ---------- DEPOSIT ----------
 {
@@ -152,6 +155,36 @@ compile('withdraw', resolve(CIRCUITS, 'withdraw.circom'));
   // amount that does not fit in 64 bits must fail the Num2Bits range check
   await expectFail('deposit · amount >= 2^64 (range check)', 'deposit',
     { ...base, amount: (1n << 64n).toString() });
+}
+
+// ---------- VAULT V2 FIXED-DENOMINATION DEPOSIT ----------
+{
+  const amount = 10_000_000n;
+  const derived = await namedOutputs('test_note', {
+    privKey: NOTE.privKey.toString(),
+    amount: amount.toString(),
+    blindness: NOTE.blindness.toString(),
+  }, ['pubX', 'pubY', 'commitment', 'nullifier']);
+  const o = await namedOutputs('oracle_note', {
+    ...oracleInput(amount),
+    pubX: derived.pubX.toString(),
+    pubY: derived.pubY.toString(),
+  }, ['asp_root']);
+
+  const base = {
+    commitment: derived.commitment.toString(),
+    asp_root: o.asp_root.toString(),
+    privKey: NOTE.privKey.toString(),
+    blindness: NOTE.blindness.toString(),
+    asp_pathElements: ASP_PATH_ELEMENTS.map(String),
+    asp_pathIndices: ASP_PATH_INDICES.map(String),
+  };
+
+  await expectPass('deposit v2 · valid fixed note', 'deposit_v2', base);
+  await expectFail('deposit v2 · wrong commitment', 'deposit_v2',
+    { ...base, commitment: (derived.commitment + 1n).toString() });
+  await expectFail('deposit v2 · wrong secret key', 'deposit_v2',
+    { ...base, privKey: (NOTE.privKey + 1n).toString() });
 }
 
 // ---------- WITHDRAW ----------
@@ -185,6 +218,39 @@ compile('withdraw', resolve(CIRCUITS, 'withdraw.circom'));
   // amount != public_amount + fee must fail the balance constraint
   await expectFail('withdraw · unbalanced amount', 'withdraw',
     { ...base, fee: (fee + 1n).toString() });
+}
+
+// ---------- VAULT V2 FIXED-DENOMINATION WITHDRAW ----------
+{
+  const amount = 10_000_000n;
+  const derived = await namedOutputs('test_note', {
+    privKey: NOTE.privKey.toString(),
+    amount: amount.toString(),
+    blindness: NOTE.blindness.toString(),
+  }, ['pubX', 'pubY', 'commitment', 'nullifier']);
+  const o = await namedOutputs('oracle_note', {
+    ...oracleInput(amount),
+    pubX: derived.pubX.toString(),
+    pubY: derived.pubY.toString(),
+  }, ['root']);
+
+  const base = {
+    root: o.root.toString(),
+    nullifier: derived.nullifier.toString(),
+    withdraw_binding: '987654321',
+    privKey: NOTE.privKey.toString(),
+    blindness: NOTE.blindness.toString(),
+    pathElements: PATH_ELEMENTS.map(String),
+    pathIndices: PATH_INDICES.map(String),
+  };
+
+  await expectPass('withdraw v2 · valid fixed note', 'withdraw_v2', base);
+  await expectFail('withdraw v2 · wrong nullifier', 'withdraw_v2',
+    { ...base, nullifier: (derived.nullifier + 1n).toString() });
+  await expectFail('withdraw v2 · wrong root', 'withdraw_v2',
+    { ...base, root: (o.root + 1n).toString() });
+  await expectFail('withdraw v2 · wrong secret key', 'withdraw_v2',
+    { ...base, privKey: (NOTE.privKey + 1n).toString() });
 }
 
 console.log(`\n${failures === 0 ? '✅ all cases behaved as expected' : `❌ ${failures} regression(s)`}`);

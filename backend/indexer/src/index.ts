@@ -9,6 +9,7 @@ const DB_URL = process.env.DATABASE_URL || 'postgresql://postgres:postgres@local
 const RPC_URL = process.env.RPC_URL || 'https://soroban-testnet.stellar.org';
 const POOL_ADDRESS = process.env.POOL_ADDRESS;
 const POSITION_MANAGER_ADDRESS = process.env.POSITION_MANAGER_ADDRESS;
+const NETWORK = process.env.STELLAR_NETWORK || 'testnet';
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3001;
 
 async function main() {
@@ -22,7 +23,7 @@ async function main() {
     const db = new Database(DB_URL);
     await db.init();
 
-    const app = createApi(db, POOL_ADDRESS);
+    const app = createApi(db, POOL_ADDRESS, NETWORK);
     app.listen(PORT, () => {
         console.log(`API server listening on port ${PORT}`);
     });

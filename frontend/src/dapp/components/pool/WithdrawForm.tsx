@@ -7,7 +7,6 @@ import { usePoolStore } from '../../store/pool';
 import { useWalletStore } from '../../store/wallet';
 
 export default function WithdrawForm() {
-  const [amount, setAmount] = useState('');
   const [destination, setDestination] = useState('');
   const { withdraw, isProving, shieldedBalance, notes, activity, status } = usePoolStore();
   const { address } = useWalletStore();
@@ -21,11 +20,10 @@ export default function WithdrawForm() {
 
   const handleWithdraw = async (e: FormEvent) => {
     e.preventDefault();
-    if (!amount || !destination) return;
+    if (!destination) return;
 
     try {
-      await withdraw(amount, 'XLM', destination);
-      setAmount('');
+      await withdraw(destination);
       setDestination('');
     } catch (error) {
       console.error(error);
@@ -38,7 +36,7 @@ export default function WithdrawForm() {
         <div>
           <h2 className="dapp-card__title">Unshield XLM</h2>
           <p className="dapp-card__description">
-            Withdraw one exact unspent note to a public Stellar address.
+            Send one note to a funded Stellar account.
           </p>
         </div>
         <span className="dapp-badge dapp-badge--warning">Whole note</span>
@@ -52,27 +50,16 @@ export default function WithdrawForm() {
           onChange={(e) => setDestination(e.target.value)}
           disabled={isProving}
         />
-        <Input
-          label="Amount"
-          type="number"
-          inputMode="decimal"
-          min="0.0000001"
-          step="0.0000001"
-          placeholder="0.10"
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-          disabled={isProving}
-          helperText={`${shieldedBalance} XLM available across ${activeNotes.length} active note${activeNotes.length === 1 ? '' : 's'}.`}
-        />
+        <Input label="Amount" value="1 XLM" disabled readOnly helperText={`${shieldedBalance} XLM available across ${activeNotes.length} active fixed note${activeNotes.length === 1 ? '' : 's'}.`} />
 
-        <Button type="submit" disabled={isProving || !amount || !destination || !address}>
-          {!address ? 'Connect wallet first' : isProving ? 'Generating proof' : 'Unshield XLM'}
+        <Button type="submit" disabled={isProving || !destination || !address || activeNotes.length === 0}>
+          {!address ? 'Connect wallet first' : activeNotes.length === 0 ? 'No spendable note' : isProving ? 'Generating proof' : 'Unshield 1 XLM'}
         </Button>
 
         {confirmedHash ? (
           <div className="dapp-transaction-confirmation">
-            <strong>{status?.startsWith('Withdraw confirmed') ? 'Withdrawal confirmed on Mainnet' : 'Latest withdrawal transaction'}</strong>
-            <a href={`https://stellar.expert/explorer/public/tx/${confirmedHash}`} target="_blank" rel="noreferrer">
+            <strong>{status?.startsWith('Withdraw confirmed') ? 'Withdrawal confirmed' : 'Latest withdrawal transaction'}</strong>
+            <a href={`https://stellar.expert/explorer/testnet/tx/${confirmedHash}`} target="_blank" rel="noreferrer">
               <code>{confirmedHash}</code>
               <span>View in Stellar Expert</span>
             </a>

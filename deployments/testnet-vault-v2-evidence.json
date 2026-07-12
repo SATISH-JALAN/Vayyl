@@ -1,0 +1,86 @@
+{
+  "network": "testnet",
+  "tested_at": "2026-07-11T10:47:21.696Z",
+  "pool": "CBUNTVFHCNN5CYNA3TLTSWPVYX5ED5V6W6X3Y5EAHUOZYJRUPYNAX33A",
+  "verifier": "CA7VKFZRWSYIZTW34QXQCQJGON5R4PQSJGTUKJQIHLCCUILVGRI55PEP",
+  "relayer": "GC2DCWJ4NWLWRWWJ5UMHOWNL6MHIDIEZDL33PP2XZPJA3KK6UJWLD6OI",
+  "recipient": "GCDNB67HTE55KOCOWLCHPW5GHSMXD4OVUYVFP6HIRRVJB2FTREHDLS4R",
+  "denomination_stroops": 10000000,
+  "deposits": [
+    {
+      "wallet": "A",
+      "address": "GCKZT7GGSNOBRTUATE5BS74735GLWQPBQ6YJNNFTHNUBG6Y6NIBXLQGD",
+      "commitment": "20a5ef04d684531ca5fbba9c5f608e580478520259b7ce0b647b31527fe7cf04",
+      "tx_hash": "61b63a1b93114eb929eaf82326980d74bf655f15c1597a52eec6e2b7b30c5812"
+    },
+    {
+      "wallet": "B",
+      "address": "GAO5P3HWMBXRCV5HR7ZH73AW6JMYTIGC6KQWCJ33HSJCST7AXLF2PJEH",
+      "commitment": "1b1c3f5a44537d65ed6db6f9c038f8f4598dfdfe909f76f57497624509b0b0d9",
+      "tx_hash": "32d56cc87e96151ad7ba07cb600ef5a7d290a60f590c0f514d3cb60faabf88c9"
+    },
+    {
+      "wallet": "C",
+      "address": "GD7YU6LP2FV4OYPXK63VNK2UEDVAZWXMLQV4HYGRYAM7ESH4NHZMVXTV",
+      "commitment": "2635341257f7a1a6c7e3c7e018345cf89ed0e499dbe7ba98f7b4e72a6f697f03",
+      "tx_hash": "7e8d5f4cf83bd08c1632efea3635bf9aaf90a658990cbeb76cd2b69bcebbacf1"
+    },
+    {
+      "wallet": "D",
+      "address": "GAXLWWDBYD23TVEZ5IQXPHDAKK75BT6XGUTISXYIIFWBGFOUHD5T3U7L",
+      "commitment": "0c040f289deca0e1c2929d9a9f26cd70a8e3537bb912c68815e18d539f2d7c3e",
+      "tx_hash": "d820eb88c3dbe1283e243e451060e84cbdd848030b48278f850feab6bf602584"
+    },
+    {
+      "wallet": "E",
+      "address": "GBXPBDJQ7ZYP3M4EZO2YSASQR2F4WMKTZW4QLTYUD4SCQNCTWYM43OUP",
+      "commitment": "2e016140c8a14caa0687b77834d6a068ba17b971fbd4750b41a264a576ceeb16",
+      "tx_hash": "65e3852df991dc52611f95693c24f3e3becee35b14defa5ffc58477938575e54"
+    }
+  ],
+  "withdrawal_tx_hash": "62f9452c9868309d509fc421848f0ff61d9f9ed3f42b589a596dac324126c873",
+  "checks": {
+    "five_equal_deposits": true,
+    "relayer_submitted_withdrawal": true,
+    "recipient_received_fixed_denomination": true,
+    "unknown_root_rejected": true,
+    "changed_recipient_rejected": true,
+    "altered_nullifier_rejected": true,
+    "double_spend_rejected": true,
+    "blocked_nullifier_rejected": true,
+    "unfunded_relayer_rejected": true
+  },
+  "frontend_run2": {
+    "tested_at": "2026-07-11T17:18:00Z",
+    "wallet": "GBMH5RK4SK4LWMU3I4WFIEMTJXRK6GI44W3U5NCFOTWMQX32OCNQWCEF",
+    "asp_leaf": "4239942066243959329816542514082134633918529370479969264234435216308986323128",
+    "asp_leaf_index": 5,
+    "asp_enrollment_tx_hash": "c0f181a59f10d01e50a64670646a3227b15a1197f7f240e19cce4dc3d84dbda3",
+    "deposit_tx_hash": "87a0fb6b72cd3ee5709d05aa879717c295e26846e1b0f601f77908271b2f0fbf",
+    "withdrawal_tx_hash": "c649b545db2809e76dfb0648c1f29dae6d47c70be5ebf7f638bd2d1aa4be1abc",
+    "recipient": "GCDNB67HTE55KOCOWLCHPW5GHSMXD4OVUYVFP6HIRRVJB2FTREHDLS4R",
+    "relayer": "GC2DCWJ4NWLWRWWJ5UMHOWNL6MHIDIEZDL33PP2XZPJA3KK6UJWLD6OI",
+    "checks": {
+      "asp_root_matches_frontend_tree": true,
+      "browser_deposit_confirmed": true,
+      "deposit_indexed": true,
+      "encrypted_backup_clear_import_withdraw_succeeded": true,
+      "browser_withdrawal_confirmed": true,
+      "relayer_is_transaction_source": true,
+      "withdrawal_nullifier_indexed": true
+    }
+  },
+  "public_enrollment": {
+    "deployed_at": "2026-07-11T20:09:28Z",
+    "railway_deployment_id": "a60d213a-12d2-4de1-bc4a-6ae1918ea314",
+    "endpoint": "https://vault-v2-relayer-production.up.railway.app/v2/enroll",
+    "membership_leaves_after_smoke_tests": 8,
+    "checks": {
+      "service_health_reports_enrollment_ready": true,
+      "fresh_leaves_inserted_on_chain": true,
+      "leaves_persisted_in_postgres": true,
+      "frontend_reconstructed_root_matches_contract_root": true,
+      "rate_limit_and_global_enrollment_cap_enabled": true
+    }
+  }
+}

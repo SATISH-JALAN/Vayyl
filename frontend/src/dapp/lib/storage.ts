@@ -6,13 +6,15 @@
 // its leaf index for Merkle-path reconstruction. Persisted per viewing key in
 // IndexedDB. Field-element values are stored as decimal strings (bigint-safe).
 
-import { get, set, del } from 'idb-keyval';
+import { get, set } from 'idb-keyval';
 
 export interface ShieldedNote {
   id: string; // = commitment (decimal string), unique per note
   amount: number;
   amountStroops?: string; // exact contract amount; optional only for legacy local notes
   asset: string;
+  protocol?: 'v1' | 'v2';
+  pool?: string;
   // secrets needed to spend
   commitment: string; // decimal field element
   nullifier: string; // decimal field element (precomputed for convenience)
@@ -39,6 +41,8 @@ export interface ActivityEvent {
   type: ActivityType;
   amount: number;
   asset: string;
+  protocol?: 'v1' | 'v2';
+  pool?: string;
   txHash?: string;
   timestamp: number; // ms epoch
 }
@@ -94,7 +98,73 @@ export const setNoteLeafIndex = async (viewingKey: string, id: string, leafIndex
   }
 };
 
-export const clearNotes = async (viewingKey: string) => {
-  await del(key(viewingKey));
-  await del(activityKey(viewingKey));
+export const clearV2Notes = async (viewingKey: string) => {
+  await set(key(viewingKey), (await getNotes(viewingKey)).filter((note) => note.protocol !== 'v2'));
+  await set(activityKey(viewingKey), (await getActivity(viewingKey)).filter((event) => event.protocol !== 'v2'));
 };
+
+const backupKey = async (viewingKey: string) => {
+  const raw = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(`vayyl-v2-backup:${viewingKey}`),
+  );
+  return crypto.subtle.importKey('raw', raw, 'AES-GCM', false, ['encrypt', 'decrypt']);
+};
+
+const toBase64 = (bytes: Uint8Array) => {
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+};
+
+const fromBase64 = (value: string) => Uint8Array.from(atob(value), (char) => char.charCodeAt(0));
+
+export async function exportV2Backup(viewingKey: string): Promise<string> {
+  const payload = JSON.stringify({
+    notes: (await getNotes(viewingKey)).filter((note) => note.protocol === 'v2'),
+    activity: (await getActivity(viewingKey)).filter((event) => event.protocol === 'v2'),
+  });
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ciphertext = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv },
+    await backupKey(viewingKey),
+    new TextEncoder().encode(payload),
+  );
+  return JSON.stringify({ version: 2, iv: toBase64(iv), ciphertext: toBase64(new Uint8Array(ciphertext)) });
+}
+
+export async function importV2Backup(viewingKey: string, backup: string): Promise<number> {
+  const envelope = JSON.parse(backup) as { version?: number; iv?: string; ciphertext?: string };
+  if (envelope.version !== 2 || !envelope.iv || !envelope.ciphertext) {
+    throw new Error('This is not a Vayyl note backup.');
+  }
+  const decrypted = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv: fromBase64(envelope.iv) },
+    await backupKey(viewingKey),
+    fromBase64(envelope.ciphertext),
+  );
+  const payload = JSON.parse(new TextDecoder().decode(decrypted)) as {
+    notes?: ShieldedNote[];
+    activity?: ActivityEvent[];
+  };
+  if (!Array.isArray(payload.notes) || !payload.notes.every((note) =>
+    note?.protocol === 'v2' && note.asset === 'XLM' && note.amount === 1 &&
+    typeof note.id === 'string' && /^\d+$/.test(note.commitment) && /^\d+$/.test(note.nullifier) &&
+    /^\d+$/.test(note.blindness) && typeof note.pool === 'string' && Number.isInteger(note.leafIndex)
+  )) {
+    throw new Error('The backup contains invalid note data.');
+  }
+
+  const existingNotes = await getNotes(viewingKey);
+  const mergedNotes = new Map(existingNotes.map((note) => [note.id, note]));
+  for (const note of payload.notes) mergedNotes.set(note.id, note);
+  await saveNotes(viewingKey, [...mergedNotes.values()]);
+
+  const existingActivity = await getActivity(viewingKey);
+  const mergedActivity = new Map(existingActivity.map((event) => [event.id, event]));
+  for (const event of payload.activity ?? []) {
+    if (event?.protocol === 'v2' && typeof event.id === 'string') mergedActivity.set(event.id, event);
+  }
+  await set(activityKey(viewingKey), [...mergedActivity.values()]);
+  return payload.notes.length;
+}

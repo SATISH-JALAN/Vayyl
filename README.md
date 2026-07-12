@@ -9,7 +9,7 @@ Vayyl is a privacy-focused settlement application for Stellar Soroban. It uses s
 
 | Product area | User goal | Current release state |
 | --- | --- | --- |
-| **Shielded Vault** | Shield XLM into a private note and withdraw that exact note to a public Stellar address. | **Live on Mainnet** |
+| **Shielded Vault** | Shield XLM into a private note and withdraw that exact note to a public Stellar address. | Mainnet V1 deployed; fixed-note V2 active on Testnet |
 | **Private Positions** | Open, attest, and close positions without broadcasting collateral, size, or direction. | Contract/circuit implementation track; not deployed |
 | **Conditional Settlement** | Commit hidden orders and execute them once a proved condition is met. | Contract/circuit implementation track; not deployed |
 | **Liquidation protection** | Require health attestations and settle a position when a valid liquidation condition is proved. | Requires security redesign before deployment |
@@ -34,11 +34,26 @@ Soroban contracts
 
 Supporting services
   ├─ indexer: public events, commitments, nullifiers → Postgres
-  ├─ relayer: optional fee-bump submission path
+  ├─ relayer: submits Vault V2 withdrawals from a separate Testnet account
   ├─ keeper: future liquidation / order automation
   ├─ oracle adapter: future price inputs
   └─ proof bridge: proof-format interoperability tooling
 ```
+
+## Testnet Vault V2
+
+The current `/app` interface targets the isolated Vault V2 Testnet deployment. V2 uses one fixed 1 XLM denomination, binds the recipient into the withdrawal proof, and submits withdrawals through a separate relayer account. The proof hides which eligible commitment authorizes a withdrawal; the pool interaction, fixed amount, recipient, relayer, and timing remain public on Stellar's ledger.
+
+| Component | Contract / endpoint |
+| --- | --- |
+| Fixed-note XLM pool | [`CBUNTVFHCNN5CYNA3TLTSWPVYX5ED5V6W6X3Y5EAHUOZYJRUPYNAX33A`](https://stellar.expert/explorer/testnet/contract/CBUNTVFHCNN5CYNA3TLTSWPVYX5ED5V6W6X3Y5EAHUOZYJRUPYNAX33A) |
+| Groth16 verifier | [`CA7VKFZRWSYIZTW34QXQCQJGON5R4PQSJGTUKJQIHLCCUILVGRI55PEP`](https://stellar.expert/explorer/testnet/contract/CA7VKFZRWSYIZTW34QXQCQJGON5R4PQSJGTUKJQIHLCCUILVGRI55PEP) |
+| ASP membership | `CCGQLQS5JZQWXG72FFPLM3PKPBPBAP636C7YSVTJY5VYA5UXGLR4Q4WZ` |
+| ASP non-membership | `CD3HTYBLAQVGQQSTONHPS5PQ4G4Y7T7ZRHH7FJ776W46MS7HYP6YAANY` |
+| Indexer | [`vault-v2-indexer-production.up.railway.app`](https://vault-v2-indexer-production.up.railway.app/health) |
+| Relayer | [`vault-v2-relayer-production.up.railway.app`](https://vault-v2-relayer-production.up.railway.app/health) |
+
+The browser keeps proof generation in a Web Worker and supports encrypted, wallet-bound note backup/import. Testnet proving keys were produced with a single-machine setup and are not a production trusted ceremony.
 
 ## Mainnet deployment
 
@@ -87,12 +102,12 @@ Before deployment, the future suite needs trusted-setup provenance, complete ora
 
 ## Run locally
 
-Requirements: Node.js 20+, pnpm 9+, and Freighter configured for Stellar Mainnet.
+Requirements: Node.js 20+, pnpm 9+, and Freighter configured for Stellar Testnet.
 
 ```powershell
 cd frontend
 pnpm install
-Copy-Item .env.mainnet.example .env.local
+Copy-Item .env.testnet .env.local
 pnpm dev
 ```
 
@@ -116,7 +131,7 @@ pnpm test
 1. Import this repository in Vercel.
 2. Set **Root Directory** to `frontend`.
 3. Use `pnpm install` and `pnpm build`.
-4. Copy public variables from [`frontend/.env.mainnet.example`](frontend/.env.mainnet.example) into Vercel's Production environment.
+4. Copy public variables from [`frontend/.env.testnet`](frontend/.env.testnet) into Vercel's Production environment. Remove any older Mainnet overrides first.
 5. Deploy from `main`.
 
 
@@ -143,3 +158,4 @@ Set the generated Railway domain as `NEXT_PUBLIC_INDEXER_URL` in Vercel.
 ## Security and release boundary
 
 - Vayyl is a Mainnet application under active development. Vault v1 is unaudited and must not be used as third-party custody infrastructure.
+- Vault V2 is a separate Testnet validation deployment; its single-machine proving setup is not production-ready.

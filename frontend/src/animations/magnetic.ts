@@ -93,7 +93,7 @@ export function initCtaAnimations(): void {
     },
   });
 
-  gsap.from('.form-group', {
+  gsap.from('.cta .hero__actions', {
     autoAlpha: 0,
     y: 20,
     duration: 0.6,

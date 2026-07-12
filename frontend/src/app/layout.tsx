@@ -41,13 +41,13 @@ export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   title: 'Vayyl - Confidential Settlement on Stellar',
   description:
-    'Vayyl is a confidential settlement layer on Stellar Soroban. Zero-knowledge proofs shield every amount, identity, and strategy.',
+    'Create private XLM notes and settle them with zero-knowledge proofs verified on Stellar Soroban.',
   icons: {
     icon: '/images/vayyl.logofevicon.png',
   },
   openGraph: {
     title: 'Vayyl - Confidential Settlement on Stellar',
-    description: 'Move value without exposing it. Groth16 proofs, Poseidon2 hashing, verified natively on Soroban.',
+    description: 'Private XLM notes with client-side proving and Soroban verification.',
     type: 'website',
     images: ['/images/hero-bg.webp'],
   },
