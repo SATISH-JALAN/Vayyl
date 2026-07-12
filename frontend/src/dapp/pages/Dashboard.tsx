@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 
 import Card from '../components/common/Card';
+import Button from '../components/common/Button';
 import ActivityFeed from '../components/dashboard/ActivityFeed';
 import { usePoolStore } from '../store/pool';
 import { useWalletStore } from '../store/wallet';
@@ -11,7 +12,7 @@ function noteLabel(id: string): string {
 
 export default function Dashboard() {
   const { shieldedBalance, notes, activity, status, fetchState } = usePoolStore();
-  const { address, keys, isUnlocking } = useWalletStore();
+  const { address, keys, isConnecting, isUnlocking, connect, unlockShieldedKeys } = useWalletStore();
   const activeNotes = notes.filter((note) => !note.isSpent);
 
   useEffect(() => {
@@ -33,11 +34,22 @@ export default function Dashboard() {
       </header>
 
       {!address ? (
-        <Card className="dapp-card--strong">
-          <div className="dapp-empty">
-            <strong>Wallet required</strong>
-            <p>Connect your wallet to open the vault.</p>
+        <Card className="dapp-card--strong dapp-arrival">
+          <div className="dapp-arrival__copy">
+            <span className="dapp-arrival__step">Start here</span>
+            <h2>Connect your Stellar wallet</h2>
+            <p>Your wallet signs transactions and derives the private workspace locally. Vayyl never receives its recovery phrase.</p>
           </div>
+          <Button onClick={connect} disabled={isConnecting}>{isConnecting ? 'Connecting' : 'Connect wallet'}</Button>
+        </Card>
+      ) : !keys ? (
+        <Card className="dapp-card--strong dapp-arrival">
+          <div className="dapp-arrival__copy">
+            <span className="dapp-arrival__step">Wallet connected</span>
+            <h2>Unlock your private workspace</h2>
+            <p>Sign one authentication message to recover the viewing key for this session. This does not move funds.</p>
+          </div>
+          <Button onClick={() => void unlockShieldedKeys().catch(() => undefined)} disabled={isUnlocking}>{isUnlocking ? 'Unlocking' : 'Unlock workspace'}</Button>
         </Card>
       ) : (
         <>

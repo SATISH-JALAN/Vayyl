@@ -130,6 +130,10 @@
   background: var(--coral-strong);
 }
 
+.dapp-button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
 .dapp-button--ghost {
   background: transparent;
   border-color: var(--border-strong);
@@ -387,6 +391,46 @@
 .dapp-empty p {
   margin: var(--space-2) 0 0;
   color: var(--text-muted);
+}
+
+.dapp-arrival {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-8);
+  min-height: 220px;
+  padding: var(--space-8);
+}
+
+.dapp-arrival__copy {
+  display: grid;
+  gap: var(--space-3);
+  max-width: 620px;
+}
+
+.dapp-arrival__copy h2,
+.dapp-arrival__copy p {
+  margin: 0;
+}
+
+.dapp-arrival__copy h2 {
+  color: var(--text-primary);
+  font-size: clamp(1.5rem, 3vw, 2.25rem);
+  letter-spacing: -0.025em;
+  line-height: var(--leading-tight);
+  text-wrap: balance;
+}
+
+.dapp-arrival__copy p {
+  color: var(--text-secondary);
+  line-height: var(--leading-body);
+  text-wrap: pretty;
+}
+
+.dapp-arrival__step {
+  color: var(--coral);
+  font-size: var(--text-caption);
+  font-weight: 750;
 }
 
 .dapp-segment {
@@ -706,6 +750,13 @@
 
   .dapp-setting-actions,
   .dapp-setting-actions .dapp-button { width: 100%; }
+
+  .dapp-arrival {
+    align-items: stretch;
+    flex-direction: column;
+    min-height: 0;
+    padding: var(--space-5);
+  }
 }
 
 @media (max-width: 520px) {

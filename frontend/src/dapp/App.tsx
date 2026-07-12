@@ -76,12 +76,14 @@ export default function App({ initialRoute = 'dashboard' }: { initialRoute?: Rou
     }
   };
 
+  const currentPage = navItems.find((item) => item.route === route)?.label ?? 'Dashboard';
+
   return (
     <div className="dapp-shell">
       <aside className="dapp-sidebar" aria-label="Vayyl app navigation">
         <div className="dapp-sidebar__header">
           <a href="/" className="dapp-sidebar__logo" aria-label="Back to Vayyl landing page">
-            Vayyl
+            <img src="/images/vayyllogomain - Copy.png" alt="Vayyl" />
           </a>
         </div>
 
@@ -96,6 +98,7 @@ export default function App({ initialRoute = 'dashboard' }: { initialRoute?: Rou
                 setRoute(item.route);
               }}
               className={`dapp-sidebar__link ${route === item.route ? 'is-active' : ''}`}
+              aria-current={route === item.route ? 'page' : undefined}
             >
               <span>{item.label}</span>
               {item.status && <small>{item.status}</small>}
@@ -103,15 +106,24 @@ export default function App({ initialRoute = 'dashboard' }: { initialRoute?: Rou
           ))}
         </nav>
 
+        <div className="dapp-sidebar__footer">
+          <a href="https://vayyl.gitbook.io/vayyl-doc" target="_blank" rel="noreferrer">Docs</a>
+          <a href="https://x.com/Vayylstellar" target="_blank" rel="noreferrer">X</a>
+        </div>
+
       </aside>
 
       <main className="dapp-main">
         <header className="dapp-topbar">
+          <div className="dapp-topbar__context">
+            <span>Private workspace</span>
+            <strong>{currentPage}</strong>
+          </div>
           <div className="dapp-wallet">
             {address ? (
               <>
                 <div className="dapp-wallet__identity">
-                  <span className="dapp-label-text">Wallet</span>
+                  <span className="dapp-label-text"><i aria-hidden="true" /> Connected</span>
                   <strong>{shortAddress(address)}</strong>
                 </div>
                 {!keys && (

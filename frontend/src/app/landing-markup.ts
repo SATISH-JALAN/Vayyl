@@ -281,7 +281,7 @@ export const landingMarkup = String.raw`
       <p class="cta__subtitle">Connect a Stellar wallet and create your first private note.</p>
       <div class="hero__actions">
         <a href="/app?view=pool" class="btn btn--primary"><span>Launch App</span><span class="btn__arrow">-&gt;</span></a>
-        <a href="https://github.com/akm2006/Vayyl-docs" class="btn btn--ghost" target="_blank" rel="noreferrer"><span>Read Docs</span><span class="btn__arrow">-&gt;</span></a>
+        <a href="https://vayyl.gitbook.io/vayyl-doc" class="btn btn--ghost" target="_blank" rel="noreferrer"><span>Read Docs</span><span class="btn__arrow">-&gt;</span></a>
       </div>
     </div>
   </section>
@@ -294,25 +294,20 @@ export const landingMarkup = String.raw`
           <p class="footer__tagline">Confidential settlement infrastructure for the programmable economy.</p>
         </div>
         <div>
-          <h4 class="footer__col-title">Protocol</h4>
-          <a href="#about" class="footer__link">Overview</a>
-          <a href="#how-it-works" class="footer__link">How it works</a>
-          <a href="#features" class="footer__link">Features</a>
-          <a href="#architecture" class="footer__link">Architecture</a>
+          <h4 class="footer__col-title">Product</h4>
+          <a href="/app" class="footer__link">Open App</a>
+          <a href="https://vayyl.gitbook.io/vayyl-doc" class="footer__link" target="_blank" rel="noreferrer">Documentation</a>
         </div>
         <div>
-          <h4 class="footer__col-title">Developers</h4>
-          <a href="https://github.com/akm2006/Vayyl-docs" class="footer__link" target="_blank" rel="noreferrer">Documentation</a>
+          <h4 class="footer__col-title">Build</h4>
           <a href="https://github.com/akm2006/Vayyl" class="footer__link" target="_blank" rel="noreferrer">Source</a>
           <a href="https://github.com/akm2006/Vayyl/tree/main/circuits" class="footer__link" target="_blank" rel="noreferrer">Circuits</a>
           <a href="https://github.com/akm2006/Vayyl/tree/main/deployments" class="footer__link" target="_blank" rel="noreferrer">Deployments</a>
         </div>
         <div>
-          <h4 class="footer__col-title">Community</h4>
-          <a href="/app" class="footer__link">Open App</a>
+          <h4 class="footer__col-title">Follow</h4>
+          <a href="https://x.com/Vayylstellar" class="footer__link" target="_blank" rel="noreferrer">X / Twitter</a>
           <a href="https://github.com/akm2006/Vayyl" class="footer__link" target="_blank" rel="noreferrer">GitHub</a>
-          <a href="https://stellar.expert/explorer/testnet/contract/CBUNTVFHCNN5CYNA3TLTSWPVYX5ED5V6W6X3Y5EAHUOZYJRUPYNAX33A" class="footer__link" target="_blank" rel="noreferrer">Pool Contract</a>
-          <a href="https://github.com/akm2006/Vayyl-docs" class="footer__link" target="_blank" rel="noreferrer">Protocol Vision</a>
         </div>
       </div>
       <div class="footer__bottom">
@@ -321,6 +316,7 @@ export const landingMarkup = String.raw`
           <a href="https://github.com/akm2006/Vayyl" class="footer__social" aria-label="GitHub" target="_blank" rel="noreferrer">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.17 6.839 9.49.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.604-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.464-1.11-1.464-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0112 6.836c.85.004 1.705.115 2.504.337 1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.167 22 16.418 22 12c0-5.523-4.477-10-10-10z"></path></svg>
           </a>
+          <a href="https://x.com/Vayylstellar" class="footer__social" aria-label="Vayyl on X" target="_blank" rel="noreferrer">X</a>
         </div>
       </div>
     </div>

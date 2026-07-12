@@ -18,6 +18,8 @@ export default function Settings() {
       return;
     }
 
+    if (!window.confirm('Clear local notes from this browser? Export a backup first if you may need them again.')) return;
+
     await clearV2Notes(keys.viewingKey);
     await fetchState();
     setMessage('Local notes and activity were cleared.');
@@ -74,14 +76,14 @@ export default function Settings() {
                 </p>
               </div>
               <div className="dapp-setting-actions">
-                <Button variant="ghost" type="button" onClick={handleExport}>Export backup</Button>
-                <Button variant="ghost" type="button" onClick={() => importInput.current?.click()}>Import backup</Button>
+                <Button variant="ghost" type="button" onClick={handleExport} disabled={!keys}>Export backup</Button>
+                <Button variant="ghost" type="button" onClick={() => importInput.current?.click()} disabled={!keys}>Import backup</Button>
                 <input ref={importInput} className="dapp-file-input" type="file" accept="application/json,.json" onChange={handleImport} />
-                <Button variant="ghost" type="button" onClick={handleClearLocalNotes}>Clear local notes</Button>
+                <Button variant="ghost" type="button" onClick={handleClearLocalNotes} disabled={!keys}>Clear local notes</Button>
               </div>
             </div>
           </div>
-          {message && <p className="dapp-status">{message}</p>}
+          {message && <p className="dapp-status" role="status">{message}</p>}
         </Card>
       </div>
     </div>
