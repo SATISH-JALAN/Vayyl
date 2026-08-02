@@ -18,12 +18,21 @@ function sleepSync(ms) {
 
 // A fresh `stellar contract deploy` mints a NEW verifier id, so a hardcoded
 // constant is a footgun — it silently registers VKs against a stale contract.
-// Resolve in priority order: explicit env → deployments file written by
-// deploy_testnet.ps1 → baked-in fallback (last resort only).
+// Resolve in priority order: explicit env → V2 vault deployment → older
+// single-stack deployment. There is deliberately NO baked-in fallback: guessing
+// an id registers VKs somewhere unknown, which is strictly worse than stopping.
+//
+// `<network>-vault-v2.json` MUST come first. It describes the live V2 vault; the
+// plain `<network>.json` describes the older stack and carries a DIFFERENT
+// verifier. Registering V1 keys over the Deposit/Withdraw slots the V2 pool reads
+// makes every deposit fail proof verification with no obvious cause.
 function resolveVerifierId() {
     if (process.env.VERIFIER_ID) return process.env.VERIFIER_ID.trim();
-    const deployFile = path.join(__dirname, "..", "deployments", `${NETWORK}.json`);
-    if (fs.existsSync(deployFile)) {
+    const tried = [];
+    for (const name of [`${NETWORK}-vault-v2.json`, `${NETWORK}.json`]) {
+        const deployFile = path.join(__dirname, "..", "deployments", name);
+        tried.push(deployFile);
+        if (!fs.existsSync(deployFile)) continue;
         try {
             const d = JSON.parse(fs.readFileSync(deployFile, "utf8"));
             if (d.verifier) return d.verifier;
@@ -31,10 +40,10 @@ function resolveVerifierId() {
             console.warn(`Could not parse ${deployFile}: ${e.message}`);
         }
     }
-    if (NETWORK === 'testnet') {
-        return "CAITE7BPXCMYW2I5GKJIV5PKYFNYUBZOJX2PS467EPXSTJO45YFQZIBQ"; // legacy testnet fallback
-    }
-    throw new Error(`Verifier id not found for ${NETWORK}; set VERIFIER_ID explicitly.`);
+    throw new Error(
+        `Verifier id not found for ${NETWORK}. Looked in:\n  ${tried.join("\n  ")}\n` +
+        `Set VERIFIER_ID explicitly, or deploy first.`,
+    );
 }
 const VERIFIER_ID = resolveVerifierId();
 
@@ -66,10 +75,19 @@ function assertGammaNeDelta(vkeyObj, name) {
     }
 }
 
+// `dir` defaults to the V1 build output. Deposit and Withdraw deliberately point
+// at the V2 build: the V2 pool verifies against the CircuitId::Deposit and
+// CircuitId::Withdraw slots but its proofs come from deposit_v2/withdraw_v2, so
+// writing the V1 keys into those slots makes every deposit fail verification with
+// no on-chain error to explain it. This must stay in sync with the registration
+// that scripts/deploy_testnet_vault_v2.ps1 performs.
+const V1_VKEY_DIR = "circuits/build/vkey";
+const V2_VKEY_DIR = "circuits/build/v2/vkey";
+
 const CIRCUITS = {
-    "Deposit": { id: 0, file: "deposit" },
+    "Deposit": { id: 0, file: "deposit_v2", dir: V2_VKEY_DIR },
     "Transfer": { id: 1, file: "transfer" },
-    "Withdraw": { id: 2, file: "withdraw" },
+    "Withdraw": { id: 2, file: "withdraw_v2", dir: V2_VKEY_DIR },
     "PositionOpen": { id: 3, file: "position_open" },
     "PositionHealth": { id: 4, file: "position_health" },
     "PositionClose": { id: 5, file: "position_close" },
@@ -108,7 +126,12 @@ for (const [name, config] of Object.entries(CIRCUITS)) {
         console.log(`Skipping ${name}: outside V1 scope (set REGISTER_ALL=1 to include).`);
         continue;
     }
-    const vkeyPath = `circuits/build/vkey/${config.file}_stellar_vkey.json`;
+    // Resolve from the script's own location, not the caller's cwd — a relative
+    // path silently "finds no vkeys" and skips every circuit when run from
+    // anywhere but the repo root.
+    const vkeyPath = path.join(
+        __dirname, "..", config.dir || V1_VKEY_DIR, `${config.file}_stellar_vkey.json`,
+    );
     if (!fs.existsSync(vkeyPath)) {
         console.warn(`Skipping ${name}: vkey not found at ${vkeyPath}`);
         continue;

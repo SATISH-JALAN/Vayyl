@@ -22,7 +22,13 @@ import { dirname, resolve } from 'node:path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CIRCUITS = resolve(__dirname, '..');
-const PARAMS_RS = resolve(CIRCUITS, 'reference/rs-soroban-poseidon/params.rs');
+// Read the VENDORED CRATE the contracts actually compile against, not a copy of
+// it. `circuits/reference/` used to hold a snapshot, was never tracked in git,
+// and is absent on a fresh clone — but the deeper problem is that a copy can
+// drift from the real params while this check keeps reporting a match. That is
+// exactly the silent Poseidon2 mismatch that produces proofs which verify
+// locally and never verify on-chain.
+const PARAMS_RS = resolve(CIRCUITS, '..', 'rs-soroban-poseidon/src/poseidon2/params.rs');
 
 // ---- helpers ---------------------------------------------------------------
 
