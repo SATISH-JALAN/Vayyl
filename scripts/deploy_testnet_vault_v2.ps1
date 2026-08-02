@@ -8,9 +8,46 @@ $deploymentPath = Join-Path $PSScriptRoot "..\deployments\testnet-vault-v2.json"
 
 function Invoke-Stellar {
     param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Arguments)
-    $output = & stellar @Arguments 2>&1
-    if ($LASTEXITCODE -ne 0) { throw ($output | Out-String) }
-    return ($output | Out-String).Trim()
+    # The stellar CLI writes ordinary progress ("Uploading contract WASM...") to
+    # stderr. Windows PowerShell 5.1 wraps every stderr line from a native exe in
+    # an ErrorRecord, which the script-level $ErrorActionPreference='Stop' then
+    # escalates to a terminating error on a perfectly successful deploy. Exit code
+    # is the only trustworthy signal, so relax the preference across the call and
+    # send stderr to a file; that also keeps stdout clean for the callers that
+    # parse it (contract ids, get_public_input_count, get_denomination).
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    $errFile = [IO.Path]::GetTempFileName()
+    try {
+        $output = & stellar @Arguments 2>$errFile
+        if ($LASTEXITCODE -ne 0) {
+            throw ((Get-Content -Raw -LiteralPath $errFile) + ($output | Out-String))
+        }
+        return ($output | Out-String).Trim()
+    }
+    finally {
+        $ErrorActionPreference = $prev
+        Remove-Item -LiteralPath $errFile -Force -ErrorAction SilentlyContinue
+    }
+}
+
+function Get-CliVkArgument {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$Label
+    )
+    $obj = [IO.File]::ReadAllText($Path) | ConvertFrom-Json
+    # Never register a VK where gamma == delta: it lets a forged proof verify
+    # (the Veil Cash / FoomCash bug). The contract rejects it too, but failing
+    # here means we never spend a transaction discovering that.
+    if ($obj.gamma_g2 -eq $obj.delta_g2) {
+        throw "$Label verification key has gamma == delta; refusing to register. Re-run the phase-2 setup."
+    }
+    # The CLI parses --vk as JSON. Compact it (embedded newlines break argument
+    # passing) and escape the quotes, which Windows PowerShell 5.1 would
+    # otherwise strip on the way to a native exe. Same treatment as
+    # scripts/register_vks.js.
+    return ($obj | ConvertTo-Json -Depth 10 -Compress) -replace '"', '\"'
 }
 
 function Deploy-Contract {
@@ -43,6 +80,13 @@ $pool = if ($env:V2_POOL_ID) { $env:V2_POOL_ID } else {
     Deploy-Contract (Join-Path $contractsRoot "target\wasm32v1-none\release\vayyl_pool.wasm")
 }
 
+# `set_vk`/`get_public_input_count` take a CircuitId enum, which the CLI parses as
+# JSON. Windows PowerShell 5.1 strips the inner double quotes when passing a string
+# to a native exe, so a literal '{"Deposit":[]}' arrives as {Deposit:[]} and is
+# rejected with "Unknown case". Escape them, as scripts/register_vks.js does.
+$circuitDeposit = '{\"Deposit\":[]}'
+$circuitWithdraw = '{\"Withdraw\":[]}'
+
 if ($env:V2_SKIP_INIT -ne "1") {
     Invoke-Stellar contract invoke --id $verifier --network $network --source $source '--' initialize --admin $admin | Out-Null
     Invoke-Stellar contract invoke --id $membership --network $network --source $source '--' initialize --admin $admin | Out-Null
@@ -51,18 +95,18 @@ if ($env:V2_SKIP_INIT -ne "1") {
         --admin $admin --asset $asset --verifier $verifier --membership $membership `
         --non_membership $nonMembership | Out-Null
 
-    $depositVk = Get-Content -Raw (Join-Path $artifactsRoot "vkey\deposit_v2_stellar_vkey.json")
-    $withdrawVk = Get-Content -Raw (Join-Path $artifactsRoot "vkey\withdraw_v2_stellar_vkey.json")
+    $depositVk = Get-CliVkArgument (Join-Path $artifactsRoot "vkey\deposit_v2_stellar_vkey.json") "deposit_v2"
+    $withdrawVk = Get-CliVkArgument (Join-Path $artifactsRoot "vkey\withdraw_v2_stellar_vkey.json") "withdraw_v2"
     Invoke-Stellar contract invoke --id $verifier --network $network --source $source '--' set_vk `
-        --circuit_id '{"Deposit":[]}' --vk $depositVk | Out-Null
+        --circuit_id $circuitDeposit --vk $depositVk | Out-Null
     Invoke-Stellar contract invoke --id $verifier --network $network --source $source '--' set_vk `
-        --circuit_id '{"Withdraw":[]}' --vk $withdrawVk | Out-Null
+        --circuit_id $circuitWithdraw --vk $withdrawVk | Out-Null
 }
 
 $depositInputs = Invoke-Stellar contract invoke --id $verifier --network $network --source $source `
-    --send no '--' get_public_input_count --circuit_id '{"Deposit":[]}'
+    --send no '--' get_public_input_count --circuit_id $circuitDeposit
 $withdrawInputs = Invoke-Stellar contract invoke --id $verifier --network $network --source $source `
-    --send no '--' get_public_input_count --circuit_id '{"Withdraw":[]}'
+    --send no '--' get_public_input_count --circuit_id $circuitWithdraw
 $denomination = Invoke-Stellar contract invoke --id $pool --network $network --source $source `
     --send no '--' get_denomination
 

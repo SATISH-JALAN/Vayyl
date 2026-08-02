@@ -13,6 +13,17 @@ function Invoke-Checked {
     }
 }
 
+# 32 bytes of CSPRNG entropy as lowercase hex.
+# Written against the Windows PowerShell 5.1 surface on purpose: the static
+# RandomNumberGenerator::GetBytes(int) and Convert::ToHexString are .NET 5+ only
+# and throw MethodNotFound on the 5.1 host this repo targets.
+function New-Entropy {
+    $bytes = New-Object byte[] 32
+    $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+    try { $rng.GetBytes($bytes) } finally { $rng.Dispose() }
+    return (($bytes | ForEach-Object { $_.ToString('x2') }) -join '')
+}
+
 Push-Location $circuitsRoot
 try {
     New-Item -ItemType Directory -Force -Path $buildRoot | Out-Null
@@ -24,9 +35,7 @@ try {
     if (-not (Test-Path $ptauFinal)) {
         $ptau0 = Join-Path $ptauRoot "pot16_0000.ptau"
         $ptau1 = Join-Path $ptauRoot "pot16_0001.ptau"
-        $entropy = [Convert]::ToHexString(
-            [Security.Cryptography.RandomNumberGenerator]::GetBytes(32)
-        )
+        $entropy = New-Entropy
         Invoke-Checked { pnpm exec snarkjs powersoftau new bn128 16 $ptau0 }
         Invoke-Checked {
             pnpm exec snarkjs powersoftau contribute $ptau0 $ptau1 `
@@ -50,9 +59,7 @@ try {
 
         $zkey0 = Join-Path $buildRoot "zkey\${circuit}_0000.zkey"
         $zkeyFinal = Join-Path $buildRoot "zkey\${circuit}_final.zkey"
-        $entropy = [Convert]::ToHexString(
-            [Security.Cryptography.RandomNumberGenerator]::GetBytes(32)
-        )
+        $entropy = New-Entropy
         Invoke-Checked {
             pnpm exec snarkjs groth16 setup `
                 (Join-Path $buildRoot "r1cs\$circuit.r1cs") $ptauFinal $zkey0
@@ -70,7 +77,12 @@ try {
         if ($LASTEXITCODE -ne 0) {
             throw "Failed to format $circuit verification key"
         }
-        Set-Content -LiteralPath $stellarVkey -Value $formatted -Encoding utf8
+        # Must be BOM-free: `stellar contract invoke --vk <json>` and register_vks.js
+        # both feed this straight to a JSON parser, and a leading U+FEFF makes it
+        # fail. Windows PowerShell 5.1's `Set-Content -Encoding utf8` always emits a
+        # BOM, so write through .NET with an explicitly BOM-less encoder instead.
+        $vkJson = ($formatted -join "`n").Trim()
+        [IO.File]::WriteAllText($stellarVkey, $vkJson, (New-Object System.Text.UTF8Encoding($false)))
 
         Remove-Item -LiteralPath $zkey0 -Force
         Remove-Item -LiteralPath (Join-Path $buildRoot "${circuit}.sym") -Force

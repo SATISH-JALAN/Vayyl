@@ -21,6 +21,11 @@ const deployment = JSON.parse(readFileSync(deploymentPath, 'utf8'));
 const depth = 20;
 const denomination = 10_000_000n;
 const depositorAliases = ['vayyl-v2-a', 'vayyl-v2-b', 'vayyl-v2-c', 'vayyl-v2-d', 'vayyl-v2-e'];
+// Admin-gated calls (insert_leaf, block_leaf) must be signed by whoever deployed
+// this stack. Resolve it instead of hardcoding an alias: redeploying mints a new
+// admin, and a stale alias surfaces as "Missing signing key" only after minutes
+// of proving work have already been spent.
+const adminSource = process.env.STELLAR_SOURCE || 'deployer';
 
 function stellar(...args) {
   try {
@@ -189,14 +194,14 @@ const notes = [];
 const deposits = [];
 const existingAspLeaves = Number(invoke(
   deployment.asp_membership,
-  'vayyl-testnet-v2',
+  adminSource,
   'leaf_count',
   [],
   true,
 ).replace(/"/g, ''));
 const existingPoolLeaves = Number(invoke(
   deployment.pool,
-  'vayyl-testnet-v2',
+  adminSource,
   'get_leaf_count',
   [],
   true,
@@ -210,13 +215,13 @@ for (let i = 0; i < depositorAliases.length; i++) {
   const note = await deriveNote(1001n + BigInt(i), 2001n + BigInt(i));
   const aspLeaf = await hash2(note.pubX, note.pubY);
   if (i >= existingAspLeaves) {
-    invoke(deployment.asp_membership, 'vayyl-testnet-v2', 'insert_leaf', ['--leaf', bytesArg(aspLeaf)]);
+    invoke(deployment.asp_membership, adminSource, 'insert_leaf', ['--leaf', bytesArg(aspLeaf)]);
   }
   aspTree.insert(aspLeaf);
   const aspProof = await aspTree.proof(i);
   if (i >= existingAspLeaves || i === existingAspLeaves - 1) {
     assert.equal(
-      parseHexResult(invoke(deployment.asp_membership, 'vayyl-testnet-v2', 'root', [], true)),
+      parseHexResult(invoke(deployment.asp_membership, adminSource, 'root', [], true)),
       aspProof.root,
     );
   }
@@ -244,8 +249,8 @@ for (let i = 0; i < depositorAliases.length; i++) {
 }
 
 const poolProof = await poolTree.proof(2);
-assert.equal(parseHexResult(invoke(deployment.pool, 'vayyl-testnet-v2', 'get_root', [], true)), poolProof.root);
-assert.equal(Number(invoke(deployment.pool, 'vayyl-testnet-v2', 'get_leaf_count', [], true).replace(/"/g, '')), 5);
+assert.equal(parseHexResult(invoke(deployment.pool, adminSource, 'get_root', [], true)), poolProof.root);
+assert.equal(Number(invoke(deployment.pool, adminSource, 'get_leaf_count', [], true).replace(/"/g, '')), 5);
 
 const recipient = stellar('keys', 'address', 'vayyl-v2-recipient');
 const relayerAddress = stellar('keys', 'address', 'vayyl-v2-relayer');
@@ -312,13 +317,13 @@ try {
   }, resolve(v2, 'wasm', 'withdraw_v2.wasm'), resolve(v2, 'zkey', 'withdraw_v2_final.zkey'));
   const isNotBlocked = invoke(
     deployment.asp_non_membership,
-    'vayyl-testnet-v2',
+    adminSource,
     'is_not_blocked',
     ['--leaf', bytesArg(notes[4].nullifier)],
     true,
   ).replace(/"/g, '') === 'true';
   if (isNotBlocked) {
-    invoke(deployment.asp_non_membership, 'vayyl-testnet-v2', 'block_leaf', ['--leaf', bytesArg(notes[4].nullifier)]);
+    invoke(deployment.asp_non_membership, adminSource, 'block_leaf', ['--leaf', bytesArg(notes[4].nullifier)]);
   }
   let blockedRejected = false;
   try {

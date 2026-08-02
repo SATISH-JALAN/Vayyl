@@ -71,8 +71,13 @@ function parseArgs(argv) {
 function resolveAspId(flag, network) {
   if (flag) return flag.trim();
   if (process.env.ASP_ID) return process.env.ASP_ID.trim();
-  const deployFile = path.join(__dirname, '..', 'deployments', `${network}.json`);
-  if (fs.existsSync(deployFile)) {
+  // The V2 vault stack has its own deployment record and its own ASP contract.
+  // Check it FIRST: `<network>.json` describes the older V1 stack, and inserting
+  // an approved depositor into the V1 ASP leaves the V2 pool still rejecting the
+  // deposit with Error #8, which looks identical to a Poseidon2 mismatch.
+  for (const name of [`${network}-vault-v2.json`, `${network}.json`]) {
+    const deployFile = path.join(__dirname, '..', 'deployments', name);
+    if (!fs.existsSync(deployFile)) continue;
     try {
       const d = JSON.parse(fs.readFileSync(deployFile, 'utf8'));
       if (d.asp_membership) return d.asp_membership;

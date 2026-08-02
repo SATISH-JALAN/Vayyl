@@ -7,7 +7,7 @@
 // Re-exports the hashing helpers so existing imports keep working.
 
 import { signMessage } from '@stellar/freighter-api';
-import { poseidon2Hash2, FIELD_P, modP } from './poseidon';
+import { modP } from './poseidon';
 import { NETWORK_PASSPHRASE } from './network';
 
 export {
@@ -19,6 +19,9 @@ export {
   FIELD_P,
 } from './poseidon';
 
+export { deriveShieldedKeys, type ShieldedKeys } from './keys';
+export { derivePublicKey, mulPointEscalar, BASE8, SUBORDER } from './babyjub';
+
 /** Legacy hex blindness kept for compatibility; prefer randomFieldElement(). */
 export function generateBlindness(): string {
   const bytes = new Uint8Array(32);
@@ -29,31 +32,9 @@ export function generateBlindness(): string {
 }
 
 // ---- Shielded key derivation (Task 6.2) ------------------------------------
-// A real viewing key is derived from a Freighter signature (deriveViewingKey).
-// From it we deterministically derive the account's spend key and the note
-// public key. NOTE: pubX/pubY are Poseidon2-derived from the spend key, not a
-// BabyJubjub DL public key — the payment circuits do not (yet) bind pubkey to
-// privkey. Binding via lib/babyjubjub.circom DerivePublicKey is a §7 hardening
-// item; until then these are deterministic, reconstructable, and spendable.
-
-const TAG_SPEND = 1n;
-const TAG_PUBX = 2n;
-const TAG_PUBY = 3n;
-
-export interface ShieldedKeys {
-  viewingKey: string; // hex
-  spendKey: bigint; // privKey used in the nullifier
-  pubX: bigint;
-  pubY: bigint;
-}
-
-export async function deriveShieldedKeys(viewingKey: string): Promise<ShieldedKeys> {
-  const vkField = modP(BigInt('0x' + viewingKey.replace(/^0x/, '')));
-  const spendKey = await poseidon2Hash2(vkField, TAG_SPEND);
-  const pubX = await poseidon2Hash2(spendKey, TAG_PUBX);
-  const pubY = await poseidon2Hash2(spendKey, TAG_PUBY);
-  return { viewingKey, spendKey, pubX, pubY };
-}
+// Lives in keys.ts (worker-safe, no wallet imports) and is re-exported above so
+// existing imports keep working. The viewing key it consumes comes from
+// deriveViewingKey below, which is the genuinely wallet-coupled half.
 
 // ---- Viewing key from a Freighter signature --------------------------------
 

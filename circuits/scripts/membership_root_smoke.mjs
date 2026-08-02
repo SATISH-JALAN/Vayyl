@@ -10,7 +10,7 @@ import { Address, BASE_FEE, Contract, Networks, TransactionBuilder, rpc } from '
 const API = process.env.VAYYL_RELAYER_URL ?? 'https://vault-v2-relayer-production.up.railway.app';
 const RPC = process.env.VAYYL_RPC_URL ?? 'https://soroban-testnet.stellar.org';
 const MEMBERSHIP = process.env.VAYYL_ASP_MEMBERSHIP ?? 'CCGQLQS5JZQWXG72FFPLM3PKPBPBAP636C7YSVTJY5VYA5UXGLR4Q4WZ';
-const VIEW_SOURCE = 'GA7QKKGRKCKTLZ67ZMXI7U6VEG5LPFLNEFPDKAN5Z6WSDHOBJHAXMWEC';
+const VIEW_SOURCE = 'GCZTDHO2FG2ABMQ46ON2MN262Z7RXD7TRA2QWGGKQIZVT7ZXK6AUJ3TH';
 const depth = 20;
 const require = createRequire(import.meta.url);
 const build = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'build');

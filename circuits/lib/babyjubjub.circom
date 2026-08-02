@@ -13,6 +13,7 @@ pragma circom 2.1.0;
 
 include "../node_modules/circomlib/circuits/babyjub.circom";
 include "../node_modules/circomlib/circuits/escalarmulfix.circom";
+include "../node_modules/circomlib/circuits/comparators.circom";
 
 // ─────────────────────────────────────────────────────────────
 // DerivePublicKey: private key → (pub_x, pub_y)
@@ -24,28 +25,60 @@ include "../node_modules/circomlib/circuits/escalarmulfix.circom";
 //   G_x = 5299619240641551281634865583518297030282874472190772894086521144482721001553
 //   G_y = 16950150798460657717958625567821834550301663161624707787222815936182638968203
 //
-// Private key is decomposed into 253 bits (BN254 scalar field is ~254 bits,
-// BabyJubjub subgroup order is ~253 bits).
+// The scalar MUST be canonical — constrained to [1, l) where l is the order of
+// the base point. Two reasons, both load-bearing:
+//
+//   1. SOUNDNESS. G has order l, so privKey and privKey+l derive the SAME public
+//      key — hence the same commitment and the same Merkle leaf — but
+//      `nullifier = Poseidon2(commitment, privKey)` differs. An unbounded scalar
+//      therefore yields one valid witness per multiple of l that stays in range,
+//      i.e. one note spendable several times over. The earlier Num2Bits(253)
+//      bound admitted 6 such witnesses per note. This is the F1 double-spend,
+//      and closing it requires the range check to be l, not a power of two.
+//   2. COMPLETENESS. l is 251 bits, so a canonical scalar always decomposes.
+//      A field-wide scalar (Poseidon2 output reaches ~2^254) overflowed the old
+//      253-bit bound roughly a third of the time and failed witness generation
+//      outright — clients must reduce mod l before proving.
+//
+// l = 2736030358979909402780800718157159386076813972158567259200215660948447373041
 template DerivePublicKey() {
     signal input privKey;
     signal output pubX;
     signal output pubY;
 
     // Base point as bit array for EscalarMulFix
-    // EscalarMulFix takes the scalar as 253 individual bit signals
+    // EscalarMulFix takes the scalar as individual bit signals
     // and the base point as a constant array [x, y]
     var BASE[2] = [
         5299619240641551281634865583518297030282874472190772894086521144482721001553,
         16950150798460657717958625567821834550301663161624707787222815936182638968203
     ];
 
-    // Decompose private key into 253 bits
-    component n2b = Num2Bits(253);
+    // Order of BASE (the prime-order subgroup of BabyJubjub) — 251 bits.
+    var SUBORDER =
+        2736030358979909402780800718157159386076813972158567259200215660948447373041;
+
+    // Decompose the private key into 251 bits — the exact width of l, so every
+    // canonical scalar fits and nothing wider is representable.
+    component n2b = Num2Bits(251);
     n2b.in <== privKey;
 
+    // privKey < l. LessThan(251) internally range-checks to 252 bits; our inputs
+    // are both < 2^251, so in[0] + 2^251 - in[1] <= 2^252 - 1 and cannot alias.
+    component lt = LessThan(251);
+    lt.in[0] <== privKey;
+    lt.in[1] <== SUBORDER;
+    lt.out === 1;
+
+    // privKey != 0 — the zero scalar maps to the identity (0, 1), a public key
+    // anyone can derive and therefore anyone can spend notes addressed to.
+    signal privKeyInv;
+    privKeyInv <-- 1 / privKey;
+    privKey * privKeyInv === 1;
+
     // Fixed-base scalar multiplication
-    component mulFix = EscalarMulFix(253, BASE);
-    for (var i = 0; i < 253; i++) {
+    component mulFix = EscalarMulFix(251, BASE);
+    for (var i = 0; i < 251; i++) {
         mulFix.e[i] <== n2b.out[i];
     }
 

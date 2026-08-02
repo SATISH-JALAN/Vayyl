@@ -77,6 +77,31 @@ function calculateHash2(inputs) {
     return witness[1];
 }
 
+// (pubX, pubY) = privKey·G on BabyJubjub — the same derivation Note() performs.
+// transfer.circom derives input-note public keys from privKey rather than taking
+// them as free witnesses, so a note that will later be transferred MUST be
+// committed under its derived key or its Merkle leaf will not match the proof.
+// Requires build/test_derive_key_js (circom test/test_derive_key.circom).
+function derivePubKey(privKey) {
+    const cwd = path.join(__dirname, '../circuits');
+    fs.writeFileSync(
+        path.join(cwd, 'test/derive_key_input.json'),
+        JSON.stringify({ privKey: String(privKey) }),
+    );
+    execSync(
+        `snarkjs wtns calculate build/test_derive_key_js/test_derive_key.wasm test/derive_key_input.json build/test_derive_key.wtns`,
+        { cwd, stdio: 'ignore' },
+    );
+    execSync(
+        `snarkjs wtns export json build/test_derive_key.wtns build/test_derive_key_witness.json`,
+        { cwd, stdio: 'ignore' },
+    );
+    const witness = JSON.parse(
+        fs.readFileSync(path.join(cwd, 'build/test_derive_key_witness.json'), 'utf8'),
+    );
+    return { pubX: witness[1], pubY: witness[2] };
+}
+
 // ---------------------------------------------------------
 // Cryptography & Trees
 // ---------------------------------------------------------
@@ -252,7 +277,8 @@ async function main() {
     }
 
     const poolTree = new MerkleTree(20);
-    const pubX1 = "12345", pubY1 = "67890", priv1 = "11111";
+    const priv1 = "11111";
+    const { pubX: pubX1, pubY: pubY1 } = derivePubKey(priv1);
     const amount1 = "1000";
     const blindness1 = "99999";
     const commitment1 = calculateHash4([amount1, pubX1, pubY1, blindness1]);
@@ -272,7 +298,8 @@ async function main() {
             throw new Error(`Expected at least 2 pool leaves for resume, got ${poolLeafCount}`);
         }
         poolTree.insert(commitment1);
-        const pubX2 = "54321", pubY2 = "09876", priv2 = "22222";
+        const priv2 = "22222";
+        const { pubX: pubX2, pubY: pubY2 } = derivePubKey(priv2);
         const amount2 = "500";
         const blindness2 = "88888";
         const commitment2 = calculateHash4([amount2, pubX2, pubY2, blindness2]);
@@ -319,7 +346,8 @@ async function main() {
     // 2. DEPOSIT 2
     // ==========================================
     console.log("\n--- Executing Deposit 2 ---");
-    const pubX2Local = "54321", pubY2Local = "09876", priv2Local = "22222";
+    const priv2Local = "22222";
+    const { pubX: pubX2Local, pubY: pubY2Local } = derivePubKey(priv2Local);
     const leaf2 = calculateHash2([pubX2Local, pubY2Local]);
 
     console.log(`Registering Deposit 2 leaf in ASP contract...`);
@@ -433,17 +461,15 @@ async function main() {
         fee: fee,
         meta_hash: meta_hash,
         
+        // Input-note public keys are DERIVED from privKey inside Note(), so they
+        // are no longer supplied here — see circuits/transfer.circom.
         in_amount1: amount1,
-        in_pubX1: pubX1,
-        in_pubY1: pubY1,
         in_blindness1: blindness1,
         in_privKey1: priv1,
         in_pathElements1: poolProof1.pathElements,
         in_pathIndices1: poolProof1.pathIndices,
 
         in_amount2: amount2,
-        in_pubX2: pubX2,
-        in_pubY2: pubY2,
         in_blindness2: blindness2,
         in_privKey2: priv2,
         in_pathElements2: poolProof2.pathElements,
