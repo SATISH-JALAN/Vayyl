@@ -14,6 +14,8 @@ import {
 import {
   submitDepositV2,
   submitWithdrawV2,
+  submitTransferV2,
+  fetchTransfers,
   fetchCommitments,
   fetchSpentNullifiers,
   computeWithdrawBinding,
@@ -31,9 +33,14 @@ import {
   markNoteSpent,
   getActivity,
   addActivity,
+  getScanCursor,
+  setScanCursor,
   type ShieldedNote,
   type ActivityEvent,
 } from '../lib/storage';
+import { decodeShieldedAddress } from '../lib/address';
+import type { DiscoveredNote } from '../lib/transfer';
+import { poseidon2Hash2 } from '../lib/poseidon';
 
 interface PoolState {
   shieldedBalance: number;
@@ -47,7 +54,13 @@ interface PoolState {
   fetchState: () => Promise<void>;
   deposit: () => Promise<void>;
   withdraw: (destination: string) => Promise<void>;
-  transfer: (amount: number, asset: string, recipient: string) => Promise<void>;
+  /**
+   * Send one shielded note to a Vayyl shielded address. Amount and asset are
+   * fixed by the pool denomination, so the recipient is the only parameter.
+   */
+  transfer: (recipientAddress: string) => Promise<void>;
+  /** Claim payments sent to us since the last scan. */
+  scanIncoming: () => Promise<void>;
 }
 
 const runWorkerTask = (type: string, payload: any): Promise<any> =>
@@ -85,6 +98,16 @@ export const usePoolStore = create<PoolState>((set, get) => ({
         runWorkerTask('PREPARE_V2_NOTE', { privKey: keys.spendKey.toString(), blindness: '0' }),
       ]);
       const aspLeafIndex = await fetchV2AspLeafIndex(identity.aspLeaf);
+
+      // Claim any payments sent to us since the last scan. Failing here must not
+      // break the rest of the view — an unreachable indexer should not make a
+      // wallet look empty.
+      try {
+        await get().scanIncoming();
+      } catch (e) {
+        console.error('incoming-note scan failed', e);
+      }
+
       const notes = (await getNotes(keys.viewingKey)).filter(
         (note) => note.protocol === 'v2' && note.pool === V2_POOL_ID,
       );
@@ -97,11 +120,14 @@ export const usePoolStore = create<PoolState>((set, get) => ({
       }
       const active = notes.filter((n) => !n.isSpent);
 
-      // Build the activity feed: every note is a past Deposit; withdraws/transfers
+      // Build the activity feed from notes; withdraws and outgoing transfers
       // come from the explicit log (a spend only flips a flag on the note).
+      // A note we RECEIVED is an incoming Transfer, not a Deposit — notes
+      // written before shielded transfer existed have no `source` and were all
+      // deposits.
       const deposits: ActivityEvent[] = notes.map((n) => ({
         id: n.txHash ?? n.commitment,
-        type: 'Deposit',
+        type: n.source === 'received' ? 'Transfer' : 'Deposit',
         amount: n.amount,
         asset: n.asset,
         protocol: 'v2',
@@ -267,9 +293,119 @@ export const usePoolStore = create<PoolState>((set, get) => ({
     }
   },
 
-  transfer: async () => {
-    // Shielded→shielded transfer is the §2 stretch / §7 item 1 — needs the H2
-    // circuit fix + transfer inputs. Intentionally not wired in the MVP.
-    throw new Error('Transfer is on the roadmap and not enabled in this build.');
+  transfer: async (recipientAddress: string) => {
+    const wallet = useWalletStore.getState();
+    if (!wallet.address) throw new Error('Connect your wallet first');
+    const keys = await wallet.unlockShieldedKeys();
+
+    set({ isProving: true, status: 'Checking recipient…' });
+    try {
+      // Decode first: every failure mode here is one the user can fix, and a
+      // malformed key would otherwise produce a note nobody can ever open.
+      const recipient = decodeShieldedAddress(recipientAddress);
+
+      set({ status: 'Selecting note…' });
+      const notes = await getNotes(keys.viewingKey);
+      const note = notes.find((n) => !n.isSpent && n.protocol === 'v2' && n.pool === V2_POOL_ID);
+      if (!note) throw new Error('No unspent 1 XLM note was found for this wallet.');
+
+      set({ status: 'Reconstructing Merkle path…' });
+      const leaves = await fetchCommitments();
+      const idx = leaves.findIndex((c) => c.toString() === note.commitment);
+      if (idx < 0) throw new Error('This note is not indexed yet. Wait a few seconds and retry.');
+
+      // The ephemeral scalar, the shared secret and the output blindness are all
+      // produced inside the worker and never leave it.
+      set({ status: 'Generating transfer proof…' });
+      const proveResult = await runWorkerTask('PROVE_TRANSFER_V2', {
+        privKey: keys.spendKey.toString(),
+        blindness: note.blindness,
+        commitment: note.commitment,
+        leafIndex: idx,
+        leaves: leaves.map((c) => c.toString()),
+        recipientPubX: recipient.pubX.toString(),
+        recipientPubY: recipient.pubY.toString(),
+      });
+
+      // Relayed, never wallet-signed: the sender's Stellar address must not
+      // appear on the ledger, or the payment is not private.
+      set({ status: 'Submitting transfer…' });
+      const txHash = await submitTransferV2({
+        proof: proveResult.proof,
+        nullifier: proveResult.nullifier,
+        commitment: proveResult.commitment,
+        ephemeralX: proveResult.ephemeralX,
+        ephemeralY: proveResult.ephemeralY,
+        root: proveResult.root,
+      });
+
+      await markNoteSpent(keys.viewingKey, note.id);
+      await addActivity(keys.viewingKey, {
+        id: txHash,
+        type: 'Transfer',
+        amount: note.amount,
+        asset: 'XLM',
+        protocol: 'v2',
+        pool: V2_POOL_ID,
+        txHash,
+        timestamp: Date.now(),
+      });
+      set({ status: `Transfer confirmed: ${txHash}` });
+      useToastStore.getState().addToast(`Transfer sent! Transaction: ${txHash.slice(0, 8)}…`, 'success');
+      await get().fetchState();
+    } catch (e: any) {
+      set({ status: `Transfer failed: ${e.message}` });
+      useToastStore.getState().addToast(`Transfer failed: ${e.message}`, 'error');
+      throw e;
+    } finally {
+      set({ isProving: false });
+    }
+  },
+
+  scanIncoming: async () => {
+    const keys = useWalletStore.getState().keys;
+    if (!keys) return;
+
+    // Scanning costs a scalar multiplication and two hashes per event, so it is
+    // incremental: only events at or after the cursor are re-examined. Without
+    // this every fetchState would rescan the entire history.
+    const cursor = await getScanCursor(keys.viewingKey);
+    const transfers = await fetchTransfers(cursor);
+    if (transfers.length === 0) return;
+
+    const { notes: discovered } = await runWorkerTask('SCAN_TRANSFERS_V2', {
+      spendKey: keys.spendKey.toString(),
+      pubX: keys.pubX.toString(),
+      pubY: keys.pubY.toString(),
+      transfers,
+    });
+
+    for (const found of discovered as DiscoveredNote[]) {
+      await addNote(keys.viewingKey, {
+        id: found.commitment,
+        amount: V2_DENOMINATION_XLM,
+        amountStroops: V2_DENOMINATION_STROOPS.toString(),
+        asset: 'XLM',
+        protocol: 'v2',
+        pool: V2_POOL_ID,
+        commitment: found.commitment,
+        // The nullifier is OUR nullifier for this note: Poseidon2(commitment,
+        // spendKey). Only we can compute it, which is why only we can spend it.
+        nullifier: (await poseidon2Hash2(BigInt(found.commitment), keys.spendKey)).toString(),
+        pubX: keys.pubX.toString(),
+        pubY: keys.pubY.toString(),
+        blindness: found.blindness,
+        leafIndex: found.leafIndex,
+        isSpent: false,
+        source: 'received',
+        ephemeralX: found.ephemeralX,
+        ephemeralY: found.ephemeralY,
+        createdAt: Date.now(),
+        txHash: found.txHash,
+      });
+    }
+
+    const highest = transfers.reduce((max, t) => Math.max(max, t.ledgerSequence ?? 0), cursor);
+    await setScanCursor(keys.viewingKey, highest);
   },
 }));

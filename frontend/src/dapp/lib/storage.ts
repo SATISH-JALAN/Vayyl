@@ -7,6 +7,7 @@
 // IndexedDB. Field-element values are stored as decimal strings (bigint-safe).
 
 import { get, set } from 'idb-keyval';
+import { V2_DENOMINATION_STROOPS, V2_DENOMINATION_XLM } from './denomination';
 
 export interface ShieldedNote {
   id: string; // = commitment (decimal string), unique per note
@@ -23,6 +24,15 @@ export interface ShieldedNote {
   blindness: string;
   leafIndex: number; // position in the pool's Merkle tree
   isSpent: boolean;
+  /**
+   * How this note entered the wallet. Absent on notes written before shielded
+   * transfer existed, which were all deposits — treat undefined as 'deposit'.
+   * Without this the activity feed labels received payments as deposits.
+   */
+  source?: 'deposit' | 'received';
+  /** Sender's one-time point R, kept for provenance on received notes. */
+  ephemeralX?: string;
+  ephemeralY?: string;
   createdAt: number;
   txHash?: string;
 }
@@ -48,6 +58,21 @@ export interface ActivityEvent {
 }
 
 const activityKey = (viewingKey: string) => `vayyl_activity_${viewingKey}`;
+const scanCursorKey = (viewingKey: string) => `vayyl_scan_cursor_${viewingKey}`;
+
+/**
+ * Highest ledger already examined for incoming payments. Scanning is a trial
+ * decryption per transfer, so without a cursor every refresh would re-scan the
+ * whole history and get slower forever.
+ */
+export const getScanCursor = async (viewingKey: string): Promise<number> => {
+  const cursor = await get(scanCursorKey(viewingKey));
+  return typeof cursor === 'number' ? cursor : 0;
+};
+
+export const setScanCursor = async (viewingKey: string, ledger: number): Promise<void> => {
+  await set(scanCursorKey(viewingKey), ledger);
+};
 
 export const getActivity = async (viewingKey: string): Promise<ActivityEvent[]> => {
   const events = await get(activityKey(viewingKey));
@@ -147,10 +172,19 @@ export async function importV2Backup(viewingKey: string, backup: string): Promis
     notes?: ShieldedNote[];
     activity?: ActivityEvent[];
   };
+  // `amountStroops` is the value the contract actually moves; validating only
+  // the display `amount` left the load-bearing field unchecked. Both are pinned
+  // to the pool denomination rather than a literal, so a future denomination
+  // change cannot leave a stale constant behind here.
+  const expectedStroops = V2_DENOMINATION_STROOPS.toString();
   if (!Array.isArray(payload.notes) || !payload.notes.every((note) =>
-    note?.protocol === 'v2' && note.asset === 'XLM' && note.amount === 1 &&
+    note?.protocol === 'v2' && note.asset === 'XLM' && note.amount === V2_DENOMINATION_XLM &&
+    (note.amountStroops === undefined || note.amountStroops === expectedStroops) &&
     typeof note.id === 'string' && /^\d+$/.test(note.commitment) && /^\d+$/.test(note.nullifier) &&
-    /^\d+$/.test(note.blindness) && typeof note.pool === 'string' && Number.isInteger(note.leafIndex)
+    /^\d+$/.test(note.blindness) && typeof note.pool === 'string' && Number.isInteger(note.leafIndex) &&
+    (note.source === undefined || note.source === 'deposit' || note.source === 'received') &&
+    (note.ephemeralX === undefined || /^\d+$/.test(note.ephemeralX)) &&
+    (note.ephemeralY === undefined || /^\d+$/.test(note.ephemeralY))
   )) {
     throw new Error('The backup contains invalid note data.');
   }

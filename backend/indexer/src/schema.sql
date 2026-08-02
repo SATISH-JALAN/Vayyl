@@ -9,6 +9,22 @@ CREATE TABLE IF NOT EXISTS commitments (
     UNIQUE (pool_address, commitment_hash)
 );
 
+-- Shielded-transfer outputs. `source` distinguishes them from deposits so the
+-- client can label activity correctly; the ephemeral point is the sender's
+-- one-time BabyJubjub R, which is what lets a recipient discover the note.
+ALTER TABLE commitments ADD COLUMN IF NOT EXISTS source VARCHAR(16) NOT NULL DEFAULT 'deposit';
+ALTER TABLE commitments ADD COLUMN IF NOT EXISTS ephemeral_x VARCHAR(64);
+ALTER TABLE commitments ADD COLUMN IF NOT EXISTS ephemeral_y VARCHAR(64);
+
+-- Repair, then make the bug unrepresentable. Rows with leaf_index = -1 (written
+-- by an older build for V1 transfer events, which carry no index) sort ahead of
+-- every deposit under `ORDER BY leaf_index ASC`, shifting every leaf index and
+-- breaking Merkle-path reconstruction for all users. Delete them, then let the
+-- unique index reject any future attempt to store two commitments at one leaf.
+DELETE FROM commitments WHERE leaf_index < 0;
+CREATE UNIQUE INDEX IF NOT EXISTS commitments_pool_leaf_idx
+    ON commitments (pool_address, leaf_index);
+
 CREATE TABLE IF NOT EXISTS nullifiers (
     id SERIAL PRIMARY KEY,
     pool_address VARCHAR(56) NOT NULL,

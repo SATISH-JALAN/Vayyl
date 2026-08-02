@@ -225,10 +225,14 @@ impl Groth16VerifierContract {
 mod real_proof_fixture;
 
 #[cfg(test)]
+mod real_transfer_fixture;
+
+#[cfg(test)]
 mod test {
     use super::*;
     use soroban_sdk::testutils::Address as _;
     use crate::real_proof_fixture as fixture;
+    use crate::real_transfer_fixture as transfer_fixture;
 
     #[test]
     fn test_initialize() {
@@ -362,34 +366,178 @@ mod test {
         out
     }
 
-    fn real_vk(env: &Env) -> VerificationKey {
+    // Fixture-agnostic constructors: the withdraw_v2 and transfer_v2 fixtures
+    // expose identical const names, so both circuits share this plumbing.
+    fn vk_from(
+        env: &Env,
+        alpha: &str,
+        beta: &str,
+        gamma: &str,
+        delta: &str,
+        ic_entries: &[&str],
+    ) -> VerificationKey {
         let mut ic = Vec::new(env);
-        for entry in fixture::VK_IC.iter() {
+        for entry in ic_entries.iter() {
             ic.push_back(BytesN::from_array(env, &hex_bytes::<64>(entry)));
         }
         VerificationKey {
-            alpha_g1: BytesN::from_array(env, &hex_bytes::<64>(fixture::VK_ALPHA_G1)),
-            beta_g2: BytesN::from_array(env, &hex_bytes::<128>(fixture::VK_BETA_G2)),
-            gamma_g2: BytesN::from_array(env, &hex_bytes::<128>(fixture::VK_GAMMA_G2)),
-            delta_g2: BytesN::from_array(env, &hex_bytes::<128>(fixture::VK_DELTA_G2)),
+            alpha_g1: BytesN::from_array(env, &hex_bytes::<64>(alpha)),
+            beta_g2: BytesN::from_array(env, &hex_bytes::<128>(beta)),
+            gamma_g2: BytesN::from_array(env, &hex_bytes::<128>(gamma)),
+            delta_g2: BytesN::from_array(env, &hex_bytes::<128>(delta)),
             ic,
         }
     }
 
-    fn real_proof(env: &Env) -> Groth16Proof {
+    fn proof_from(env: &Env, a: &str, b: &str, c: &str) -> Groth16Proof {
         Groth16Proof {
-            a: BytesN::from_array(env, &hex_bytes::<64>(fixture::PROOF_A)),
-            b: BytesN::from_array(env, &hex_bytes::<128>(fixture::PROOF_B)),
-            c: BytesN::from_array(env, &hex_bytes::<64>(fixture::PROOF_C)),
+            a: BytesN::from_array(env, &hex_bytes::<64>(a)),
+            b: BytesN::from_array(env, &hex_bytes::<128>(b)),
+            c: BytesN::from_array(env, &hex_bytes::<64>(c)),
         }
     }
 
-    fn real_public_inputs(env: &Env) -> Vec<BytesN<32>> {
+    fn public_inputs_from(env: &Env, inputs: &[&str]) -> Vec<BytesN<32>> {
         let mut v = Vec::new(env);
-        for input in fixture::PUBLIC_INPUTS.iter() {
+        for input in inputs.iter() {
             v.push_back(BytesN::from_array(env, &hex_bytes::<32>(input)));
         }
         v
+    }
+
+    fn real_vk(env: &Env) -> VerificationKey {
+        vk_from(
+            env,
+            fixture::VK_ALPHA_G1,
+            fixture::VK_BETA_G2,
+            fixture::VK_GAMMA_G2,
+            fixture::VK_DELTA_G2,
+            &fixture::VK_IC,
+        )
+    }
+
+    fn real_proof(env: &Env) -> Groth16Proof {
+        proof_from(env, fixture::PROOF_A, fixture::PROOF_B, fixture::PROOF_C)
+    }
+
+    fn real_public_inputs(env: &Env) -> Vec<BytesN<32>> {
+        public_inputs_from(env, &fixture::PUBLIC_INPUTS)
+    }
+
+    fn transfer_vk(env: &Env) -> VerificationKey {
+        vk_from(
+            env,
+            transfer_fixture::VK_ALPHA_G1,
+            transfer_fixture::VK_BETA_G2,
+            transfer_fixture::VK_GAMMA_G2,
+            transfer_fixture::VK_DELTA_G2,
+            &transfer_fixture::VK_IC,
+        )
+    }
+
+    fn transfer_proof(env: &Env) -> Groth16Proof {
+        proof_from(
+            env,
+            transfer_fixture::PROOF_A,
+            transfer_fixture::PROOF_B,
+            transfer_fixture::PROOF_C,
+        )
+    }
+
+    fn transfer_public_inputs(env: &Env) -> Vec<BytesN<32>> {
+        public_inputs_from(env, &transfer_fixture::PUBLIC_INPUTS)
+    }
+
+    /// Registers the real transfer_v2 VK under CircuitId::Transfer.
+    fn verifier_with_transfer_vk(env: &Env) -> Groth16VerifierContractClient<'static> {
+        env.mock_all_auths();
+        let verifier_id = env.register(Groth16VerifierContract, ());
+        let client = Groth16VerifierContractClient::new(env, &verifier_id);
+        client.initialize(&Address::generate(env));
+        client.set_vk(&CircuitId::Transfer, &transfer_vk(env));
+        client
+    }
+
+    #[test]
+    fn real_transfer_proof_verifies_true() {
+        let env = Env::default();
+        let client = verifier_with_transfer_vk(&env);
+
+        // Five public inputs: [root, nullifier, commitment_out, eph_x, eph_y].
+        // This is the pin for the whole transfer path — if the circuit's signal
+        // order and the pool's Vec order ever diverge, every transfer fails
+        // on-chain as an opaque InvalidProof with nothing to point at.
+        assert_eq!(transfer_public_inputs(&env).len(), 5);
+        assert!(
+            client.verify(
+                &CircuitId::Transfer,
+                &transfer_proof(&env),
+                &transfer_public_inputs(&env)
+            ),
+            "a genuine transfer_v2 proof must verify on-chain",
+        );
+    }
+
+    #[test]
+    fn mutated_transfer_output_commitment_verifies_false() {
+        let env = Env::default();
+        let client = verifier_with_transfer_vk(&env);
+
+        // Slot 2 is commitment_out — the field that decides who ends up owning
+        // the note. A relayer redirecting the payment must be rejected.
+        let mut inputs = transfer_public_inputs(&env);
+        let mut tampered = inputs.get(2).unwrap().to_array();
+        tampered[31] ^= 0x01;
+        inputs.set(2, BytesN::from_array(&env, &tampered));
+
+        assert!(
+            !client.verify(&CircuitId::Transfer, &transfer_proof(&env), &inputs),
+            "a redirected transfer output must not verify",
+        );
+    }
+
+    #[test]
+    fn mutated_transfer_ephemeral_point_verifies_false() {
+        let env = Env::default();
+        let client = verifier_with_transfer_vk(&env);
+
+        // Slot 3 is ephemeral_x. Corrupting it would leave the recipient unable
+        // to ever derive the note's blindness, destroying the funds; binding it
+        // into the proof is what makes that tampering detectable.
+        let mut inputs = transfer_public_inputs(&env);
+        let mut tampered = inputs.get(3).unwrap().to_array();
+        tampered[31] ^= 0x01;
+        inputs.set(3, BytesN::from_array(&env, &tampered));
+
+        assert!(
+            !client.verify(&CircuitId::Transfer, &transfer_proof(&env), &inputs),
+            "a tampered ephemeral point must not verify",
+        );
+    }
+
+    #[test]
+    fn transfer_proof_under_withdraw_vk_verifies_false() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let verifier_id = env.register(Groth16VerifierContract, ());
+        let client = Groth16VerifierContractClient::new(&env, &verifier_id);
+        client.initialize(&Address::generate(&env));
+        // Both VKs registered, as they are on the live verifier.
+        client.set_vk(&CircuitId::Withdraw, &real_vk(&env));
+        client.set_vk(&CircuitId::Transfer, &transfer_vk(&env));
+
+        // A transfer proof presented against the withdraw slot must fail. The
+        // input counts differ (5 vs 3), so this also pins that the verifier
+        // rejects on arity rather than reading past the end of the IC vector.
+        let wrong = client.try_verify(
+            &CircuitId::Withdraw,
+            &transfer_proof(&env),
+            &transfer_public_inputs(&env),
+        );
+        assert!(
+            matches!(wrong, Err(_) | Ok(Ok(false))),
+            "a transfer proof must not verify against the withdraw VK",
+        );
     }
 
     /// Registers the real withdraw_v2 VK and returns a ready client.

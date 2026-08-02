@@ -201,6 +201,208 @@ fn test_v2_withdraw_is_fixed_and_rejects_double_spend() {
     assert_eq!(duplicate, Err(Ok(Error::NullifierAlreadyUsed)));
 }
 
+// ---- Vault V2 shielded transfer (1-in / 1-out) ---------------------------
+
+/// Deposit one note so the tree has a leaf and the pool holds the denomination.
+fn seed_v2_note(f: &Fixture, tag: u8) -> Address {
+    let depositor = Address::generate(&f.env);
+    fund(f, &depositor, V2_DENOMINATION);
+    f.pool.deposit_v2(
+        &depositor,
+        &dummy_proof(&f.env),
+        &commitment(&f.env, tag),
+        &f.asp_root(),
+    );
+    depositor
+}
+
+#[test]
+fn test_v2_transfer_moves_a_note_without_moving_tokens() {
+    let f = setup_v2();
+    seed_v2_note(&f, 0x51);
+
+    let nullifier = commitment(&f.env, 0x52);
+    let out = commitment(&f.env, 0x53);
+    let eph_x = commitment(&f.env, 0x54);
+    let eph_y = commitment(&f.env, 0x55);
+    let root = f.pool.get_root();
+
+    f.pool
+        .transfer_v2(&dummy_proof(&f.env), &nullifier, &out, &eph_x, &eph_y, &root);
+
+    // The whole point of a shielded transfer: value never leaves the pool.
+    assert_eq!(balance(&f, &f.pool.address), V2_DENOMINATION);
+    // Exactly one new leaf — a 1-in/1-out transfer must not grow the tree by 2.
+    assert_eq!(f.pool.get_leaf_count(), 2);
+
+    // Pin the public-input vector. A silent reordering here would still verify
+    // against a maliciously-shaped VK but never against the real circuit, and
+    // the failure would surface only as an opaque InvalidProof on testnet.
+    let inputs = f.verifier.public_inputs();
+    assert_eq!(inputs.len(), 5);
+    assert_eq!(inputs.get(0).unwrap(), root);
+    assert_eq!(inputs.get(1).unwrap(), nullifier);
+    assert_eq!(inputs.get(2).unwrap(), out);
+    assert_eq!(inputs.get(3).unwrap(), eph_x);
+    assert_eq!(inputs.get(4).unwrap(), eph_y);
+}
+
+#[test]
+fn test_v2_transfer_rejects_double_spend() {
+    let f = setup_v2();
+    seed_v2_note(&f, 0x61);
+    let nullifier = commitment(&f.env, 0x62);
+    let root = f.pool.get_root();
+
+    f.pool.transfer_v2(
+        &dummy_proof(&f.env),
+        &nullifier,
+        &commitment(&f.env, 0x63),
+        &commitment(&f.env, 0x64),
+        &commitment(&f.env, 0x65),
+        &root,
+    );
+
+    let replay = f.pool.try_transfer_v2(
+        &dummy_proof(&f.env),
+        &nullifier,
+        &commitment(&f.env, 0x66),
+        &commitment(&f.env, 0x64),
+        &commitment(&f.env, 0x65),
+        &f.pool.get_root(),
+    );
+    assert_eq!(replay, Err(Ok(Error::NullifierAlreadyUsed)));
+}
+
+#[test]
+fn test_v2_transfer_output_shares_the_deposit_commitment_namespace() {
+    let f = setup_v2();
+    let deposited = commitment(&f.env, 0x71);
+    let depositor = Address::generate(&f.env);
+    fund(&f, &depositor, V2_DENOMINATION);
+    f.pool
+        .deposit_v2(&depositor, &dummy_proof(&f.env), &deposited, &f.asp_root());
+
+    // Re-emitting an existing commitment would insert a second leaf sharing the
+    // first note's nullifier, silently burning the second note.
+    let collision = f.pool.try_transfer_v2(
+        &dummy_proof(&f.env),
+        &commitment(&f.env, 0x72),
+        &deposited,
+        &commitment(&f.env, 0x73),
+        &commitment(&f.env, 0x74),
+        &f.pool.get_root(),
+    );
+    assert_eq!(collision, Err(Ok(Error::CommitmentAlreadyExists)));
+}
+
+#[test]
+fn test_v2_transfer_rejects_unknown_root() {
+    let f = setup_v2();
+    seed_v2_note(&f, 0x81);
+    let result = f.pool.try_transfer_v2(
+        &dummy_proof(&f.env),
+        &commitment(&f.env, 0x82),
+        &commitment(&f.env, 0x83),
+        &commitment(&f.env, 0x84),
+        &commitment(&f.env, 0x85),
+        &commitment(&f.env, 0xFF),
+    );
+    assert_eq!(result, Err(Ok(Error::UnknownRoot)));
+}
+
+#[test]
+fn test_v2_transfer_invalid_proof_consumes_nothing() {
+    let f = setup_v2();
+    seed_v2_note(&f, 0x91);
+    let nullifier = commitment(&f.env, 0x92);
+    let out = commitment(&f.env, 0x93);
+    let eph_x = commitment(&f.env, 0x94);
+    let eph_y = commitment(&f.env, 0x95);
+    let root = f.pool.get_root();
+
+    f.verifier.set_result(&false);
+    let rejected = f.pool.try_transfer_v2(
+        &dummy_proof(&f.env),
+        &nullifier,
+        &out,
+        &eph_x,
+        &eph_y,
+        &root,
+    );
+    assert_eq!(rejected, Err(Ok(Error::InvalidProof)));
+
+    // The nullifier is marked before verification, so this only holds because
+    // the failed call reverts. If it ever stops holding, a bad proof would
+    // permanently burn the sender's note.
+    f.verifier.set_result(&true);
+    f.pool
+        .transfer_v2(&dummy_proof(&f.env), &nullifier, &out, &eph_x, &eph_y, &root);
+    assert_eq!(f.pool.get_leaf_count(), 2);
+}
+
+#[test]
+fn test_v2_transfer_rejects_blocked_nullifier() {
+    let (f, nm) = setup_v2_with_blocklist();
+    seed_v2_note(&f, 0xA1);
+    let nullifier = commitment(&f.env, 0xA2);
+    nm.block_leaf(&nullifier);
+
+    let result = f.pool.try_transfer_v2(
+        &dummy_proof(&f.env),
+        &nullifier,
+        &commitment(&f.env, 0xA3),
+        &commitment(&f.env, 0xA4),
+        &commitment(&f.env, 0xA5),
+        &f.pool.get_root(),
+    );
+    assert_eq!(result, Err(Ok(Error::NullifierBlocked)));
+}
+
+#[test]
+fn test_transfer_v2_is_disabled_on_v1_pool() {
+    let f = setup();
+    let result = f.pool.try_transfer_v2(
+        &dummy_proof(&f.env),
+        &commitment(&f.env, 0xB1),
+        &commitment(&f.env, 0xB2),
+        &commitment(&f.env, 0xB3),
+        &commitment(&f.env, 0xB4),
+        &f.pool.get_root(),
+    );
+    assert_eq!(result, Err(Ok(Error::WrongPoolMode)));
+}
+
+#[test]
+fn test_v2_deposit_transfer_withdraw_chain() {
+    // The contract-level end-to-end: A shields, A transfers to B, B unshields.
+    let f = setup_v2();
+    seed_v2_note(&f, 0xC1);
+
+    let out = commitment(&f.env, 0xC3);
+    f.pool.transfer_v2(
+        &dummy_proof(&f.env),
+        &commitment(&f.env, 0xC2),
+        &out,
+        &commitment(&f.env, 0xC4),
+        &commitment(&f.env, 0xC5),
+        &f.pool.get_root(),
+    );
+    assert_eq!(balance(&f, &f.pool.address), V2_DENOMINATION);
+
+    let recipient = Address::generate(&f.env);
+    f.pool.withdraw_v2(
+        &dummy_proof(&f.env),
+        &commitment(&f.env, 0xC6),
+        &recipient,
+        &f.pool.get_root(),
+    );
+
+    assert_eq!(balance(&f, &recipient), V2_DENOMINATION);
+    assert_eq!(balance(&f, &f.pool.address), 0);
+    assert_eq!(f.pool.get_leaf_count(), 2);
+}
+
 #[test]
 fn test_v1_entrypoint_is_disabled_on_v2_pool() {
     let f = setup_v2();
@@ -375,6 +577,14 @@ fn test_asp_check_precedes_proof_verify_c3() {
 // ---- V2-ready ASP non-membership on transfer/withdraw -------------------
 
 fn setup_with_blocklist() -> (Fixture, AspNonMembershipContractClient<'static>) {
+    setup_with_blocklist_mode(false)
+}
+
+fn setup_v2_with_blocklist() -> (Fixture, AspNonMembershipContractClient<'static>) {
+    setup_with_blocklist_mode(true)
+}
+
+fn setup_with_blocklist_mode(v2: bool) -> (Fixture, AspNonMembershipContractClient<'static>) {
     let env = Env::default();
     env.mock_all_auths();
 
@@ -398,7 +608,11 @@ fn setup_with_blocklist() -> (Fixture, AspNonMembershipContractClient<'static>) 
     let nm = AspNonMembershipContractClient::new(&env, &nm_id);
     nm.initialize(&admin);
 
-    pool.initialize(&admin, &asset, &verifier_id, &asp_id, &nm_id);
+    if v2 {
+        pool.initialize_v2(&admin, &asset, &verifier_id, &asp_id, &nm_id);
+    } else {
+        pool.initialize(&admin, &asset, &verifier_id, &asp_id, &nm_id);
+    }
 
     let f = Fixture {
         env,

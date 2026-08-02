@@ -27,6 +27,15 @@ export type PoolEvent =
       commitment1: string;
       commitment2: string;
     }
+  | {
+      kind: 'transferV2';
+      nullifier: string;
+      commitment: string;
+      leafIndex: number;
+      ephemeralX: string;
+      ephemeralY: string;
+      amount: bigint;
+    }
   | { kind: 'PositionOpen'; positionId: string; owner: string; commitment: string; direction: number; size: bigint }
   | { kind: 'PositionHealth'; positionId: string; timestamp: number }
   | { kind: 'PositionClose'; positionId: string; newCommitment: string; outputNoteCommitment: string };
@@ -95,6 +104,23 @@ export function decodePoolEvent(topic: xdr.ScVal[], value: xdr.ScVal): PoolEvent
         nullifier2: bytesN32ToHex(topic[2]),
         commitment1: hex(c1),
         commitment2: hex(c2),
+      };
+    }
+    // V2 shielded transfer: one nullifier spent, one commitment created. Unlike
+    // the V1 `transfer` above, this event carries the output's leaf_index, which
+    // is what lets the commitment be placed correctly in the tree.
+    case 'transfer_v2': {
+      if (topic.length < 2) return null;
+      const hex = (b?: Buffer | Uint8Array) =>
+        b ? Buffer.from(b).toString('hex').padStart(64, '0') : '';
+      return {
+        kind: 'transferV2',
+        nullifier: bytesN32ToHex(topic[1]),
+        commitment: hex(data.commitment as Buffer | Uint8Array | undefined),
+        leafIndex: Number(data.leaf_index ?? 0),
+        ephemeralX: hex(data.ephemeral_x as Buffer | Uint8Array | undefined),
+        ephemeralY: hex(data.ephemeral_y as Buffer | Uint8Array | undefined),
+        amount: BigInt((data.amount as bigint | number | string) ?? 0),
       };
     }
     case 'position_open': {

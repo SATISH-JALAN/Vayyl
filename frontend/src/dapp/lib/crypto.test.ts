@@ -39,20 +39,10 @@ const REPO = path.resolve(HERE, '../../../..');
 const CIRCUIT_SRC = path.join(REPO, 'circuits/lib/babyjubjub.circom');
 
 // poseidon.ts loads its Poseidon2 wasm with `fetch('/circuits/hash2.wasm')`, an
-// absolute URL with no meaning outside a browser. Serve those paths off
-// frontend/public so deriveShieldedKeys runs here exactly as the app runs it —
-// same wasm, same hashing — rather than against a stand-in.
-const PUBLIC_DIR = path.join(REPO, 'frontend/public');
-const upstreamFetch = globalThis.fetch;
-globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-  const url = typeof input === 'string' ? input : input.toString();
-  if (url.startsWith('/')) {
-    const file = path.join(PUBLIC_DIR, url);
-    if (!existsSync(file)) throw new Error(`test fetch shim: missing ${file}`);
-    return new Response(readFileSync(file), { status: 200 });
-  }
-  return upstreamFetch(input, init);
-}) as typeof fetch;
+// absolute URL with no meaning outside a browser. The shared shim serves those
+// paths off frontend/public so deriveShieldedKeys runs here exactly as the app
+// runs it — same wasm, same hashing — rather than against a stand-in.
+import '../../../test/public-fetch-shim';
 
 function loadCircuit(name: string, wasmRelPath: string) {
   const wasmPath = path.join(REPO, wasmRelPath);

@@ -65,6 +65,45 @@ export class RelayerService {
             .setTimeout(60)
             .build();
 
+        return this.submitAndConfirm(tx);
+    }
+
+    /**
+     * Shielded transfer: spends one note and creates one owned by the recipient.
+     *
+     * The relayer is the transaction source, so the sender's Stellar address
+     * never appears on the ledger — that is the whole point. There is no fee
+     * argument and no token movement; the relayer absorbs the network fee
+     * exactly as it does for withdraw_v2, and the pool's balance is unchanged.
+     *
+     * Argument order must match `VayylPool::transfer_v2`.
+     */
+    async relayV2Transfer(request: V2TransferRequest): Promise<string> {
+        this.assertAllowedContract(request.pool);
+
+        const source = await this.server.getAccount(this.relayerKeypair.publicKey());
+        const contract = new StellarSdk.Contract(request.pool);
+        const tx = new StellarSdk.TransactionBuilder(source, {
+            fee: StellarSdk.BASE_FEE,
+            networkPassphrase: this.networkPassphrase,
+        })
+            .addOperation(contract.call(
+                'transfer_v2',
+                this.proofScVal(request.proof),
+                this.fieldScVal(request.nullifier),
+                this.fieldScVal(request.commitment),
+                this.fieldScVal(request.ephemeralX),
+                this.fieldScVal(request.ephemeralY),
+                this.fieldScVal(request.root),
+            ))
+            .setTimeout(60)
+            .build();
+
+        return this.submitAndConfirm(tx);
+    }
+
+    /** Prepare, sign, submit, and wait out the 60s confirmation window. */
+    private async submitAndConfirm(tx: StellarSdk.Transaction): Promise<string> {
         const prepared = await this.server.prepareTransaction(tx);
         prepared.sign(this.relayerKeypair);
         const sent = await this.server.sendTransaction(prepared);
@@ -187,5 +226,15 @@ export interface V2WithdrawRequest {
     proof: SnarkjsProof;
     nullifier: string;
     recipient: string;
+    root: string;
+}
+
+export interface V2TransferRequest {
+    pool: string;
+    proof: SnarkjsProof;
+    nullifier: string;
+    commitment: string;
+    ephemeralX: string;
+    ephemeralY: string;
     root: string;
 }

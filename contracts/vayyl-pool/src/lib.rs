@@ -29,6 +29,30 @@ pub struct Transfer {
     pub commitment2: BytesN<32>,
 }
 
+/// V2 shielded transfer: one 1-XLM note is spent and one is created for a
+/// recipient only they can identify. `ephemeral_*` is the sender's one-time
+/// BabyJubjub point R — the recipient recovers the new note's blindness as
+/// `Poseidon2((spendKey·R).x, 0)` and finds the note by trial-matching the
+/// commitment, so no ciphertext and no out-of-band message are needed.
+///
+/// `leaf_index` is load-bearing, not informational: without it the indexer
+/// cannot place this commitment in the tree, and an unplaceable commitment
+/// corrupts the leaf ordering every client rebuilds its Merkle paths from.
+/// The V1 `Transfer` event above omits it, which is exactly that bug.
+///
+/// The topic string is pinned rather than derived, because the indexer routes
+/// on it and the SDK's default is `to_snake_case(StructName)`.
+#[contractevent(topics = ["transfer_v2"])]
+pub struct TransferV2 {
+    #[topic]
+    pub nullifier: BytesN<32>,
+    pub commitment: BytesN<32>,
+    pub leaf_index: u32,
+    pub ephemeral_x: BytesN<32>,
+    pub ephemeral_y: BytesN<32>,
+    pub amount: i128,
+}
+
 /// C4: withdraw event — topic `withdraw` + the spent nullifier; data carries
 /// the public recipient and amount.
 #[contractevent]
@@ -687,6 +711,94 @@ impl VayylPool {
         Deposit {
             commitment,
             leaf_index,
+            amount: denomination,
+        }
+        .publish(&env);
+        Ok(())
+    }
+
+    /// V2 shielded transfer: 1-in / 1-out, fixed denomination.
+    ///
+    /// Spends one note and creates one note owned by the recipient. **No tokens
+    /// move** — the value never leaves the pool, so the contract's balance is
+    /// invariant across this call. That is what removes the need for the
+    /// fee/relayer binding `withdraw_v2` carries: there is nothing to redirect
+    /// and no payout to race for.
+    ///
+    /// Not authorized by `require_auth`. Possession of a proof bound to this
+    /// exact `(nullifier, commitment, ephemeral point)` tuple is the
+    /// authorization, which is what lets a relayer submit it and keeps the
+    /// sender's Stellar address off the ledger entirely.
+    pub fn transfer_v2(
+        env: Env,
+        proof: Groth16Proof,
+        nullifier: BytesN<32>,
+        commitment: BytesN<32>,
+        ephemeral_x: BytesN<32>,
+        ephemeral_y: BytesN<32>,
+        root: BytesN<32>,
+    ) -> Result<(), Error> {
+        let denomination = Self::v2_denomination(&env)?;
+
+        if !Self::is_known_root(&env, &root) {
+            return Err(Error::UnknownRoot);
+        }
+
+        // Share `deposit_v2`'s commitment namespace so a transfer output can
+        // never collide with a deposit. Without this, a repeated commitment
+        // inserts a second leaf that shares the first one's nullifier — the
+        // second note would be silently unspendable.
+        let commitment_key = DataKey::Commitment(commitment.clone());
+        if env.storage().persistent().has(&commitment_key) {
+            return Err(Error::CommitmentAlreadyExists);
+        }
+
+        assert_nullifier_not_blocked(&env, &nullifier)?;
+        Self::mark_nullifier(&env, nullifier.clone())?;
+
+        let verifier: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Verifier)
+            .ok_or(Error::NotInitialized)?;
+        // Order must match `component main {public [...]}` in transfer_v2.circom.
+        let public_inputs = Vec::from_array(
+            &env,
+            [
+                root,
+                nullifier.clone(),
+                commitment.clone(),
+                ephemeral_x.clone(),
+                ephemeral_y.clone(),
+            ],
+        );
+        if !Groth16VerifierClient::new(&env, &verifier).verify(
+            &CircuitId::Transfer,
+            &proof,
+            &public_inputs,
+        ) {
+            return Err(Error::InvalidProof);
+        }
+
+        let leaf_index = env
+            .storage()
+            .instance()
+            .get::<DataKey, u32>(&DataKey::TreeNextIndex)
+            .unwrap_or(0);
+        Self::insert_leaf(&env, commitment.clone())?;
+        env.storage().persistent().set(&commitment_key, &true);
+        env.storage().persistent().extend_ttl(
+            &commitment_key,
+            PERSISTENT_TTL_THRESHOLD,
+            PERSISTENT_TTL_EXTEND,
+        );
+
+        TransferV2 {
+            nullifier,
+            commitment,
+            leaf_index,
+            ephemeral_x,
+            ephemeral_y,
             amount: denomination,
         }
         .publish(&env);

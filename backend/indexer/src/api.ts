@@ -18,8 +18,27 @@ export function createApi(db: Database, poolAddress: string, network: string): e
 
     app.use(express.json());
 
-    app.get('/health', (req, res) => {
-        res.json({ status: 'ok', network, pool: poolAddress });
+    app.get('/health', async (req, res) => {
+        // Surface leaf-set density: clients rebuild the Merkle tree from the
+        // ordered commitment list, so a gap yields a wrong root and shows up
+        // only as an opaque UnknownRoot when a user tries to spend.
+        try {
+            const { dense, count, maxIndex } = await db.assertDense(poolAddress);
+            res.json({ status: 'ok', network, pool: poolAddress, commitmentsDense: dense, count, maxIndex });
+        } catch (err: any) {
+            res.status(500).json({ status: 'error', network, pool: poolAddress, error: err.message });
+        }
+    });
+
+    /** Recipient scan feed — shielded-transfer outputs with their ephemeral points. */
+    app.get('/transfers', async (req, res) => {
+        try {
+            const since = Number(req.query.since ?? 0);
+            const transfers = await db.getTransfers(poolAddress, Number.isFinite(since) ? since : 0);
+            res.json({ transfers });
+        } catch (err: any) {
+            res.status(500).json({ error: err.message });
+        }
     });
 
     app.get('/commitments', async (req, res) => {

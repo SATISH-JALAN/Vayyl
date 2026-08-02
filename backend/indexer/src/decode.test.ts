@@ -29,6 +29,34 @@ describe('decodePoolEvent', () => {
     });
   });
 
+  it('decodes a transfer_v2 event, including the leaf index and ephemeral point', () => {
+    const nullifier = '11'.repeat(32);
+    const commitment = '22'.repeat(32);
+    const ephemeralX = '33'.repeat(32);
+    const ephemeralY = '44'.repeat(32);
+    const topic = [sym('transfer_v2'), bytesN(nullifier)];
+    const value = xdr.ScVal.scvMap([
+      mapEntry('commitment', bytesN(commitment)),
+      mapEntry('ephemeral_x', bytesN(ephemeralX)),
+      mapEntry('ephemeral_y', bytesN(ephemeralY)),
+      mapEntry('leaf_index', nativeToScVal(3, { type: 'u32' })),
+      mapEntry('amount', nativeToScVal(10_000_000n, { type: 'i128' })),
+    ]);
+
+    // The leaf index is the whole reason this event exists in this shape: it is
+    // what lets the output commitment be ordered in the tree. Losing it is what
+    // corrupted every client's Merkle path under the old V1 transfer handling.
+    expect(decodePoolEvent(topic, value)).toEqual({
+      kind: 'transferV2',
+      nullifier,
+      commitment,
+      leafIndex: 3,
+      ephemeralX,
+      ephemeralY,
+      amount: 10_000_000n,
+    });
+  });
+
   it('decodes a withdraw event', () => {
     const nullifier = 'cd'.repeat(32);
     const recipient = 'GDLONDLUL5YRUMK4PEQIFFU4EHCAOEOK4BDKWZOKP3GSEPOPONZGKXHB';

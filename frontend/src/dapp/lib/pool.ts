@@ -34,8 +34,7 @@ export const HORIZON_URL = process.env.NEXT_PUBLIC_HORIZON_URL || 'https://horiz
 export const V2_POOL_ID = process.env.NEXT_PUBLIC_POOL_XLM || 'CB6XFHGN4DMVEQRESJHPOUNYLUCGMOZTAIKTWH3I7KT3NVW2XY4NIOLC';
 export const V2_VERIFIER_ID = process.env.NEXT_PUBLIC_VERIFIER || 'CBRMDGEMQERFTG3MCBHYPHMZPKVMDYFGHJAMREQW23ZDKVAMAFDRJ2J5';
 export const V2_ASP_MEMBERSHIP_ID = process.env.NEXT_PUBLIC_ASP_MEMBERSHIP || 'CD5DLTOIEAYA6CATHKELFAYRBOEFQN5TMADCEAURVZMMTYVD6Y5POCMO';
-export const V2_DENOMINATION_STROOPS = 10_000_000n;
-export const V2_DENOMINATION_XLM = 1;
+export { V2_DENOMINATION_STROOPS, V2_DENOMINATION_XLM } from './denomination';
 // Read-only source account for simulate-only calls; needs no signing key.
 const VIEW_SOURCE = 'GCZTDHO2FG2ABMQ46ON2MN262Z7RXD7TRA2QWGGKQIZVT7ZXK6AUJ3TH';
 export const POOL_IDS: Record<string, string | undefined> = {
@@ -291,6 +290,52 @@ export async function submitWithdrawV2(a: Pick<WithdrawArgs, 'proof' | 'nullifie
     throw new Error(body.error || `Relayer request failed (${response.status})`);
   }
   return body.hash as string;
+}
+
+export interface TransferV2Args {
+  proof: SnarkjsProof;
+  nullifier: string;
+  commitment: string;
+  ephemeralX: string;
+  ephemeralY: string;
+  root: string;
+}
+
+/**
+ * Submit a shielded transfer through the relayer.
+ *
+ * Deliberately never signed by the user's wallet: the relayer is the
+ * transaction source, so the sender's Stellar address never touches the ledger.
+ * A wallet-signed transfer would defeat the entire feature.
+ */
+export async function submitTransferV2(a: TransferV2Args): Promise<string> {
+  const response = await fetch(`${RELAYER_URL}/v2/transfer`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pool: V2_POOL_ID, ...a }),
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok || !body.success || !body.hash) {
+    throw new Error(body.error || `Relayer request failed (${response.status})`);
+  }
+  return body.hash as string;
+}
+
+export interface IndexedTransferRow {
+  commitment: string;
+  leafIndex: number;
+  ephemeralX: string;
+  ephemeralY: string;
+  txHash?: string;
+  ledgerSequence?: number;
+}
+
+/** The recipient scan feed — every shielded-transfer output with its ephemeral point. */
+export async function fetchTransfers(since = 0): Promise<IndexedTransferRow[]> {
+  const res = await fetch(`${INDEXER_URL}/transfers?since=${since}`);
+  if (!res.ok) throw new Error(`indexer /transfers ${res.status}`);
+  const data = await res.json();
+  return (data.transfers ?? []) as IndexedTransferRow[];
 }
 
 async function simulateRead(contractId: string, method: string, args: xdr.ScVal[]) {

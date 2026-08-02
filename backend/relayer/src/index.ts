@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { RelayerService, type V2WithdrawRequest } from './relay.js';
+import { RelayerService, type V2WithdrawRequest, type V2TransferRequest } from './relay.js';
 import { AspEnrollmentService } from './enrollment.js';
 import * as StellarSdk from '@stellar/stellar-sdk';
 
@@ -15,14 +15,19 @@ const ASP_ADMIN_SECRET = process.env.ASP_ADMIN_SECRET;
 const ASP_MEMBERSHIP_ID = process.env.ASP_MEMBERSHIP_ID;
 const DATABASE_URL = process.env.DATABASE_URL;
 const ASP_MAX_ENROLLMENTS = Number(process.env.ASP_MAX_ENROLLMENTS ?? 128);
+const ASP_LEAF_STORE_PATH = process.env.ASP_LEAF_STORE_PATH;
 const ALLOWED_POOLS = process.env.ALLOWED_POOLS ? process.env.ALLOWED_POOLS.split(',') : [];
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3002;
 
 async function main() {
     console.log('Starting Vayyl Relayer...');
 
-    if (!RELAYER_SECRET || !ASP_ADMIN_SECRET || !ASP_MEMBERSHIP_ID || !DATABASE_URL) {
-        console.error('Error: relayer and enrollment environment variables are required');
+    // Only relaying is mandatory. ASP enrollment is a separate concern with its
+    // own credentials, and bundling them meant a missing DATABASE_URL stopped
+    // the service from starting at all — including /relay, /v2/withdraw and
+    // /v2/transfer, none of which touch the database.
+    if (!RELAYER_SECRET) {
+        console.error('Error: RELAYER_SECRET is required');
         process.exit(1);
     }
 
@@ -31,15 +36,28 @@ async function main() {
     }
 
     const relayer = new RelayerService(RPC_URL, RELAYER_SECRET, NETWORK_PASSPHRASE, ALLOWED_POOLS);
-    const enrollment = new AspEnrollmentService({
-        rpcUrl: RPC_URL,
-        networkPassphrase: NETWORK_PASSPHRASE,
-        adminSecret: ASP_ADMIN_SECRET,
-        membershipId: ASP_MEMBERSHIP_ID,
-        databaseUrl: DATABASE_URL,
-        maxEnrollments: ASP_MAX_ENROLLMENTS,
-    });
-    await enrollment.init();
+
+    const enrollment = (ASP_ADMIN_SECRET && ASP_MEMBERSHIP_ID)
+        ? new AspEnrollmentService({
+            rpcUrl: RPC_URL,
+            networkPassphrase: NETWORK_PASSPHRASE,
+            adminSecret: ASP_ADMIN_SECRET,
+            membershipId: ASP_MEMBERSHIP_ID,
+            databaseUrl: DATABASE_URL,           // absent -> file-backed store
+            leafStorePath: ASP_LEAF_STORE_PATH,
+            maxEnrollments: ASP_MAX_ENROLLMENTS,
+        })
+        : null;
+
+    if (enrollment) {
+        await enrollment.init();
+        console.log(`ASP enrollment enabled (${enrollment.backend}-backed leaf store)`);
+    } else {
+        console.warn(
+            'ASP enrollment DISABLED: set ASP_ADMIN_SECRET and ASP_MEMBERSHIP_ID to enable it. ' +
+            '/v2/enroll and /v2/asp/leaves will return 503; relaying is unaffected.',
+        );
+    }
     
     const app = express();
     app.set('trust proxy', 1);
@@ -78,13 +96,20 @@ async function main() {
     const relayerPubkey = StellarSdk.Keypair.fromSecret(RELAYER_SECRET).publicKey();
     const horizon = new StellarSdk.Horizon.Server(HORIZON_URL);
 
+    const enrollmentMode = enrollment ? enrollment.backend : 'disabled';
+
     app.get('/health', async (req, res) => {
         try {
             const account = await horizon.loadAccount(relayerPubkey);
             const native = account.balances.find((balance) => balance.asset_type === 'native');
-            res.json({ status: 'ok', address: relayerPubkey, nativeBalance: native?.balance ?? '0', enrollment: 'ready' });
+            res.json({
+                status: 'ok',
+                address: relayerPubkey,
+                nativeBalance: native?.balance ?? '0',
+                enrollment: enrollmentMode,
+            });
         } catch {
-            res.json({ status: 'ok', address: relayerPubkey, nativeBalance: null });
+            res.json({ status: 'ok', address: relayerPubkey, nativeBalance: null, enrollment: enrollmentMode });
         }
     });
 
@@ -104,7 +129,10 @@ async function main() {
         }
     });
 
+    const enrollmentUnavailable = { error: 'ASP enrollment is not configured on this relayer.' };
+
     app.get('/v2/asp/leaves', async (_req, res) => {
+        if (!enrollment) return res.status(503).json(enrollmentUnavailable);
         try {
             res.json({ leaves: await enrollment.getLeaves() });
         } catch (err: any) {
@@ -113,6 +141,7 @@ async function main() {
     });
 
     app.post('/v2/enroll', async (req, res) => {
+        if (!enrollment) return res.status(503).json({ success: false, ...enrollmentUnavailable });
         try {
             const result = await enrollment.enroll(req.body?.leaf);
             res.json({ success: true, ...result });
@@ -129,6 +158,16 @@ async function main() {
         } catch (err: any) {
             console.error('V2 relay error:', err);
             res.status(400).json({ success: false, error: err?.message ?? 'Withdrawal relay failed' });
+        }
+    });
+
+    app.post('/v2/transfer', async (req, res) => {
+        try {
+            const hash = await relayer.relayV2Transfer(req.body as V2TransferRequest);
+            res.json({ success: true, hash });
+        } catch (err: any) {
+            console.error('V2 transfer relay error:', err);
+            res.status(400).json({ success: false, error: err?.message ?? 'Transfer relay failed' });
         }
     });
 

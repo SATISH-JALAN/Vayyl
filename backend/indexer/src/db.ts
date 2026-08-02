@@ -61,14 +61,79 @@ export class Database {
         commitmentHash: string,
         leafIndex: number,
         txHash: string,
-        ledgerSeq: number
+        ledgerSeq: number,
+        transfer?: { source: 'transfer'; ephemeralX: string; ephemeralY: string }
     ) {
+        // A commitment with no real leaf index cannot be ordered, and an
+        // unordered commitment corrupts every client's Merkle path. Refuse it
+        // here rather than letting a caller persist a sentinel.
+        if (!Number.isInteger(leafIndex) || leafIndex < 0) {
+            throw new Error(
+                `Refusing to index commitment ${commitmentHash} with leaf_index ${leafIndex}: ` +
+                `leaf indices must be non-negative integers.`
+            );
+        }
         await this.pool.query(
-            `INSERT INTO commitments (pool_address, commitment_hash, leaf_index, tx_hash, ledger_sequence)
-             VALUES ($1, $2, $3, $4, $5)
+            `INSERT INTO commitments
+                 (pool_address, commitment_hash, leaf_index, tx_hash, ledger_sequence,
+                  source, ephemeral_x, ephemeral_y)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
              ON CONFLICT DO NOTHING`,
-            [poolAddress, commitmentHash, leafIndex, txHash, ledgerSeq]
+            [
+                poolAddress, commitmentHash, leafIndex, txHash, ledgerSeq,
+                transfer?.source ?? 'deposit',
+                transfer?.ephemeralX ?? null,
+                transfer?.ephemeralY ?? null,
+            ]
         );
+    }
+
+    /**
+     * Shielded-transfer outputs, oldest first — the recipient's scan feed. Each
+     * row carries the sender's ephemeral point R; a wallet derives the note's
+     * blindness as Poseidon2((spendKey·R).x, 0) and keeps the rows whose
+     * commitment it can reproduce.
+     */
+    async getTransfers(poolAddress: string, sinceLedger = 0): Promise<Array<{
+        commitment: string; leafIndex: number; ephemeralX: string; ephemeralY: string;
+        txHash: string; ledgerSequence: number;
+    }>> {
+        const result = await this.pool.query(
+            `SELECT commitment_hash, leaf_index, ephemeral_x, ephemeral_y, tx_hash, ledger_sequence
+             FROM commitments
+             WHERE pool_address = $1 AND source = 'transfer' AND ledger_sequence >= $2
+             ORDER BY leaf_index ASC`,
+            [poolAddress, sinceLedger]
+        );
+        return result.rows.map(r => ({
+            commitment: r.commitment_hash,
+            leafIndex: r.leaf_index,
+            ephemeralX: r.ephemeral_x,
+            ephemeralY: r.ephemeral_y,
+            txHash: r.tx_hash,
+            ledgerSequence: r.ledger_sequence,
+        }));
+    }
+
+    /**
+     * The leaf set must be gap-free: clients rebuild the Merkle tree from
+     * `getCommitments()` in order, so a missing index silently produces a wrong
+     * root, which surfaces only as an opaque UnknownRoot at submit time.
+     */
+    async assertDense(poolAddress: string): Promise<{ dense: boolean; count: number; maxIndex: number }> {
+        const result = await this.pool.query(
+            'SELECT COUNT(*)::int AS c, COALESCE(MAX(leaf_index), -1)::int AS m FROM commitments WHERE pool_address = $1',
+            [poolAddress]
+        );
+        const { c, m } = result.rows[0];
+        const dense = m + 1 === c;
+        if (!dense) {
+            console.error(
+                `Commitment set for ${poolAddress} is NOT dense: ${c} rows but max leaf_index ${m}. ` +
+                `Merkle roots rebuilt from this data will be wrong.`
+            );
+        }
+        return { dense, count: c, maxIndex: m };
     }
 
     async insertNullifier(

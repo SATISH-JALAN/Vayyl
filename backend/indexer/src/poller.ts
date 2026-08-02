@@ -136,11 +136,39 @@ export class Poller {
                 case 'transfer':
                     await this.db.insertNullifier(this.poolAddress, decoded.nullifier1, txHash, ledgerSeq);
                     await this.db.insertNullifier(this.poolAddress, decoded.nullifier2, txHash, ledgerSeq);
-                    // Transfer commitments have no on-chain leaf index in the event;
-                    // record with -1 (unknown) — refined if/when transfer ships.
-                    await this.db.insertCommitment(this.poolAddress, decoded.commitment1, -1, txHash, ledgerSeq);
-                    await this.db.insertCommitment(this.poolAddress, decoded.commitment2, -1, txHash, ledgerSeq);
-                    console.log(`Transfer: 2 nullifiers spent, 2 commitments added`);
+                    // The V1 transfer event carries NO leaf index, so these
+                    // commitments cannot be placed in the tree. They used to be
+                    // written with -1, which sorted them ahead of every deposit
+                    // in `getCommitments` (ORDER BY leaf_index ASC) and shifted
+                    // every leaf index — silently breaking Merkle-path
+                    // reconstruction, and therefore withdrawals, for ALL users.
+                    // Recording nothing is strictly better than recording a lie:
+                    // V1 transfer is unreachable on a V2 pool, and transfer_v2
+                    // emits the index it needs.
+                    console.error(
+                        `V1 transfer at ${txHash}: commitments ${decoded.commitment1.slice(0, 12)}…/` +
+                        `${decoded.commitment2.slice(0, 12)}… carry no leaf index and were NOT indexed. ` +
+                        `Merkle paths for this pool are incomplete.`,
+                    );
+                    break;
+                case 'transferV2':
+                    await this.db.insertNullifier(this.poolAddress, decoded.nullifier, txHash, ledgerSeq);
+                    await this.db.insertCommitment(
+                        this.poolAddress,
+                        decoded.commitment,
+                        decoded.leafIndex,
+                        txHash,
+                        ledgerSeq,
+                        {
+                            source: 'transfer',
+                            ephemeralX: decoded.ephemeralX,
+                            ephemeralY: decoded.ephemeralY,
+                        },
+                    );
+                    console.log(
+                        `TransferV2: nullifier=${decoded.nullifier.slice(0, 12)}… ` +
+                        `commitment=${decoded.commitment.slice(0, 12)}… leaf=${decoded.leafIndex}`,
+                    );
                     break;
                 case 'PositionOpen':
                     await this.db.insertPosition(decoded.positionId, decoded.owner, decoded.commitment, decoded.direction, decoded.size);

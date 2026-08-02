@@ -1,3 +1,12 @@
+# Which V2 circuits to build. Pass a subset to add a circuit WITHOUT touching the
+# others: each build runs a fresh phase-2 contribution, so rebuilding a circuit
+# whose VK is already registered on-chain silently invalidates every proof the
+# deployed verifier will accept. To add transfer_v2 to a live stack:
+#     .\scripts\build_vault_v2.ps1 -Circuits transfer_v2
+param(
+    [string[]]$Circuits = @("deposit_v2", "withdraw_v2", "transfer_v2")
+)
+
 $ErrorActionPreference = "Stop"
 
 $circuitsRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
@@ -46,7 +55,7 @@ try {
         Remove-Item -LiteralPath $ptau0, $ptau1 -Force
     }
 
-    foreach ($circuit in @("deposit_v2", "withdraw_v2")) {
+    foreach ($circuit in $Circuits) {
         Invoke-Checked {
             circom "$circuit.circom" --r1cs --wasm --sym -o $buildRoot `
                 -l (Join-Path $circuitsRoot "node_modules")

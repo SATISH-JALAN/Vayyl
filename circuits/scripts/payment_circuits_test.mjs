@@ -375,5 +375,111 @@ compile('transfer', resolve(CIRCUITS, 'transfer.circom'));
   });
 }
 
+// ---------- TRANSFER V2 (1-in / 1-out, fixed denomination) ----------
+// Spends one 1-XLM note and creates one 1-XLM note for the recipient. Amounts
+// are circuit constants, so there is no balance equation to attack — the
+// interesting surface is the spend side, the recipient key, and the ephemeral
+// point that carries recipient discovery.
+{
+  compile('transfer_v2', resolve(CIRCUITS, 'transfer_v2.circom'));
+  compile('hash2', resolve(CIRCUITS, 'test', 'hash2.circom'));
+  const h2 = async (a, b) => {
+    const wc = await compiled.get('hash2').wcPromise;
+    const w = await wc.calculateWitness({ in: [a.toString(), b.toString()] }, false);
+    return BigInt(w[1]);
+  };
+  const derive = (privKey, amount, blindness) =>
+    namedOutputs('test_note', {
+      privKey: privKey.toString(),
+      amount: amount.toString(),
+      blindness: blindness.toString(),
+    }, ['pubX', 'pubY', 'commitment', 'nullifier']);
+
+  const AMOUNT = 10000000n;         // the V2 denomination, hard-coded in the circuit
+  const SUBORDER =
+    2736030358979909402780800718157159386076813972158567259200215660948447373041n;
+
+  // Input note sits at index 0 of an otherwise-empty tree: climb the zero ladder.
+  const zeros = [0n];
+  for (let l = 1; l <= DEPTH; l++) zeros[l] = await h2(zeros[l - 1], zeros[l - 1]);
+  const IN = { privKey: 444n, blindness: 333n };
+  const input = await derive(IN.privKey, AMOUNT, IN.blindness);
+  let root = input.commitment;
+  for (let l = 0; l < DEPTH; l++) root = await h2(root, zeros[l]);
+
+  // Note() derives a public key by scalar-multiplying the base point, so the
+  // oracle doubles as a way to produce genuine curve points: the recipient's
+  // key and the sender's ephemeral R = r·G are both just pubkeys of a scalar.
+  const RECIPIENT_SK = 999n;
+  const recipient = await derive(RECIPIENT_SK, AMOUNT, 1n);
+  const EPHEMERAL_R = 12345n;
+  const ephemeral = await derive(EPHEMERAL_R, AMOUNT, 1n);
+
+  // The circuit does not verify that blindness_out came from ECDH — see the
+  // header of transfer_v2.circom — so any field element is a valid witness here.
+  const BLINDNESS_OUT = 24680n;
+  const outCommitment = (await namedOutputs('oracle_note', {
+    amount: AMOUNT.toString(),
+    pubX: recipient.pubX.toString(),
+    pubY: recipient.pubY.toString(),
+    blindness: BLINDNESS_OUT.toString(),
+    privKey: RECIPIENT_SK.toString(),
+    pathElements: PATH_ELEMENTS.map(String),
+    pathIndices: PATH_INDICES.map(String),
+    asp_pathElements: ASP_PATH_ELEMENTS.map(String),
+    asp_pathIndices: ASP_PATH_INDICES.map(String),
+  }, ['commitment'])).commitment;
+
+  const base = {
+    root: root.toString(),
+    nullifier: input.nullifier.toString(),
+    commitment_out: outCommitment.toString(),
+    ephemeral_x: ephemeral.pubX.toString(),
+    ephemeral_y: ephemeral.pubY.toString(),
+    privKey: IN.privKey.toString(),
+    blindness_in: IN.blindness.toString(),
+    pathElements: zeros.slice(0, DEPTH).map(String),
+    pathIndices: range(DEPTH, () => 0n).map(String),
+    out_pubX: recipient.pubX.toString(),
+    out_pubY: recipient.pubY.toString(),
+    blindness_out: BLINDNESS_OUT.toString(),
+  };
+
+  await expectPass('transfer v2 · valid 1-in/1-out', 'transfer_v2', base);
+
+  await expectFail('transfer v2 · wrong nullifier', 'transfer_v2',
+    { ...base, nullifier: (input.nullifier + 1n).toString() });
+  await expectFail('transfer v2 · wrong root', 'transfer_v2',
+    { ...base, root: (root + 1n).toString() });
+  await expectFail('transfer v2 · wrong output commitment', 'transfer_v2',
+    { ...base, commitment_out: (outCommitment + 1n).toString() });
+  await expectFail('transfer v2 · wrong secret key', 'transfer_v2',
+    { ...base, privKey: (IN.privKey + 1n).toString() });
+
+  // F1 regression: privKey and privKey + l derive the same public key, hence the
+  // same commitment and leaf, but a different nullifier. Must not be provable.
+  await expectFail('transfer v2 · non-canonical privKey (k + l)', 'transfer_v2',
+    { ...base, privKey: (IN.privKey + SUBORDER).toString() });
+  await expectFail('transfer v2 · zero privKey', 'transfer_v2',
+    { ...base, privKey: '0' });
+
+  // A recipient key off the curve yields a commitment nobody can ever open —
+  // BabyCheck turns that silent burn into a failed proof.
+  await expectFail('transfer v2 · recipient pubkey off-curve', 'transfer_v2',
+    { ...base, out_pubX: (recipient.pubX + 1n).toString() });
+  await expectFail('transfer v2 · ephemeral point off-curve', 'transfer_v2',
+    { ...base, ephemeral_x: (ephemeral.pubX + 1n).toString() });
+
+  // Substituting a DIFFERENT well-formed ephemeral point is expected to satisfy
+  // the constraints: the circuit never ties R to blindness_out. Tamper-evidence
+  // comes from R being a public input, so any substitution changes the Groth16
+  // statement and fails verification on-chain. This case pins that boundary so
+  // nobody later mistakes the circuit for proving ECDH agreement.
+  const otherEph = await derive(EPHEMERAL_R + 1n, AMOUNT, 1n);
+  await expectPass('transfer v2 · different valid R satisfies the circuit (bound by proof, not constraints)',
+    'transfer_v2',
+    { ...base, ephemeral_x: otherEph.pubX.toString(), ephemeral_y: otherEph.pubY.toString() });
+}
+
 console.log(`\n${failures === 0 ? '✅ all cases behaved as expected' : `❌ ${failures} regression(s)`}`);
 process.exit(failures === 0 ? 0 : 1);

@@ -12,6 +12,11 @@
 import * as snarkjs from 'snarkjs';
 import { computeCommitment, computeNullifier, poseidon2Hash2, poseidon2Hash4 } from './poseidon';
 import { buildMerklePath, zeroHashes, TREE_DEPTH } from './merkle';
+import {
+  deriveOutgoingNote,
+  scanForIncomingNotes,
+  type IndexedTransfer,
+} from './transfer';
 import buildWitnessCalculator from './witness_calculator.js';
 
 const V2_AMOUNT = '10000000';
@@ -114,6 +119,23 @@ interface V2WithdrawPayload {
   leaves: string[];
 }
 
+interface V2TransferPayload {
+  privKey: string;
+  blindness: string;
+  commitment: string;
+  leafIndex: number;
+  leaves: string[];
+  recipientPubX: string;
+  recipientPubY: string;
+}
+
+interface V2ScanPayload {
+  spendKey: string;
+  pubX: string;
+  pubY: string;
+  transfers: IndexedTransfer[];
+}
+
 self.onmessage = async (e: MessageEvent) => {
   const { type, payload, id } = e.data;
   try {
@@ -169,6 +191,56 @@ self.onmessage = async (e: MessageEvent) => {
           input, '/circuits/v2/withdraw_v2.wasm', '/circuits/v2/withdraw_v2_final.zkey',
         );
         result = { proof, publicSignals, nullifier: note.nullifier, root: path.root.toString() };
+        break;
+      }
+
+      case 'PROVE_TRANSFER_V2': {
+        const p = payload as V2TransferPayload;
+        const note = await deriveV2Note(p.privKey, p.blindness);
+        if (note.commitment !== p.commitment) throw new Error('The local note does not belong to this workspace.');
+
+        // The ephemeral scalar is drawn INSIDE the worker and never returned.
+        // Keeping it would create a way to later prove who sent this payment.
+        const out = await deriveOutgoingNote([BigInt(p.recipientPubX), BigInt(p.recipientPubY)]);
+
+        const leaves = p.leaves.map(BigInt);
+        const path = await buildMerklePath(leaves, p.leafIndex);
+        const input = {
+          root: path.root.toString(),
+          nullifier: note.nullifier,
+          commitment_out: out.commitment.toString(),
+          ephemeral_x: out.ephemeralX.toString(),
+          ephemeral_y: out.ephemeralY.toString(),
+          privKey: p.privKey,
+          blindness_in: p.blindness,
+          pathElements: path.pathElements.map(String),
+          pathIndices: path.pathIndices.map(String),
+          out_pubX: p.recipientPubX,
+          out_pubY: p.recipientPubY,
+          blindness_out: out.blindness.toString(),
+        };
+        const { proof, publicSignals } = await snarkjs.groth16.fullProve(
+          input, '/circuits/v2/transfer_v2.wasm', '/circuits/v2/transfer_v2_final.zkey',
+        );
+        result = {
+          proof,
+          publicSignals,
+          nullifier: note.nullifier,
+          root: path.root.toString(),
+          commitment: out.commitment.toString(),
+          ephemeralX: out.ephemeralX.toString(),
+          ephemeralY: out.ephemeralY.toString(),
+        };
+        break;
+      }
+
+      case 'SCAN_TRANSFERS_V2': {
+        const p = payload as V2ScanPayload;
+        result = {
+          notes: await scanForIncomingNotes(
+            BigInt(p.spendKey), BigInt(p.pubX), BigInt(p.pubY), p.transfers,
+          ),
+        };
         break;
       }
 

@@ -1,3 +1,4 @@
+import { readFile, writeFile } from 'node:fs/promises';
 import pg from 'pg';
 import * as StellarSdk from '@stellar/stellar-sdk';
 
@@ -25,7 +26,81 @@ export function normalizeAspLeaf(value: unknown): string {
     return leaf.toString();
 }
 
-class AspLeafStore {
+/**
+ * Mirror of the on-chain ASP membership tree. It exists so the browser can
+ * rebuild its ASP Merkle path locally; the contract remains the authority on
+ * membership. Two implementations, because only enrollment needs durable
+ * storage — relaying and withdrawal never touch it, and requiring Postgres to
+ * serve those was blocking the whole service from starting.
+ */
+export interface AspLeafStore {
+    init(): Promise<void>;
+    getIndex(leaf: string): Promise<number | null>;
+    getLeaves(): Promise<string[]>;
+    count(): Promise<number>;
+    upsert(index: number, leaf: string, txHash: string | null): Promise<void>;
+}
+
+/**
+ * JSON-file store for deployments without Postgres.
+ *
+ * Durability matters here and is not optional: the membership contract exposes
+ * `get_leaf_index`/`is_member` but no way to ENUMERATE leaves, so a lost list
+ * cannot be rebuilt from chain. A purely in-memory store would drop every
+ * post-boot enrollment on restart, and those users' deposits would then fail
+ * with an ASP root mismatch they could do nothing about.
+ */
+class FileAspLeafStore implements AspLeafStore {
+    private readonly path: string;
+    private leaves = new Map<number, { leaf: string; txHash: string | null }>();
+
+    constructor(path: string) {
+        this.path = path;
+    }
+
+    async init(): Promise<void> {
+        try {
+            const raw = await readFile(this.path, 'utf8');
+            for (const row of JSON.parse(raw) as Array<{ index: number; leaf: string; txHash: string | null }>) {
+                this.leaves.set(row.index, { leaf: row.leaf, txHash: row.txHash ?? null });
+            }
+        } catch (err: any) {
+            if (err?.code !== 'ENOENT') throw err;
+        }
+        for (const [index, leaf] of INITIAL_ASP_LEAVES.entries()) {
+            if (!this.leaves.has(index)) this.leaves.set(index, { leaf, txHash: null });
+        }
+        await this.flush();
+    }
+
+    private async flush(): Promise<void> {
+        const rows = [...this.leaves.entries()]
+            .sort((a, b) => a[0] - b[0])
+            .map(([index, v]) => ({ index, leaf: v.leaf, txHash: v.txHash }));
+        await writeFile(this.path, JSON.stringify(rows, null, 2), 'utf8');
+    }
+
+    async getIndex(leaf: string): Promise<number | null> {
+        for (const [index, v] of this.leaves) if (v.leaf === leaf) return index;
+        return null;
+    }
+
+    async getLeaves(): Promise<string[]> {
+        return [...this.leaves.entries()].sort((a, b) => a[0] - b[0]).map(([, v]) => v.leaf);
+    }
+
+    async count(): Promise<number> {
+        return this.leaves.size;
+    }
+
+    async upsert(index: number, leaf: string, txHash: string | null): Promise<void> {
+        const existing = this.leaves.get(index);
+        this.leaves.set(index, { leaf, txHash: txHash ?? existing?.txHash ?? null });
+        await this.flush();
+    }
+}
+
+class PostgresAspLeafStore implements AspLeafStore {
     private readonly pool: pg.Pool;
 
     constructor(connectionString: string) {
@@ -100,16 +175,24 @@ export class AspEnrollmentService {
         networkPassphrase: string;
         adminSecret: string;
         membershipId: string;
-        databaseUrl: string;
+        /** Postgres when available; otherwise the leaf list is file-backed. */
+        databaseUrl?: string;
+        leafStorePath?: string;
         maxEnrollments?: number;
     }) {
         this.server = new StellarSdk.rpc.Server(options.rpcUrl);
         this.admin = StellarSdk.Keypair.fromSecret(options.adminSecret);
         this.membership = new StellarSdk.Contract(options.membershipId);
         this.networkPassphrase = options.networkPassphrase;
-        this.store = new AspLeafStore(options.databaseUrl);
+        this.store = options.databaseUrl
+            ? new PostgresAspLeafStore(options.databaseUrl)
+            : new FileAspLeafStore(options.leafStorePath ?? './asp-leaves.json');
+        this.backend = options.databaseUrl ? 'postgres' : 'file';
         this.maxEnrollments = options.maxEnrollments ?? 128;
     }
+
+    /** Which store is in use — reported on /health so the mode is never a guess. */
+    readonly backend: 'postgres' | 'file';
 
     async init(): Promise<void> {
         await this.store.init();
