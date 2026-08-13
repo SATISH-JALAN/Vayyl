@@ -28,8 +28,12 @@ import { NETWORK_PASSPHRASE } from './network';
 // ---- config (env-overridable) ----------------------------------------------
 
 export const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || 'https://soroban-testnet.stellar.org';
-export const INDEXER_URL = process.env.NEXT_PUBLIC_INDEXER_URL || 'https://vault-v2-indexer-production.up.railway.app';
-export const RELAYER_URL = process.env.NEXT_PUBLIC_RELAYER_URL || 'https://vault-v2-relayer-production.up.railway.app';
+// Default to the local services. The former Railway deployments are gone (DNS no
+// longer resolves), and defaulting to a dead host fails as an opaque network
+// error at scan/relay time rather than at startup. Set the env vars to point at
+// hosted services once they exist; see frontend/.env.testnet.
+export const INDEXER_URL = process.env.NEXT_PUBLIC_INDEXER_URL || 'http://localhost:3001';
+export const RELAYER_URL = process.env.NEXT_PUBLIC_RELAYER_URL || 'http://localhost:3002';
 export const HORIZON_URL = process.env.NEXT_PUBLIC_HORIZON_URL || 'https://horizon-testnet.stellar.org';
 export const V2_POOL_ID = process.env.NEXT_PUBLIC_POOL_XLM || 'CB6XFHGN4DMVEQRESJHPOUNYLUCGMOZTAIKTWH3I7KT3NVW2XY4NIOLC';
 export const V2_VERIFIER_ID = process.env.NEXT_PUBLIC_VERIFIER || 'CBRMDGEMQERFTG3MCBHYPHMZPKVMDYFGHJAMREQW23ZDKVAMAFDRJ2J5';

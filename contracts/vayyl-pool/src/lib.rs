@@ -63,6 +63,23 @@ pub struct Withdraw {
     pub amount: i128,
 }
 
+/// V2 public exit. Unlike `Withdraw`, this event carries the `commitment` as
+/// well as the nullifier, and that is the entire point: rage-quit trades privacy
+/// for liquidity, so the link between the original deposit and the payout
+/// address is published on purpose. An observer can join this to the `Deposit`
+/// event bearing the same commitment and see the full path in and out.
+///
+/// Pinned topic string because the indexer routes on it and the SDK default is
+/// `to_snake_case(StructName)`.
+#[contractevent(topics = ["ragequit_v2"])]
+pub struct RageQuit {
+    #[topic]
+    pub nullifier: BytesN<32>,
+    pub commitment: BytesN<32>,
+    pub recipient: Address,
+    pub amount: i128,
+}
+
 /// D1: settlement event — topic `authority` (the settlement contract that drove
 /// it); data carries how many output commitments were inserted and the public
 /// payout amount (0 for a pure re-shield). Lets the indexer / client note-scan
@@ -176,6 +193,10 @@ pub enum Error {
     NullifierBlocked = 10,
     WrongPoolMode = 11,
     CommitmentAlreadyExists = 12,
+    /// `ragequit_v2` was given a commitment this pool never accepted. Rage-quit
+    /// checks inclusion by key lookup rather than by Merkle proof, so an unknown
+    /// commitment is rejected here instead of failing proof verification.
+    UnknownCommitment = 13,
 }
 
 #[contract]
@@ -1009,6 +1030,98 @@ impl VayylPool {
         );
         Withdraw {
             nullifier,
+            recipient,
+            amount: denomination,
+        }
+        .publish(&env);
+        Ok(())
+    }
+
+    /// V2 rage-quit: the public, unconditional exit from the shielded pool.
+    ///
+    /// **Why this exists.** `withdraw_v2` and `transfer_v2` both call
+    /// `assert_nullifier_not_blocked`, so once a note's nullifier is on the ASP
+    /// blocklist that note can never be spent by either path. With no other
+    /// route out, the pool would hold funds that *nobody* — not the owner, not
+    /// the admin, not the ASP — could ever release. That is confiscation by
+    /// omission, and it is a far worse failure than the one the blocklist is
+    /// there to prevent.
+    ///
+    /// **Why it does not consult the blocklist.** Deliberate, and the whole
+    /// point. The blocklist's job is to deny an *anonymous* exit, not to seize
+    /// funds. Rage-quit reveals `commitment` publicly, which names the exact
+    /// deposit being spent and links it to `recipient` on the ledger forever, so
+    /// a blocked actor who uses it forfeits the privacy that made the pool worth
+    /// abusing. The compliance property is preserved — arguably strengthened,
+    /// since the exit is now traceable — while the confiscation risk is removed.
+    /// Gating this on the blocklist would restore the trap and make the entire
+    /// entrypoint pointless.
+    ///
+    /// **Why no Merkle proof.** There is nothing to hide, and the pool already
+    /// records every accepted commitment under `DataKey::Commitment`. A direct
+    /// key lookup proves inclusion more cheaply than re-verifying a path.
+    ///
+    /// Not `require_auth`'d: the proof is bound to `recipient` through
+    /// `exit_binding`, so possession of the proof is the authorization and a
+    /// relayer can submit it on behalf of someone with no funded account. The
+    /// nullifier is the same one `withdraw_v2` would spend, so a note can still
+    /// only ever be spent once, by whichever path it takes.
+    pub fn ragequit_v2(
+        env: Env,
+        proof: Groth16Proof,
+        commitment: BytesN<32>,
+        nullifier: BytesN<32>,
+        recipient: Address,
+    ) -> Result<(), Error> {
+        let denomination = Self::v2_denomination(&env)?;
+
+        // Inclusion by lookup: this pool must actually hold the commitment.
+        // Without it, a valid proof over a commitment from some *other* pool
+        // would drain this one.
+        let commitment_key = DataKey::Commitment(commitment.clone());
+        if !env.storage().persistent().has(&commitment_key) {
+            return Err(Error::UnknownCommitment);
+        }
+        env.storage().persistent().extend_ttl(
+            &commitment_key,
+            PERSISTENT_TTL_THRESHOLD,
+            PERSISTENT_TTL_EXTEND,
+        );
+
+        // No blocklist check here — see the rationale above. Double-spend
+        // protection is unchanged and still absolute.
+        Self::mark_nullifier(&env, nullifier.clone())?;
+
+        let binding = Self::compute_withdraw_binding(&env, &recipient, denomination);
+        let verifier: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Verifier)
+            .ok_or(Error::NotInitialized)?;
+        let public_inputs =
+            Vec::from_array(&env, [commitment.clone(), nullifier.clone(), binding]);
+        if !Groth16VerifierClient::new(&env, &verifier).verify(
+            &CircuitId::RageQuit,
+            &proof,
+            &public_inputs,
+        ) {
+            return Err(Error::InvalidProof);
+        }
+
+        let asset: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Asset)
+            .ok_or(Error::NotInitialized)?;
+        token::Client::new(&env, &asset).transfer(
+            &env.current_contract_address(),
+            &recipient,
+            &denomination,
+        );
+
+        RageQuit {
+            nullifier,
+            commitment,
             recipient,
             amount: denomination,
         }

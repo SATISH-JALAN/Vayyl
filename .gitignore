@@ -110,3 +110,8 @@ yarn.lock
 *.7z
 *.zip
 *.tar.gz
+
+# Relayer ASP leaf mirror: local service state, rebuilt per deployment.
+# Not secret (leaves are public on-chain), but it must never be shared between
+# stacks - a mirror from another deployment breaks every deposit.
+backend/relayer/asp-leaves.json

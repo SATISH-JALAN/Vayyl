@@ -18,6 +18,10 @@ pub enum CircuitId {
     AspMembership,
     AspNonMembership,
     SealedOrder,
+    /// V2 public exit (`ragequit_v2.circom`). APPEND-ONLY: this enum's order is
+    /// the numeric circuit ID used when registering verification keys on-chain,
+    /// so inserting above this line silently repoints every later VK.
+    RageQuit,
 }
 
 /// Verification key components for Groth16/BN254

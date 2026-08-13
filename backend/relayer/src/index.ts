@@ -37,7 +37,7 @@ async function main() {
 
     const relayer = new RelayerService(RPC_URL, RELAYER_SECRET, NETWORK_PASSPHRASE, ALLOWED_POOLS);
 
-    const enrollment = (ASP_ADMIN_SECRET && ASP_MEMBERSHIP_ID)
+    let enrollment = (ASP_ADMIN_SECRET && ASP_MEMBERSHIP_ID)
         ? new AspEnrollmentService({
             rpcUrl: RPC_URL,
             networkPassphrase: NETWORK_PASSPHRASE,
@@ -51,7 +51,23 @@ async function main() {
 
     if (enrollment) {
         await enrollment.init();
-        console.log(`ASP enrollment enabled (${enrollment.backend}-backed leaf store)`);
+        // Serving an ASP path that disagrees with the chain is worse than
+        // serving none: the client builds a root the pool rejects, and the
+        // deposit fails with an error that never mentions enrollment. Refuse
+        // to enrol on drift, but keep relaying up — /relay, /v2/withdraw and
+        // /v2/transfer never touch the ASP tree.
+        const consistency = await enrollment.verifyAgainstChain();
+        if (!consistency.ok) {
+            console.error(
+                `ASP enrollment DISABLED: local leaf mirror disagrees with the membership ` +
+                `contract (${consistency.reason}). Deposits would be rejected on an ASP-root ` +
+                `mismatch. Re-seed INITIAL_ASP_LEAVES from the live tree, or clear the leaf ` +
+                `store, before enabling enrollment.`,
+            );
+            enrollment = null;
+        } else {
+            console.log(`ASP enrollment enabled (${enrollment.backend}-backed leaf store)`);
+        }
     } else {
         console.warn(
             'ASP enrollment DISABLED: set ASP_ADMIN_SECRET and ASP_MEMBERSHIP_ID to enable it. ' +

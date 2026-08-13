@@ -481,5 +481,69 @@ compile('transfer', resolve(CIRCUITS, 'transfer.circom'));
     { ...base, ephemeral_x: otherEph.pubX.toString(), ephemeral_y: otherEph.pubY.toString() });
 }
 
+
+// ---------- RAGE-QUIT V2 (public exit) ----------
+// The escape hatch for a note whose nullifier is on the ASP blocklist. There is
+// no Merkle path and no privacy: `commitment` is public, so the proof's only job
+// is to show the caller can open that exact commitment and that the nullifier is
+// the one bound to it. The attacks worth pinning are therefore substitution
+// attacks - opening someone else's commitment, or exiting with a nullifier that
+// does not match the note being spent (which would leave it double-spendable).
+{
+  compile('ragequit_v2', resolve(CIRCUITS, 'ragequit_v2.circom'));
+  const derive = (privKey, amount, blindness) =>
+    namedOutputs('test_note', {
+      privKey: privKey.toString(),
+      amount: amount.toString(),
+      blindness: blindness.toString(),
+    }, ['pubX', 'pubY', 'commitment', 'nullifier']);
+
+  const AMOUNT = 10000000n;
+  const SUBORDER =
+    2736030358979909402780800718157159386076813972158567259200215660948447373041n;
+
+  const OWNER = { privKey: 4242n, blindness: 1337n };
+  const note = await derive(OWNER.privKey, AMOUNT, OWNER.blindness);
+  const base = {
+    commitment: note.commitment.toString(),
+    nullifier: note.nullifier.toString(),
+    exit_binding: '55555',
+    privKey: OWNER.privKey.toString(),
+    blindness: OWNER.blindness.toString(),
+  };
+
+  await expectPass('ragequit v2 - owner opens their own commitment', 'ragequit_v2', base);
+
+  // The whole security of the exit: you may only exit a commitment you can open.
+  const stranger = await derive(777n, AMOUNT, 888n);
+  await expectFail('ragequit v2 - exiting another party commitment', 'ragequit_v2',
+    { ...base, commitment: stranger.commitment.toString() });
+  await expectFail('ragequit v2 - wrong privKey for this commitment', 'ragequit_v2',
+    { ...base, privKey: (OWNER.privKey + 1n).toString() });
+  await expectFail('ragequit v2 - wrong blindness for this commitment', 'ragequit_v2',
+    { ...base, blindness: (OWNER.blindness + 1n).toString() });
+
+  // A mismatched nullifier would let the same note be exited AND later spent
+  // through withdraw_v2, since the pool only ever marks the nullifier it is given.
+  await expectFail('ragequit v2 - nullifier not bound to this commitment', 'ragequit_v2',
+    { ...base, nullifier: stranger.nullifier.toString() });
+  await expectFail('ragequit v2 - nullifier off by one', 'ragequit_v2',
+    { ...base, nullifier: (note.nullifier + 1n).toString() });
+
+  // Same subgroup discipline as every other Note()-based circuit: a
+  // non-canonical key must not yield a second valid witness for one note.
+  await expectFail('ragequit v2 - non-canonical privKey (k + l)', 'ragequit_v2',
+    { ...base, privKey: (OWNER.privKey + SUBORDER).toString() });
+  await expectFail('ragequit v2 - zero privKey', 'ragequit_v2',
+    { ...base, privKey: '0' });
+
+  // exit_binding is unconstrained inside the circuit by design - it is bound by
+  // being a PUBLIC input, exactly like withdraw_v2's withdraw_binding. Any value
+  // satisfies the constraints; tampering changes the Groth16 statement and fails
+  // verification on-chain. Pinned so nobody mistakes it for a checked field.
+  await expectPass('ragequit v2 - any exit_binding satisfies the constraints (bound by proof, not constraints)',
+    'ragequit_v2', { ...base, exit_binding: '99999' });
+}
+
 console.log(`\n${failures === 0 ? '✅ all cases behaved as expected' : `❌ ${failures} regression(s)`}`);
 process.exit(failures === 0 ? 0 : 1);

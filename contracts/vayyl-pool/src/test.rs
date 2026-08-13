@@ -1003,3 +1003,199 @@ fn test_pull_public_deposit_moves_tokens_from_depositor() {
     assert_eq!(balance(&f, &depositor), 1_200);
     assert_eq!(balance(&f, &f.pool.address), 800);
 }
+
+// ---- Rage-quit: the public exit -----------------------------------------
+//
+// These pin the reason the entrypoint exists. Without it, a blocked nullifier
+// is a permanent confiscation: `withdraw_v2` and `transfer_v2` both refuse it,
+// and no other path releases the funds. The first test establishes that trap is
+// real; the second proves rage-quit is the way out of it.
+
+/// Deposit one V2 note and return (commitment, nullifier).
+fn v2_deposited_note(f: &Fixture, seed: u8) -> (BytesN<32>, BytesN<32>) {
+    let depositor = Address::generate(&f.env);
+    fund(f, &depositor, V2_DENOMINATION);
+    let note = commitment(&f.env, seed);
+    f.pool
+        .deposit_v2(&depositor, &dummy_proof(&f.env), &note, &f.asp_root());
+    (note, commitment(&f.env, seed.wrapping_add(1)))
+}
+
+#[test]
+fn test_blocked_nullifier_is_trapped_without_ragequit() {
+    let (f, nm) = setup_v2_with_blocklist();
+    let (_note, nullifier) = v2_deposited_note(&f, 0x40);
+    let recipient = Address::generate(&f.env);
+    let root = f.pool.get_root();
+    nm.block_leaf(&nullifier);
+
+    // Both shielded spend paths refuse it, so the funds have no route out.
+    assert_eq!(
+        f.pool
+            .try_withdraw_v2(&dummy_proof(&f.env), &nullifier, &recipient, &root),
+        Err(Ok(Error::NullifierBlocked))
+    );
+    assert_eq!(
+        f.pool.try_transfer_v2(
+            &dummy_proof(&f.env),
+            &nullifier,
+            &commitment(&f.env, 0x4F),
+            &commitment(&f.env, 0x4E),
+            &commitment(&f.env, 0x4D),
+            &root,
+        ),
+        Err(Ok(Error::NullifierBlocked))
+    );
+    assert_eq!(balance(&f, &f.pool.address), V2_DENOMINATION);
+}
+
+#[test]
+fn test_ragequit_releases_a_blocked_note() {
+    let (f, nm) = setup_v2_with_blocklist();
+    let (note, nullifier) = v2_deposited_note(&f, 0x50);
+    let recipient = Address::generate(&f.env);
+    nm.block_leaf(&nullifier);
+
+    // The blocklist deliberately does NOT gate this path — denying an anonymous
+    // exit is its job; seizing funds is not.
+    f.pool
+        .ragequit_v2(&dummy_proof(&f.env), &note, &nullifier, &recipient);
+
+    assert_eq!(balance(&f, &recipient), V2_DENOMINATION);
+    assert_eq!(balance(&f, &f.pool.address), 0);
+
+    // Public statement is [commitment, nullifier, recipient-binding]: the
+    // commitment is public precisely so the exit is linkable.
+    let inputs = f.verifier.public_inputs();
+    assert_eq!(inputs.len(), 3);
+    assert_eq!(inputs.get(0).unwrap(), note);
+    assert_eq!(inputs.get(1).unwrap(), nullifier);
+}
+
+#[test]
+fn test_ragequit_rejects_commitment_this_pool_never_accepted() {
+    let f = setup_v2();
+    let recipient = Address::generate(&f.env);
+    // Fund the pool so a successful drain would actually be possible — this must
+    // fail on the inclusion check, not for want of a balance.
+    let (_note, _n) = v2_deposited_note(&f, 0x60);
+
+    let foreign = commitment(&f.env, 0xF0);
+    let res = f.pool.try_ragequit_v2(
+        &dummy_proof(&f.env),
+        &foreign,
+        &commitment(&f.env, 0xF1),
+        &recipient,
+    );
+    assert_eq!(res, Err(Ok(Error::UnknownCommitment)));
+    assert_eq!(balance(&f, &recipient), 0);
+    assert_eq!(balance(&f, &f.pool.address), V2_DENOMINATION);
+}
+
+#[test]
+fn test_ragequit_cannot_be_replayed() {
+    let f = setup_v2();
+    let (note, nullifier) = v2_deposited_note(&f, 0x70);
+    let recipient = Address::generate(&f.env);
+
+    f.pool
+        .ragequit_v2(&dummy_proof(&f.env), &note, &nullifier, &recipient);
+    let replay = f
+        .pool
+        .try_ragequit_v2(&dummy_proof(&f.env), &note, &nullifier, &recipient);
+
+    assert_eq!(replay, Err(Ok(Error::NullifierAlreadyUsed)));
+    assert_eq!(balance(&f, &recipient), V2_DENOMINATION);
+}
+
+#[test]
+fn test_ragequit_and_withdraw_share_one_nullifier() {
+    // The escape hatch must not become a second spend. Both paths consume the
+    // same nullifier, so a note is spendable exactly once whichever route it
+    // takes — in either order.
+    let f = setup_v2();
+    let (note, nullifier) = v2_deposited_note(&f, 0x80);
+    let recipient = Address::generate(&f.env);
+    let root = f.pool.get_root();
+
+    f.pool
+        .ragequit_v2(&dummy_proof(&f.env), &note, &nullifier, &recipient);
+    assert_eq!(
+        f.pool
+            .try_withdraw_v2(&dummy_proof(&f.env), &nullifier, &recipient, &root),
+        Err(Ok(Error::NullifierAlreadyUsed))
+    );
+
+    let g = setup_v2();
+    let (note2, nullifier2) = v2_deposited_note(&g, 0x90);
+    let recipient2 = Address::generate(&g.env);
+    let root2 = g.pool.get_root();
+    g.pool
+        .withdraw_v2(&dummy_proof(&g.env), &nullifier2, &recipient2, &root2);
+    assert_eq!(
+        g.pool
+            .try_ragequit_v2(&dummy_proof(&g.env), &note2, &nullifier2, &recipient2),
+        Err(Ok(Error::NullifierAlreadyUsed))
+    );
+}
+
+#[test]
+fn test_ragequit_invalid_proof_moves_no_tokens() {
+    let f = setup_v2();
+    let (note, nullifier) = v2_deposited_note(&f, 0xA0);
+    let recipient = Address::generate(&f.env);
+    f.verifier.set_result(&false);
+
+    let res = f
+        .pool
+        .try_ragequit_v2(&dummy_proof(&f.env), &note, &nullifier, &recipient);
+
+    assert_eq!(res, Err(Ok(Error::InvalidProof)));
+    assert_eq!(balance(&f, &recipient), 0);
+    assert_eq!(balance(&f, &f.pool.address), V2_DENOMINATION);
+}
+
+#[test]
+fn test_ragequit_event_publishes_the_commitment() {
+    // Traceability is the price of the exit: the event must carry the
+    // commitment so an observer can join it to the original Deposit.
+    let f = setup_v2();
+    let (note, nullifier) = v2_deposited_note(&f, 0xB0);
+    let recipient = Address::generate(&f.env);
+
+    f.pool
+        .ragequit_v2(&dummy_proof(&f.env), &note, &nullifier, &recipient);
+
+    // `events().all()` reports the most recent invocation only, so the deposit
+    // that created this note is already out of scope — the rage-quit is the
+    // single pool event expected here.
+    let ragequit_data: Map<Symbol, Val> = Map::from_array(
+        &f.env,
+        [
+            (
+                Symbol::new(&f.env, "commitment"),
+                note.clone().into_val(&f.env),
+            ),
+            (
+                Symbol::new(&f.env, "recipient"),
+                recipient.clone().into_val(&f.env),
+            ),
+            (
+                Symbol::new(&f.env, "amount"),
+                V2_DENOMINATION.into_val(&f.env),
+            ),
+        ],
+    );
+    let expected = soroban_sdk::vec![
+        &f.env,
+        (
+            f.pool.address.clone(),
+            (Symbol::new(&f.env, "ragequit_v2"), nullifier.clone()).into_val(&f.env),
+            ragequit_data.into_val(&f.env),
+        ),
+    ];
+    assert_eq!(
+        f.env.events().all().filter_by_contract(&f.pool.address),
+        expected
+    );
+}

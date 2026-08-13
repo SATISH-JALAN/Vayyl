@@ -1,0 +1,1175 @@
+# Vayyl on-chain transaction audit
+# Generated 2026-08-12 from Horizon (mainnet + testnet) and stellar.expert
+
+
+############################################################################################
+# MAINNET deployer / only user  [MAINNET]
+# GBMH5RK4SK4LWMU3I4WFIEMTJXRK6GI44W3U5NCFOTWMQX32OCNQWCEF   ops: 30
+############################################################################################
+2026-07-09 10:43:28 OK   create_account             e95c7b4b288b535a9b292a9eb20106233a7b70c038efa13eb4946b2519beb59f
+2026-07-10 19:46:08 OK   payment                    feda11c4ae0b0630da1d3cdd01727d6181fa7acedf8f5ef6cb882a342ffa169a
+2026-07-11 00:37:33 OK   UploadContractWasm        
+      9c116d896f419149523d7832040f8b2a61d8c42b0d2a81c66ea12d23c1613a2a
+2026-07-11 00:38:02 OK   CreateContract            
+      6380455ed111aedca804199b233e05117c641dd64abb0fed992867ae4fc5671a
+2026-07-11 00:38:19 OK   initialize                 MAINNET verifier             
+      7328780206efadf296b576883da026e26a8e2ed41e55117bd82215f5b51fa42d
+2026-07-11 00:38:36 OK   UploadContractWasm        
+      13babf8bbc59f17f7af45a00ec1591379bd06b18ee92c5e984e8e2f8cfe8755f
+2026-07-11 00:38:54 OK   CreateContract            
+      e4f695ff3493622d2821bc68f011703da518646f41c007f289df33ab2ac7f3f3
+2026-07-11 00:39:11 OK   initialize                 MAINNET asp_membership       
+      edc427ee21a539b54a42703a393b44b2d013238631fb15ee8d1020e4af59b3dd
+2026-07-11 00:39:27 OK   UploadContractWasm        
+      9ac05133165723591606825aeb519b40696ca19a8cabf0f8bddb7bf78a7fa308
+2026-07-11 00:39:45 OK   CreateContract            
+      3ff18f16c6107a02e99e79fe2632eb0be19ad75293b494f05a537aa9694e8f96
+2026-07-11 00:40:03 OK   initialize                 MAINNET asp_non_membership   
+      d44129c655ff44a0044446d0c0b712f2bb22c4c8cb3b26a87323ceb5f3a54e85
+2026-07-11 00:40:20 OK   UploadContractWasm        
+      1e4412ca6b2e675b849ac7ffe1335ed3dc47ce26056c0d4dfcea99bb02817238
+2026-07-11 00:40:33 OK   CreateContract            
+      eee55fa12420bbd7969bc72272f3b13508edf50dc76fe2055d9e70c3631e3309
+2026-07-11 00:40:57 OK   initialize                 MAINNET pool                 
+      fe8c2f6939581cc9160bce81a3baa5d8b71844187e028f40d12efe0a687fc28d
+2026-07-11 00:41:13 OK   set_vk                     MAINNET verifier             
+      c4f2092ded23035d02406af72635b55ed100158ba6b2a85556192fb0c3e6e011
+2026-07-11 00:41:30 OK   set_vk                     MAINNET verifier             
+      4331b65e2bd9c1821f0775c9c4c5a9eba37f438372bd2762445f407dd063d7a6
+2026-07-11 05:27:02 OK   insert_leaf                MAINNET asp_membership       
+      d58e0121e8c17b56efe3c0b38021d9185aab8e94b5975b72237b259123c490ac
+2026-07-11 06:03:01 OK   deposit                    MAINNET pool                 XLM moved
+      79e41737f80c5bb5eb197675d2d5410f596f1280c6a07c9bee277a34d095fe28
+2026-07-11 06:13:55 OK   deposit                    MAINNET pool                 XLM moved
+      d09b24f89406e5b5e6a990754f7e9cae5e47c58f1facb0c829df47b6eb9fcbb4
+2026-07-11 06:14:53 OK   withdraw                   MAINNET pool                 XLM moved
+      9bbf15cdb1496881db355151f91eca4bae7a7efd5561ba447339d088ee993a12
+2026-07-11 06:18:47 OK   deposit                    MAINNET pool                 XLM moved
+      9a62e80cb4c5a1600cdc5060707ba2c6b3b5b08195772d92090906c540f7db9e
+2026-07-11 06:19:40 OK   withdraw                   MAINNET pool                 XLM moved
+      c825976ad90eed6af13c029bad32b44f5409f58e67d0b92987c5efcad0098e28
+2026-07-11 07:20:43 OK   deposit                    MAINNET pool                 XLM moved
+      19de3a36eb606390d27e991adc54d9f8791fcd54bc5460ccc661abbe0c9ba45d
+2026-07-11 07:21:12 OK   withdraw                   MAINNET pool                 XLM moved
+      42f694956c16608c12bb37450bd613f5efccdd6dd4fb8b52236f92f31400bd76
+2026-07-11 08:57:05 OK   deposit                    MAINNET pool                 XLM moved
+      ff675042d460a168da04b508610c418ff7ba9ec7119aa055fd268c7d045742d5
+2026-07-11 09:00:58 OK   create_account             3ebc988bf2f8537f1aa1ea059f9711d3b94c673561015402decddaf96460c3b4
+2026-07-11 09:01:34 OK   withdraw                   MAINNET pool                 XLM moved
+      f0394ceba9b6627015584404f1ceddbedb06888f3344215f61aea1032780a797
+2026-07-11 09:03:20 OK   deposit                    MAINNET pool                 XLM moved
+      f907b93234c6c6812ad35d58a054e7641c2a5ad5021aaa28e650dca726a33df7
+2026-07-11 09:05:09 OK   withdraw                   MAINNET pool                 XLM moved
+      8d8d08a6b0b0a055bb724090863f90a9bd49f8d4e6b9741afbd7f2173d9aea3f
+2026-07-11 09:08:56 OK   deposit                    MAINNET pool                 XLM moved
+      f6233caa39141a02176cd1d9e0116c0efd2e30940372b7439c58a2586c18c99f
+
+############################################################################################
+# TESTNET v2-AUG deployer  [TESTNET]
+# GCZTDHO2FG2ABMQ46ON2MN262Z7RXD7TRA2QWGGKQIZVT7ZXK6AUJ3TH   ops: 400
+############################################################################################
+2026-01-24 16:34:56 OK   create_account             ed8f93fc7485cac3562ceab332e82ee9ba535f5e87b40b116be231f6c7ee9c7c
+2026-01-24 16:35:41 OK   UploadContractWasm        
+      8544026a738ceb36946599c3acf4c8b58d2cc76c9020a2ebaf35b6e20bd8bdd4
+2026-01-24 16:35:51 OK   CreateContract            
+      e787de3881a780bcb7240ee0b3ae544dd608f922840a43cd6809c4aeeef92c65
+2026-01-24 16:41:57 OK   initialize                 CCCW5NM4KX...                
+      49de9f959d9e6ac2e703b051ec0c08d4fa5b287fef79b58d8395ba1c78a88f68
+2026-01-25 03:58:37 OK   CreateContract            
+      27e654dff52a956e6b9427483f0acd51cfb927858fd433784faef6d4d363c5cb
+2026-01-25 04:02:37 OK   initialize                 CDMZKSBKF2...                
+      5fe2efcca2b46e2569afe5f883fc3197e3f6019d65a52b581839a24292239d30
+2026-02-05 07:05:05 OK   UploadContractWasm        
+      5425c46b3eb60b8d15911eb6dc4dc461deb3ca4accac549f66ebd34772a06a7b
+2026-02-05 07:05:10 OK   CreateContract            
+      f4e40d4cd4cc41e397c73a584aa97a3ef587e7d0fb6038da4f1b592e19b48fcf
+2026-03-20 21:08:03 OK   payment                    2367ac486895eac2e526ada351dc836807b94b60e43abde7e60713927dce951a
+2026-03-20 21:08:13 OK   UploadContractWasm        
+      e1e27395123bce7c78eabaf95f5c0da651d7fd628732440e6c295f6cf7938e89
+2026-03-20 21:08:28 OK   CreateContract            
+      c85528509f0934f0711d288146df4e776c4bd5df582d352fd5a52d39fc8dabf3
+2026-03-28 07:00:48 OK   UploadContractWasm        
+      e1f7311e9c777caf69b4674f55caaa643cfa7f7916efc3de251be72fec5d63e9
+2026-03-28 07:00:53 OK   CreateContract            
+      268c3c108c719dc0c06c8f71c7d774fbbfe415fd3cba47ff664ea530c6b8cff3
+2026-06-30 16:05:45 OK   UploadContractWasm        
+      59b017f8a59f40574e5f0b0f37e78a3a3370d4cf8d2e3f4ed42172654b701f17
+2026-06-30 16:05:50 OK   CreateContract            
+      c8e1c5a1fc40e8f40f86438fa5fad4c537bf73107ce2f2ca150cb47b33e71889
+2026-06-30 16:38:08 OK   UploadContractWasm        
+      30f0092738945b350107743fc9d1bd12d4053d017767d57dfd7f35fb9e5eac9b
+2026-06-30 16:38:13 OK   CreateContract            
+      682e264a973c97ab65bf901fe21fee978ac408c0e63c35e0c27c80a1c9f6bd43
+2026-06-30 16:40:18 OK   UploadContractWasm        
+      f3567941b485cbd1b000f34830a44fb461f443aa85201eefa35818e5ecbe636f
+2026-06-30 16:40:23 OK   CreateContract            
+      821d9b4d3276d00d84adf4bc8c28764a5e44bdc8c8ae6a9a293436e8af0ff7d6
+2026-06-30 16:42:53 OK   init                       CAFEB2PJHL...                
+      569c7343f4482003e832770fb5e0dfa57918729655e2bd2149b2c0cb2a54a977
+2026-06-30 16:44:29 OK   init                       CC53VWUG5Z...                
+      7b53a9b7c81cb149e8e46538e7162434b192ac2de2cb6f6a437acc2b9d37611a
+2026-07-01 17:48:39 OK   UploadContractWasm        
+      30710df20313c9bb773bad6ef02330493dfe4c35c034312ddd4a8b69e227d212
+2026-07-01 17:48:44 OK   CreateContract            
+      cc9bfd5e855f745fe93429ef0c42fe61261aacfd17d6f7afe07cf29753685c57
+2026-07-01 18:02:40 OK   initialize                 CAF66DJHFF...                
+      db097ca376428323986bf659369e527013d4438c9b8589d2daa0ab84c5826bb0
+2026-07-01 18:03:25 OK   set_vk                     CAF66DJHFF...                
+      41f5ece319c9224dd31836d315107dc687dc9c5bee542989cbcc5c48222b02a6
+2026-07-01 19:17:37 OK   UploadContractWasm        
+      ba0225b3e7414e85066611e43abdcf7b7e3ab31db2742850e0d23a7131cc1fe8
+2026-07-01 19:17:42 OK   CreateContract            
+      7a7b830d4505f51903eb3eea211ffbcbd7371dbbbde729ad14beb4e2580fd6e3
+2026-07-01 19:17:47 OK   UploadContractWasm        
+      2eea2a12d5a7b16b23d5b06eae782a82ef27cfd682bd076e0d9a090f55c6a330
+2026-07-01 19:17:53 OK   CreateContract            
+      056ef70e6872eaf20710f8e03b6f799962e835637a07da28d4fa773ee06fa003
+2026-07-01 19:18:03 OK   set_price                  CDUIZ3KRDZ...                
+      b5c88b6ca697bc13ae786571942db44e9c25a71a347d7ad092e03be3aedec482
+2026-07-01 19:19:13 OK   CreateContract            
+      b8fe8f8ecc8ac38d7e5cba18cbfdc1eaa825c8ddab341b8ee80f0b013afcdf22
+2026-07-01 19:19:23 OK   CreateContract            
+      304f28aa17edb9f4dcb17d7eeea590975793b2409de1f7b53b5ec57b84077028
+2026-07-01 19:19:33 OK   set_price                  CBAHLLBFAD...                
+      a3f6309e5ad982f9a96cbbf96d526f813b349358abb58205cc2bb266dab39714
+2026-07-01 19:22:28 OK   CreateContract            
+      4946145d6c2f31c0ba9f0824e6688c4aa8d946ae4803bfd470cc78897fbec7b9
+2026-07-01 19:22:38 OK   CreateContract            
+      5fe101af7d7ee2750e2539691fa1261c0ceb2e47afd431c8fb1431b3008e232e
+2026-07-01 19:22:48 OK   set_price                  CDGPQQIMCK...                
+      5de0bfc993a64025c55f7977258cabffeb96e78eb6b3ef404b7299af3b421ff1
+2026-07-01 19:22:53 OK   UploadContractWasm        
+      65a82f06cf0bb9da0545e7ddc61a345940e6375ab460ec13959a4c5f747730cf
+2026-07-01 19:22:58 OK   CreateContract            
+      36c92d9c798aa59fbbdceef4c2c3e75989db07a54c7f160fc1d07e04eca720f7
+2026-07-01 19:23:03 OK   UploadContractWasm        
+      ab230644e7ea9fdde18c401253b9345870ca6c9777f7be7952bdae693d35270f
+2026-07-01 19:23:13 OK   CreateContract            
+      1389c57cb0efd0197ea147659f0d59212325b846cafc3f14cccf7448113f9148
+2026-07-01 19:31:09 OK   UploadContractWasm        
+      786c5217b99fe836b5b2cde2954a5ffd1dd619c695692e8e60e714eb05274649
+2026-07-01 19:31:14 OK   CreateContract            
+      0c7b71dd2b50aecdb2846a82bf308c9127b0616421c74b938d5813134626cb54
+2026-07-01 19:31:24 OK   CreateContract            
+      53f0b45c67f45a2ae54ef5367b56f8aa82b3b95a7b48366181a081c81819faf4
+2026-07-01 19:31:39 OK   set_price                  CCLV3RJKAK...                
+      a6890d38a93ebd7d5fef192aac45defa865d97884a8767842c358e64890b5fd4
+2026-07-01 19:31:49 OK   UploadContractWasm        
+      2196804e6199f2fdc46e4277a6c71eb97fa075e94a67e4604c3d5ae70f46f646
+2026-07-01 19:31:54 OK   CreateContract            
+      c8fa5f9f768462591a2dd3a904a9158a055dbccd1dffd3e2624a2a8642c37e6f
+2026-07-01 19:31:59 OK   UploadContractWasm        
+      6a21e0f48d64980374efafa0fd5c345ee7f845294c3d4429c601a0266bca3035
+2026-07-01 19:32:04 OK   CreateContract            
+      b4f7b06abdf869faa4e9423d359b9f767bf78ea7c712c6fb3fa8e539d3c00ead
+2026-07-01 19:32:14 OK   initialize                 CCCVOMRYBY...                
+      efae5781cf4272f8b4733a8458ec06bc5a1bfdb5cd3a7c83e27ebcd60eb482bb
+2026-07-01 19:33:09 OK   CreateContract            
+      12ac268cf2429751c6a7bcc7e11b1d342a94bf5f4a7fac2465aa4a1792c4bdc7
+2026-07-01 19:33:14 OK   CreateContract            
+      7f98805c4fc091b4d931c0ba807e3d18aead04df47a8e099a790129fe97cc280
+2026-07-01 19:33:24 OK   set_price                  CDR2GHZ44X...                
+      e27fb565e564152d6c8d69910b6f54153ffbb0919e152b926653d96305b9a8ea
+2026-07-01 19:33:34 OK   CreateContract            
+      10ddc389a763925ca2ad3b254775760b7c148561fb45c4eeb1401faa48d92ff7
+2026-07-01 19:33:39 OK   CreateContract            
+      9433613fe16dda6847a3ba247d6864f80ec69e752e93d25dd087e53c3c5c7f73
+2026-07-01 19:33:49 OK   initialize                 CBRSJT5DZE...                
+      b59f2e7558d28db2be98cbf82629939c04691c318c9384e50ec764a78aa23daa
+2026-07-01 19:33:59 OK   initialize                 CAFEM7UR3R...                
+      e760fd23e497fe2aff497510ad5c4c19d1e0fe6340ebf17364fd7763b2b81a92
+2026-07-01 19:47:25 OK   initialize                 CAITE7BPXC...                
+      638942fe4dfb7702e43866da8aa40638920fd6ef07b6acf2007334d9a1dda354
+2026-07-01 19:51:31 OK   set_vk                     CAITE7BPXC...                
+      f6e45ddab019fd8ea2d69b197748fe56a53afeadf43af8fa8359dc8f4fb2a645
+2026-07-01 19:51:41 OK   set_vk                     CAITE7BPXC...                
+      a034613981f5d803b430f4558d29d23fe00e7b7a2149ffcb4cf460dfc8ce15cf
+2026-07-01 19:51:51 OK   set_vk                     CAITE7BPXC...                
+      09afa9c17356c113b8351fdcf9a4dd6efe9a3940218de3b816aac3cc79392e04
+2026-07-01 19:52:11 OK   set_vk                     CAITE7BPXC...                
+      83b1e26d9c0f5edd62b465a3442803e04ca96cd01dadf06bfa105f96f9e3e6ce
+2026-07-01 19:52:21 OK   set_vk                     CAITE7BPXC...                
+      a3079f706c340889326033bb2e28e584a1f45df4ef6b2af351a87404296fb027
+2026-07-01 19:52:31 OK   set_vk                     CAITE7BPXC...                
+      a21995acc4ca535114d75ff0a824f524a4e1014c8b5e3f3eea09001aac26ff30
+2026-07-01 20:09:37 OK   deposit                    CBRSJT5DZE...                XLM moved
+      d047227b973c1462448a82f99334b86034589704262383d6380cb02694f0095f
+2026-07-03 20:42:18 OK   UploadContractWasm        
+      6f4b3729c4aeeb47b31eef454c49279cc172e0fe38454df368a3938f8b706570
+2026-07-03 20:42:23 OK   CreateContract            
+      104aed57b87fbe0dcc281ebbb0018b0b87f6ffae510a67552faf281a4032fd72
+2026-07-03 20:42:53 OK   initialize                 CDY7BOO555...                
+      11c1c8cf5d93de46e75347993dceeed09ddb403e7f39baf5a710beafe5f58e0e
+2026-07-03 20:43:08 OK   set_vk                     CDY7BOO555...                
+      59ae88acc17d99bef4b06ceef0f7e1073ad247b2b3a0205dcf322b47ec51a174
+2026-07-03 20:43:18 OK   set_vk                     CDY7BOO555...                
+      866f2bf2ebd8db84f96be071ba18dff1f24b18da978b51b84c758d021c2ac081
+2026-07-03 20:43:28 OK   set_vk                     CDY7BOO555...                
+      551e4a9ea44c45560e5d46b2064632e1e0980ad0ce8a4a0e4f8c074968bb7203
+2026-07-03 20:43:53 OK   UploadContractWasm        
+      5177245004f0e013beee1eb715802c6573b0a2f8994594a55862bd627fdcba56
+2026-07-03 20:44:03 OK   CreateContract            
+      9bafc0e473addb37c626dbac3b98d5356e51b13cf38fa726bbffb1f9a4d5f947
+2026-07-03 20:44:33 OK   initialize                 CBKOTAQHP4...                
+      93db7fa858976ed28fdfb09a25d75557b9d5539988aab9f06de549ebdd9c99ee
+2026-07-06 20:06:06 OK   UploadContractWasm        
+      13fc1e3246af00096476b011d95bdd736e28105e369f5e69fe08f11b2fd09f40
+2026-07-06 20:06:16 OK   CreateContract            
+      f3357b8adce8043a311c5805c81294b060876dfb8bde196130e1a22a694d1777
+2026-07-06 20:06:26 OK   initialize                 CDB5RJW67I...                
+      e34ae5ba8cef8ecf1524fa1e6cb1544e14f67220cbac89b29b6537c28bcbca44
+2026-07-06 20:06:36 OK   UploadContractWasm        
+      492df37c373a6c4ed2df122640a7bdc6571a94f1bed9858dc6c5596a311a2d5b
+2026-07-06 20:06:46 OK   CreateContract            
+      64bd26434164b6d158aae6e640d4bdb27cba6a1a249de9dd39de6763fb7044cd
+2026-07-06 20:06:56 OK   set_price                  CDZXS2SPAE...                
+      ff6ed9d6138a7e9ac72eccd9c247e31e86a560b876b4dc45a3168d5fbca0be26
+2026-07-06 20:07:06 OK   UploadContractWasm        
+      494a890bf248cfbf743f6695d627bede7d3c74ed8e30e95ecbc9dafcf37f59c3
+2026-07-06 20:07:16 OK   CreateContract            
+      928a95250fee320c9c37e504c28a786532b50bfdfc80d8f7614de98ff3165e65
+2026-07-06 20:07:26 OK   initialize                 CADH3OZM5C...                
+      0e08494619aff265d2a64f7fd7d56203aa5c4635237ca07e9630c2810ef176c8
+2026-07-06 20:07:36 OK   UploadContractWasm        
+      a0cf5397a4b7f872320eee6605033117b414181e44c382eb445bd1dcd357095e
+2026-07-06 20:07:46 OK   CreateContract            
+      7d487360dc8dc7983b74ed5e64902a60b8c397d7c3c341049cb713ff094cf411
+2026-07-06 20:07:56 OK   UploadContractWasm        
+      8dd55771dce51bc75c617c5d2078a84d2c89e02ded6537f8c97adb14fea968b7
+2026-07-06 20:08:01 OK   CreateContract            
+      727d2283fa0466ee2ea374d8a1a3c580ef53c5a1a7824f1e1123cb602ec7aaa9
+2026-07-06 20:08:11 OK   UploadContractWasm        
+      c6cc763c471ee3da45a2ff93746ee001891433188f66976642577fa078a9fae4
+2026-07-06 20:08:21 OK   CreateContract            
+      61371242f13cdebfb66f21c162c191e347215575a7372f025590c6e99ff96196
+2026-07-06 20:08:31 OK   UploadContractWasm        
+      cdf0e0acf8a77e9d5633028b9cd7537f60dc5ea94c78ea0aff5ade00b9d88e72
+2026-07-06 20:08:41 OK   CreateContract            
+      c30f7fb3d434bdc3c36d8fc9862d2c5fa2b7edac5017bf788fa06a65b0b9de45
+2026-07-06 20:08:51 OK   UploadContractWasm        
+      48a2c703b52f0b8e3e8bfc3375a4e03b612f9f1d4906f02a11d8256f16cf87ef
+2026-07-06 20:09:01 OK   CreateContract            
+      871d72a5c43bfa37216620a48c759e5f46c7fc497a113b3448916da1fcab9e63
+2026-07-06 20:09:11 OK   initialize                 CARUF7XNNY...                
+      30687bfc691ff819febf09f87c174f6b4926197eedc0b2372152d57289b6a172
+2026-07-06 20:09:21 OK   initialize                 CA5DNLUNND...                
+      27beab28c9b65834e9931d10f6d9e4770c103e3a98aa260bb8c4a981c538afa9
+2026-07-06 20:09:31 OK   initialize                 CBERI6H6TC...                
+      1433f701bdc6793625e60dd00ab9e59bd2371d8d6d42287fee12a67744f1033b
+2026-07-06 20:09:41 OK   initialize                 CDZJ75I622...                
+      3eb1afa6b6e955ff4747a0d2b3eefcaee2d748ad0da8800e4fea0c36a6d7b2e4
+2026-07-06 20:09:51 OK   initialize                 CAZLVTZS6R...                
+      c75b5d7fa83f6385e7c63e8d3069cc6594aaa73b558adcda34afc9591478cc80
+2026-07-06 20:10:01 OK   add_settlement_authority   CARUF7XNNY...                
+      0136d3aa537af6884ab78595275354eb040604cad677ba97a41017acee8e56b8
+2026-07-06 20:10:11 OK   add_settlement_authority   CARUF7XNNY...                
+      a8b958db5e250af0ae235c154e5f8326a825dc705c53110092099d769c455070
+2026-07-06 20:10:21 OK   add_settlement_authority   CARUF7XNNY...                
+      7f29b35a0623b4f8e930021d5bc76ddf1aa4627f3d332d8ae7732dd34889a2da
+2026-07-06 20:10:31 OK   add_settlement_authority   CARUF7XNNY...                
+      8ab62c44b139d89a0dd0eb70bf057c4db5654094501a21b7b84c98c7d4a4a779
+2026-07-06 20:10:41 OK   set_vk                     CDB5RJW67I...                
+      1564cb2a0839f1c9cfbe0e5d83053a3cd74f0b9bac95828c2068b5baaa2f84cd
+2026-07-06 20:10:51 OK   set_vk                     CDB5RJW67I...                
+      335ac795ff55d4b47d0ded53ad7e34604e4c739acbad75b02e394a7240930724
+2026-07-06 20:11:01 OK   set_vk                     CDB5RJW67I...                
+      45c4cf3fd4d330964d7f53f86a9d54a7bb227d40a1d8590ef2f059fcd1e68fea
+2026-07-06 20:34:19 OK   set_vk                     CDB5RJW67I...                
+      98cff31c8a2ed4b5b116a1d82b0ddf21836466c34dad26d4c3c417846e4bf6f0
+2026-07-06 20:34:29 OK   set_vk                     CDB5RJW67I...                
+      ad04fa0c227fb8874403a181360ce94ab4c656da7443da7fba7cc39496b3afd5
+2026-07-06 20:34:39 OK   set_vk                     CDB5RJW67I...                
+      8ab3ec63f1b8235866c4539cddc82c24540b937236b454cfe781d33ec57d9ef8
+2026-07-06 20:34:49 OK   set_vk                     CDB5RJW67I...                
+      c02f7d846a5d806356ca83957a8ff12c092c90205636034f5e1b7121a52d358e
+2026-07-06 20:34:59 OK   set_vk                     CDB5RJW67I...                
+      4a221344bb811f4fc2a19975e0e10e57d1fc3ec24b2d1c6689d478ad7966a615
+2026-07-06 20:35:09 OK   set_vk                     CDB5RJW67I...                
+      2202ddf08555e091ddcf7a79fe773fe70167e730b1ddd00b0b9c88d78d411891
+2026-07-06 20:35:19 OK   set_vk                     CDB5RJW67I...                
+      48032ff0017ae0fc12862400852c6adc878a8192864b05e5ad783203261e28bd
+2026-07-06 20:35:29 OK   set_vk                     CDB5RJW67I...                
+      8be465f0353c80b074d20448c0c7926ab628f0a1c8cf25573c6f94c4777d258a
+2026-07-06 20:35:39 OK   set_vk                     CDB5RJW67I...                
+      9e66e027e3dcb6d0ae44d5dbcab69da21dc1bdf5154d451f5e0cb85e705c3a48
+2026-07-06 20:39:09 OK   upgrade                    CARUF7XNNY...                
+      4552d2a8f46ecceea849a55f8db17e06a4beede8e23e26caac6b0b899dcf7e1c
+2026-07-06 20:39:59 OK   add_settlement_authority   CARUF7XNNY...                
+      8fe7b9d98eb1d33a49d385478ed7809006fb80ca89b0d5db9c02fee9c2293259
+2026-07-06 20:40:09 OK   upgrade                    CARUF7XNNY...                
+      35b2dab50ac3b9c9b915a1b3f5bcd1390be6db3f35b295f74ebfa5b493325814
+2026-07-06 20:40:19 OK   remove_settlement_authority CARUF7XNNY...                
+      38381d1c33328bb49c3b864c8edca4b9ad0741328db0a5100a3667ed09b980c4
+2026-07-08 15:14:26 OK   insert_leaf                CADH3OZM5C...                
+      932878a685560bce8858ef0a91b39776ae6a41e62703a0f408d395c0e5f306f3
+2026-07-08 16:15:08 OK   set_vk                     CDB5RJW67I...                
+      0dbb793af91b5c273380a6ab70bf6d3042ed8d00051008fda97aa779c989e73a
+2026-07-08 16:15:18 OK   set_vk                     CDB5RJW67I...                
+      7e878ecf29cafa7dca264a9ebec6459898e7b56f221fa18036c98072decfca8c
+2026-07-08 16:15:28 OK   set_vk                     CDB5RJW67I...                
+      500b1f792680d7455456157dc5ccbe8704e71454679dc076587a8c1de77c909e
+2026-07-08 16:15:38 OK   set_vk                     CDB5RJW67I...                
+      dc14a87c774cb8f5f78163773360a68e6997a2937a7039a8695f0ec9a6a796b4
+2026-07-08 16:15:48 OK   set_vk                     CDB5RJW67I...                
+      b080b43a1579fd1b973d30d6c0731ef3d69ab453360d3a8d47050490340614e8
+2026-07-08 16:15:58 OK   set_vk                     CDB5RJW67I...                
+      ac3c9e576fc46e12eb036ca36ccea11a6cd5129a900ce6efc3b9052b98665656
+2026-07-08 16:16:08 OK   set_vk                     CDB5RJW67I...                
+      2dc9d28e3fe6c4893975b8e63307b10e1a32d64139637987409944251adc5bb9
+2026-07-08 16:16:18 OK   set_vk                     CDB5RJW67I...                
+      cfbf3241bd1945d4df56e11c5de170b420da1dfdfd009f80a21ab42e8e2703d5
+2026-07-08 16:16:28 OK   set_vk                     CDB5RJW67I...                
+      10de6af8226c6a7340746dbbe203ef3629241f668e7593e8f19df3886da006ba
+2026-07-08 16:52:02 OK   set_vk                     CDB5RJW67I...                
+      2a0b53e75c34de2de9833265249f6d63ecdb50faf8482ee771a1fe7c18561107
+2026-07-08 16:52:12 OK   set_vk                     CDB5RJW67I...                
+      aac93749775f5bb0c293be16aa14bc01ee90bee014720e7c9a7e018ede59efe0
+2026-07-08 16:52:22 OK   set_vk                     CDB5RJW67I...                
+      3a5445b3c6fad7e4f917f587e64dc541962162eac055d13f38b54c1742d72261
+2026-07-08 16:52:32 OK   set_vk                     CDB5RJW67I...                
+      781a091a00ae0a8d908eb506888f4122edd93841a053679f1cccd0dc3ec7ab5c
+2026-07-08 17:45:13 OK   insert_leaf                CADH3OZM5C...                
+      4ae7207173ae7ded66158dbe2ac7141091082fe9cf302e91c2fc8f1675a939f3
+2026-07-08 17:55:09 OK   CreateContract            
+      e815d6936aa5411058543bdc764ece5434dd321dcbd4e9dd8466cd505fe9c280
+2026-07-08 17:55:19 OK   initialize                 CDTO663SLV...                
+      b0b0a315b4c4e322a200823bf8598369e572525cd5ef4085285251d584604ba4
+2026-07-08 17:55:29 OK   CreateContract            
+      f9594c603cbf3b027586d64d04d574b89479c017401c1845b6906bac5dce566b
+2026-07-08 17:55:39 OK   set_price                  CDFRVDBNHI...                
+      77b80eceb44c2a1d9691f756ab4e763279f4fb900b7d742b6c214250bacfefa1
+2026-07-08 17:55:54 OK   CreateContract            
+      a5c1344ce47f493d5a9e68647b7ce854fc2e839f61d417020120f0249a8c73f3
+2026-07-08 17:56:04 OK   initialize                 CAEQTY5GTC...                
+      3d2f50933f74fda994d265d872c1655e5049349bc7d5f2198b1d715a9dff0a9a
+2026-07-08 17:56:14 OK   CreateContract            
+      3a2952fb793f422bb93f9ac5e98ef2cc059e6675b5ddebb51cf1505d7f44de80
+2026-07-08 17:56:24 OK   CreateContract            
+      d7a2a4c5d918be5ab4c19db2147b9d2e86798f6aa517af2cde576e5d5fd6e96d
+2026-07-08 17:56:34 OK   CreateContract            
+      9ce69ae81e81d01c8def4274f906e4fd3179e3f517d178e3405d507d5d64a6d3
+2026-07-08 17:56:44 OK   CreateContract            
+      5a88dbfbab6978e8923e2826a7a49c3a1594934f7c9f93de81a405d9a90f3e24
+2026-07-08 17:56:59 OK   CreateContract            
+      46d9c92b2d6dd1b585386fa25d6701ebff96d94a0d64abf254f489aca42ec090
+2026-07-08 17:57:09 OK   initialize                 CCHTP6LMG6...                
+      605627a08b061927efdbb90c6acb64c32ef2c66d7615bcec0b1126fa78908db6
+2026-07-08 17:57:19 OK   initialize                 CAUBF4VGDS...                
+      1ccd39cad579c4867011e1083142f4c8688176622bdd62a04ed91d30b8c39f0f
+2026-07-08 17:57:29 OK   initialize                 CDEEVGK5AF...                
+      615dce2d81f600c87ffe8cc8176d026e44b0961b9348662db55f147c45c3304a
+2026-07-08 17:57:39 OK   initialize                 CDPP65WXVB...                
+      d8099c68da7b6e5194e053537bcf158170d71ac4007da983859e708df6608955
+2026-07-08 17:57:54 OK   initialize                 CDLKNQRWRT...                
+      694c618fb7b555eaef496f091fcfba4de3ca48b8c3f1cfea2cc11cfed4f500a4
+2026-07-08 17:58:04 OK   add_settlement_authority   CCHTP6LMG6...                
+      9f51a795dfad90500752ecbe66e72e3df0b8c9cb156d5d01e65d305e1890b8ee
+2026-07-08 17:58:14 OK   add_settlement_authority   CCHTP6LMG6...                
+      c953b5e0410cf2e4adb79b9bb666827ff90d63b2f0ef1ba84ebf5a73dbfdfd55
+2026-07-08 17:58:24 OK   add_settlement_authority   CCHTP6LMG6...                
+      dc5fe168fa500aceca5f0a09aa33b8ec363fdad81bb915f2b53233bd92c12be5
+2026-07-08 17:58:34 OK   add_settlement_authority   CCHTP6LMG6...                
+      328a28cac57f6050ddab466178aa3fef909670b68c7b172d06499cfdd1ce27a6
+2026-07-08 17:58:44 OK   set_vk                     CDTO663SLV...                
+      a2fde6501a58f9ccacecc346e9d1133960888b594fea7d9821154c5ff665bb17
+2026-07-08 17:58:54 OK   set_vk                     CDTO663SLV...                
+      95b701611726272c65fe8365483dd989d6748efbefd57af48499d7f1cb68c3cd
+2026-07-08 17:59:04 OK   set_vk                     CDTO663SLV...                
+      c709edc1ad21fcc68959c5a32b50395a19c1d6db1fa2cc18ac273fe044609c4f
+2026-07-08 17:59:14 OK   set_vk                     CDTO663SLV...                
+      07e1b326a8cf3f913dea8dda3d3c2d0f49fed0f87aed1dac035aba039fff90ad
+2026-07-08 18:00:04 OK   insert_leaf                CAEQTY5GTC...                
+      b246fd40c53b3f4b4db488fec2e5af1fd2b5bf352581b80a646b2b44742084fe
+2026-07-08 18:06:20 OK   deposit                    CCHTP6LMG6...                XLM moved
+      77e03321a1d5ec19ce18dfb1a4847f432aa123c58b26671b3b00448f2617154b
+2026-07-08 18:17:36 OK   deposit                    CCHTP6LMG6...                XLM moved
+      b6f7b52234e9061d5f5e569d02e5a89c90af6b58ce1d3b89d20804db509b8fb2
+2026-07-08 18:22:27 OK   deposit                    CCHTP6LMG6...                XLM moved
+      dce0c4434ecb27f865dc4f5f5492d2b93401c8d56ed4b38bf211a9bc82296556
+2026-07-08 18:23:37 OK   insert_leaf                CAEQTY5GTC...                
+      4d2a6a1a06a5b531b967c5b3b71219dfda1c1720aa32414e4703038257f8aade
+2026-07-08 18:23:57 OK   deposit                    CCHTP6LMG6...                XLM moved
+      0799f706e40b1fadb5f7301fcfb6a7d6fb2ac3822cf7a2965165cc212b8d050b
+2026-07-08 18:30:38 OK   deposit                    CCHTP6LMG6...                XLM moved
+      1824348c15ebb45196da40cbbb17cd39410e67f7a1b02a45b26af354367cbd7d
+2026-07-08 18:35:03 OK   CreateContract            
+      0785bc147092124d792f90718900aed576bb7f548a152272a44b591bd9c5cd8d
+2026-07-08 18:35:13 OK   initialize                 CAZZYNUFWK...                
+      0ff148b6df2cabf7898f906188480de8e8caaeff7e00712a590a9cbdb3d3c8da
+2026-07-08 18:35:28 OK   CreateContract            
+      99e881677de6cdfff4fe77f09707214341e78fe07100af76fc80d1ad831bb50a
+2026-07-08 18:35:38 OK   set_price                  CC6MKLSDYL...                
+      ef3e155c3c5c6bfe08ba251f6faeae36549244d76d47b23547dc35a922f303b1
+2026-07-08 18:35:48 OK   CreateContract            
+      999802ee2f1ff4691705afbdd616de98040cc79db2cbc5a30bdda1e8bc3ba12c
+2026-07-08 18:35:58 OK   initialize                 CCWQAZJHB3...                
+      c13f9d4703f54163a7e3614c687f8f014dcdc864e1b6f0b848a262acc0e94a66
+2026-07-08 18:36:13 OK   CreateContract            
+      6055e67bd9db7a254981e1da0d2fd7b9bb5565fac457cd440342b304dfb4ff58
+2026-07-08 18:36:28 OK   CreateContract            
+      ca49e561b12ddb0ac92c32ad6f7fa57a288c2184ba5442111ae75d24c65656b2
+2026-07-08 18:36:38 OK   CreateContract            
+      c90e9333bd9fe4abe174ed2b57d359897477fdca313a6e497fd50b5ad533f194
+2026-07-08 18:36:53 OK   CreateContract            
+      c5a7e86147063383238deb70fa2498642830d997aa24ed8842788e0a322d0990
+2026-07-08 18:37:03 OK   CreateContract            
+      e7521a32caa0bc73d1be2f5b877579e1882d64bbea0c24771617439ef03a7faf
+2026-07-08 18:37:13 OK   initialize                 CAG6J7EQGE...                
+      c722fb375d30646c1749b1d2632def79e5f7422b35c4ba6e7c75e546aeee4071
+2026-07-08 18:37:23 OK   initialize                 CASJ7TN5XF...                
+      9349e30071b15687b2bf05b3b033a443a250ea3d7d393488cb5f4d0cbf02f1e3
+2026-07-08 18:37:33 OK   initialize                 CBGJSGO7TM...                
+      fc84f1223eca823e58448db9f3bd33c102b87b634e4fd82dd0c0905f0c2a4501
+2026-07-08 18:37:48 OK   initialize                 CDQI3EXSSK...                
+      784065e0651a3fef35153105315bdbba65e3acb0678cf4a886c0df54b4079176
+2026-07-08 18:38:03 OK   initialize                 CCGYMXQIZ7...                
+      64cfd338e12c353de4bd696213c71e6de5bb001396a0108c9137408c2215937f
+2026-07-08 18:38:14 OK   add_settlement_authority   CAG6J7EQGE...                
+      1e15d91ec426d68834326bd308f64817d023e62b797ab779d88a6cd5548588a7
+2026-07-08 18:38:29 OK   add_settlement_authority   CAG6J7EQGE...                
+      ba8a6f3de0f78f80d1cc199299d34cb03c595e66339d0f2e6d0b0250da10cead
+2026-07-08 18:38:39 OK   add_settlement_authority   CAG6J7EQGE...                
+      462a651dcf91fea006d47cf106dcce760487c342f081d4070adc1350e0c704a7
+2026-07-08 18:38:49 OK   add_settlement_authority   CAG6J7EQGE...                
+      22a63f3d579ae12449eccefc717f1f435822b7bc9a7bcb8f2393927d65e4c5f4
+2026-07-08 18:39:04 OK   set_vk                     CAZZYNUFWK...                
+      19dd1e4f841e264eab50f3216340c1920f8041b742c09852f136886952406129
+2026-07-08 18:39:14 OK   set_vk                     CAZZYNUFWK...                
+      3b0b777206346b76bed74674b811b0f53b1ba4e389c89c07eb0e545b50c6d439
+2026-07-08 18:39:29 OK   set_vk                     CAZZYNUFWK...                
+      dab5696d5302a334ee8512fc8fdb8d1e0b31ad88386b7b2a03685c991dd41091
+2026-07-08 18:39:39 OK   set_vk                     CAZZYNUFWK...                
+      21e3fccc2500b463692c130a258c6786ccaa1ced9646724e9dc959e16123ec9e
+2026-07-08 18:46:24 OK   insert_leaf                CCWQAZJHB3...                
+      e2e92e583b763236e0e6cf8938952d77cdc19928cae5087b427f0039c7e833aa
+2026-07-08 18:46:44 OK   deposit                    CAG6J7EQGE...                XLM moved
+      ab6d299da92f57a1aefdbca1e01196c9722b797dcd65c78242c3cc7562af1b99
+2026-07-08 18:47:45 OK   insert_leaf                CCWQAZJHB3...                
+      9b63cb44357f57187399ce0c276b75167c0b3ca6bdf84e64f7d32711e0c4b724
+2026-07-08 18:48:05 OK   deposit                    CAG6J7EQGE...                XLM moved
+      6dd3e8019eac87c492b604d650403a4954cc4bad1fdf87def302ad63362ac89f
+2026-07-08 18:52:35 OK   CreateContract            
+      a4b6444676aea408b692e34be00ff521955f0e229700a75fb54cc6c621451c7f
+2026-07-08 18:52:50 OK   initialize                 CBFLPID7WE...                
+      13f5d6ece32ae9560b2c4948865b053ef860deb1afcec83afe8121960d4ada6d
+2026-07-08 18:53:00 OK   CreateContract            
+      c504fb85a5e95a8f68985884c0a1e728f85f1f08253bfaa56690f6c372ccee7a
+2026-07-08 18:53:10 OK   set_price                  CCNZ6IC7UW...                
+      64140ffee2294d0400b160008dc77b9b293444f0af301d04ee8a045f729029ff
+2026-07-08 18:53:20 OK   CreateContract            
+      fd889a0ef0733e4d3322c501994e6b8b9fdbdfda11e3a6fcb1c7b2b551f3842e
+2026-07-08 18:53:30 OK   initialize                 CA253RBWKS...                
+      cbc6bf422b50581fb8b7dd295d8bdcf864b897bb8275926774b823cf37c16f42
+2026-07-08 18:53:40 OK   CreateContract            
+      e772b48552d56265c767f76d7864f3b7fc2b050dece5b40f21d2bc79e4fc74d0
+2026-07-08 18:53:55 OK   CreateContract            
+      a999ffb8215668795459104a4ccbc4ed11c4739b935cff778797a14f0754b0f8
+2026-07-08 18:54:05 OK   CreateContract            
+      be36119262d616adcb39d69172cf962128b43ee3fa1b50c070f9f703ed9d70c0
+2026-07-08 18:54:15 OK   CreateContract            
+      bb1d5a68ac7b8a9794692ecf40e68ffbae7267e148c1e48eb09fe4703549ca9f
+2026-07-08 18:54:30 OK   CreateContract            
+      144187ff1667d292e229d456293279b2e4fc7d6dd856bb77593911913d376427
+2026-07-08 18:54:45 OK   initialize                 CDFM5G5QZE...                
+      414ee25f742de121eff49b416d902dd55bcff04109abb6f9ac0ea67e8b4b5415
+2026-07-08 18:54:55 OK   initialize                 CB4ZTPU5MX...                
+      f8ad336c30c0e8a0477c4df53f87ff696e0a934db6ca3f48ea9abe6f105aa712
+2026-07-08 18:55:10 OK   initialize                 CAUA6OASVT...                
+      abfa1ffcdc05c22108e76af43726904fd386a5062fb6489866baecdaf6bf636e
+2026-07-08 18:55:20 OK   initialize                 CCEW673GYJ...                
+      8aa4bd217d9772f38fceee334c4acbc5af810ec2b7132c902707b8042e225c25
+2026-07-08 18:55:30 OK   initialize                 CBPPDUE3VL...                
+      fb220f7eb92fa9f24bfa50d0913dd78e6ce51a60f656fa8f2dd028ff26c3b1d7
+2026-07-08 18:55:40 OK   add_settlement_authority   CDFM5G5QZE...                
+      38b8f35a127b9f9a4d0e709eb594c3b595518a54b85f56a087dcaf4df22548f6
+2026-07-08 18:55:50 OK   add_settlement_authority   CDFM5G5QZE...                
+      065d0aafaba24db2a8164c146076a4d74bcb1f8f29225328f9882bbdf88de20b
+2026-07-08 18:56:00 OK   add_settlement_authority   CDFM5G5QZE...                
+      4fc6d401bebe1216b6cc33ac54907ebfba2cdf4cb8387a5fccd532fae20a43ef
+2026-07-08 18:56:10 OK   add_settlement_authority   CDFM5G5QZE...                
+      7cd582ed2ba7df967ed8f34ac5e3ff37a6bb4a540a3940f7644ca286649c359d
+2026-07-08 18:56:20 OK   set_vk                     CBFLPID7WE...                
+      ca085c3d333f4cd51a4848d53961acd03d7964b8db42fdae28b4ad88163f8033
+2026-07-08 18:56:30 OK   set_vk                     CBFLPID7WE...                
+      bfdfed796ad32ae8b9311cc993ee0515e8c66d4cb098cea9e6a6ebd7b5d7df0a
+2026-07-08 18:56:56 OK   set_vk                     CBFLPID7WE...                
+      af9439bd1a29ccb66129544509702724fbb6e67e4fd3c359ec1f22c6feeec2d7
+2026-07-08 18:57:06 OK   set_vk                     CBFLPID7WE...                
+      f93a608254df77d6d564e4afbdadfe5d49e711d1707d96263bab7123f7fb341e
+2026-07-08 19:20:23 OK   insert_leaf                CA253RBWKS...                
+      0ff49891f12b84ae8e38ed95201a3cae449a1d1209be058b02344e1df352ead4
+2026-07-08 19:20:43 OK   deposit                    CDFM5G5QZE...                XLM moved
+      88f000d2400d2acd8b3d5c925ec62fe040240094b6ce9463d645b29406969cd0
+2026-07-08 19:21:53 OK   insert_leaf                CA253RBWKS...                
+      7ba1a4f0b8353a4ca7ab55f6f92f964fd01b46a431e8f51e035793e90d4ba832
+2026-07-08 19:22:13 OK   deposit                    CDFM5G5QZE...                XLM moved
+      8ee9e2d3262f7c1a38711f6a5e789395e3802d819a7acc12d7aa43e254f2c0c6
+2026-07-08 19:29:49 OK   CreateContract            
+      8dca2940ca3c0d93e9555a0c38b54ad5b935135b2731dce359490ad2b6b9c4d9
+2026-07-08 19:29:59 OK   initialize                 CBFWJYGP3X...                
+      84973357bbc39201d86a5afe5a77d9cbede7f420931ac4e4815150c94b663e9a
+2026-07-08 19:30:09 OK   CreateContract            
+      bb33d912ffcdd798f6717da5706ecc3f3c77eda0d8ece72a8957985e45ddb16f
+2026-07-08 19:30:19 OK   set_price                  CDHWKINGEE...                
+      f3ce14cd7dabbd452beef3cf29af37ec3bd9bd1c43e94e780d81ea87159a09cd
+2026-07-08 19:30:29 OK   CreateContract            
+      721c09b3576c16dfa7bc6ef1cb47218ad73f16c7121cb10caf34b7ffc3f8b00d
+2026-07-08 19:30:39 OK   initialize                 CCIRZ2Y4SX...                
+      c5bd4927569597d265e0d7060ce0cbfc2972134e3a70d08947df9c58fbb69f15
+2026-07-08 19:30:49 OK   CreateContract            
+      739f6815449023f41daf8e7d52f18c085217333c7342c143747372ef191e5ba2
+2026-07-08 19:30:59 OK   CreateContract            
+      e8f3fc98b7532fadef903a4bd6a92331f294e4dda05ab960de31b15bd02c7e86
+2026-07-08 19:31:09 OK   CreateContract            
+      6fb41fbe42173cf67ebd26ea5af682b2a83ae3fb46663e1a78d259567f73626e
+2026-07-08 19:31:19 OK   CreateContract            
+      7dedad17d626afcecdddabd096eab8e1d85bc547e8eafb63967569b084efed7c
+2026-07-08 19:31:29 OK   CreateContract            
+      f6af9f6a371843c27b06b8ccfa01382f5ef8c2bc2af0e70be6301cbfcfc2d7c6
+2026-07-08 19:31:39 OK   initialize                 CBDSDJNBVC...                
+      7ea529c75d5f3f57393798c2b34c6d2dac9bd7bcfffd84df0168868cef5524a1
+2026-07-08 19:31:49 OK   initialize                 CBIMQHNWLD...                
+      df407a0493bdacba8a5b98b44043b448f9249a744556596a3efe63e2f0b1c83c
+2026-07-08 19:31:59 OK   initialize                 CCGCU6V346...                
+      7afd8f8549cd7db76c7d62d0b10fbcc784eee71ac44fe3f35334cb7cb5b9e96a
+2026-07-08 19:32:09 OK   initialize                 CAASZTS6M2...                
+      0b8707b6db68861f11c9c30e0fff4c9e3f612c76ac70fe8cc1997e71d483f8c6
+2026-07-08 19:32:19 OK   initialize                 CAKEAAVXEQ...                
+      d22c4d6fc7f1406944f94681190ba4a24967bb338a6e6238bb55582214d108b4
+2026-07-08 19:32:29 OK   add_settlement_authority   CBDSDJNBVC...                
+      be543acdee639d1189f0798c2ea08d3a03d09ea3626453f42490eab4b6710447
+2026-07-08 19:32:39 OK   add_settlement_authority   CBDSDJNBVC...                
+      206dae6e7506fd1f9f6404a5388c38ab78d68bea557b85a6a605d2e1f4f1c355
+2026-07-08 19:32:49 OK   add_settlement_authority   CBDSDJNBVC...                
+      ab42310841c5c7cfa52705eba64ad2e5382aa6198888f38dbf36d27be5fffdc5
+2026-07-08 19:32:59 OK   add_settlement_authority   CBDSDJNBVC...                
+      b0431fcecb659ede4cc364d79f0d14be96b732d510aa79efbe950c841a2adaa1
+2026-07-08 19:33:09 OK   set_vk                     CBFWJYGP3X...                
+      a562a968a1412f7faeae5b272ea4556734560b0b4d57d2dc28df02d4edd7ddb0
+2026-07-08 19:33:19 OK   set_vk                     CBFWJYGP3X...                
+      7187aa6d8815c5c6b2e6e9bf8c26136c1a05fa06c261c99286436dd2fac97b38
+2026-07-08 19:33:29 OK   set_vk                     CBFWJYGP3X...                
+      ee6b2e86c374a714a78469e4ce6ddf813416bbd0348edfcb87a2f3423cfe166b
+2026-07-08 19:33:39 OK   set_vk                     CBFWJYGP3X...                
+      9dbe29432015d8331ffbade03cc4a835810f705b52ce875191e11a2d5eaefb8b
+2026-07-08 19:35:15 OK   insert_leaf                CCIRZ2Y4SX...                
+      19191ba532c9f59db713444b0db78b2cc0607b677c8c33990bdecefbbdfa8d30
+2026-07-08 19:35:30 OK   deposit                    CBDSDJNBVC...                XLM moved
+      e4a9a3b5ffcc18b0d5d27ac5243e18e5dd3f18df64513a1a303d944e6a9b87a3
+2026-07-08 19:36:30 OK   insert_leaf                CCIRZ2Y4SX...                
+      64ecac9b1225d352cca0b7451cc682ead2111aec02c536a8d0f771dd50079d8c
+2026-07-08 19:36:50 OK   deposit                    CBDSDJNBVC...                XLM moved
+      2c1c76860e1ea788a6ca76c47d2a10e265f6fbf5d97f74908171d15990830626
+2026-07-08 19:48:46 OK   CreateContract            
+      0652190c6252df4a563c05489ac4d0fa8b5c3cd2ebcc30d48d85063766e61ea1
+2026-07-08 19:48:56 OK   initialize                 CBYGUURN4T...                
+      5f33bbce3e2e8b0bf77a275ca7dea73a25ae90d79e10cfd211649ed88b9fb5ab
+2026-07-08 19:49:06 OK   CreateContract            
+      51d44100abd941cc2df5ec3058288a963438abc1f77b829c17faa7f05bdcd5a9
+2026-07-08 19:49:16 OK   set_price                  CDAZUPPREB...                
+      644b1acc4a5e056958aba42add1afe301cefb60113df6e79b00b57355fac61af
+2026-07-08 19:49:26 OK   CreateContract            
+      6ce0888f2ac84e5a09ae9b1c7adcc1954672fe21031a262533d59f60386a7eb1
+2026-07-08 19:49:36 OK   initialize                 CB4AT5CSSU...                
+      e724ad2af5fe1a5df6c9dfa729500526676acd194642e92849cd7e48b2fc66b8
+2026-07-08 19:49:46 OK   CreateContract            
+      7f786b0f1af4262bf0c2aa5b8720957961be94b24743b81f920294639884b4bf
+2026-07-08 19:49:56 OK   CreateContract            
+      ffc44cb351efab6cb3542e0545bd840d47bff5549d67aa6139b68e14155480b1
+2026-07-08 19:50:06 OK   CreateContract            
+      d21db25d390446769db7226090bd1de488e8cf0ada48487a7eefbef995c77df3
+2026-07-08 19:50:16 OK   CreateContract            
+      584480be1b2052f194e5121367c92c168d3e3e3d7b1fa7c74d075b78777c416d
+2026-07-08 19:50:26 OK   CreateContract            
+      98b1961d00dcb8819cc471e193a8a3e9936b39215e4d75996c6eae3a1654e49a
+2026-07-08 19:50:36 OK   initialize                 CBKFTWCOYK...                
+      cd9de2f64783a023167d1954811615afcf266cd0e9b9682b7bfef58f6aa4558f
+2026-07-08 19:50:46 OK   initialize                 CAFKNUD3QY...                
+      b1f1d5837299470f4ac6ffb760714c5bdc10e713436813ffb9a194e01d5062e2
+2026-07-08 19:50:56 OK   initialize                 CACZT4K4RO...                
+      6d304055c165f011a9094c80049643891c17840ec1b51c8bb15c615e479e8270
+2026-07-08 19:51:06 OK   initialize                 CAYEY4IQKH...                
+      e96a866d630d69289deefdcf054802451b82478493ed574abac29c82eff50680
+2026-07-08 19:51:16 OK   initialize                 CA6YCDICJX...                
+      3744a2661fb907bb4d1b3055e771d4743fb4810c12e93686347119bcc7334f92
+2026-07-08 19:51:26 OK   add_settlement_authority   CBKFTWCOYK...                
+      ecc0d7d2b6f60cc20aec2348c891fb752f3b8b5cc66c14db088a3a7fd781f2a4
+2026-07-08 19:51:36 OK   add_settlement_authority   CBKFTWCOYK...                
+      d0b200ef9e3a760d8d3e8d34c4c1e7b0d52e1cc0fadcb71d7295bc8e9b31d4fb
+2026-07-08 19:51:46 OK   add_settlement_authority   CBKFTWCOYK...                
+      b9c070001f97e8985930f8f4d97d1092cb09f85f07439653971e3b960b9bcc76
+2026-07-08 19:51:56 OK   add_settlement_authority   CBKFTWCOYK...                
+      0b31b6a01eacccd711e30af60ae7b539e7348bfc1e3941a19bb091eb7dd96b90
+2026-07-08 19:52:06 OK   set_vk                     CBYGUURN4T...                
+      4c3b380358e964a7cbec38a92c13293d886d19e199e6835633d21dd844da66aa
+2026-07-08 19:52:16 OK   set_vk                     CBYGUURN4T...                
+      b93010b6c6b9839210523e2b0d047ab34127f98c9edb43c0f95e7da33c574bc6
+2026-07-08 19:52:26 OK   set_vk                     CBYGUURN4T...                
+      21d3c851f118337b6946f77f909a04fca2e54682a51c8f6317396af032b85b67
+2026-07-08 19:52:36 OK   set_vk                     CBYGUURN4T...                
+      4122353361dfe40060618c47a5cee434af6b0514e3c800c9c4bf4839fe3ec598
+2026-07-08 19:54:47 OK   insert_leaf                CB4AT5CSSU...                
+      056924b139536558eef127847c0a0e5f93b435a5d0265c2d49ab81d83ca4f4d5
+2026-07-08 19:55:02 OK   deposit                    CBKFTWCOYK...                XLM moved
+      130416af5fc9a357c6c5bcd7c855e96a7e9d60aedaadd6ef4adcbffddc91b714
+2026-07-08 19:55:47 OK   insert_leaf                CB4AT5CSSU...                
+      f023340f83e734283459b10eb3f525f0b525ebb4a07aae57e427eb6b41ca4764
+2026-07-08 19:56:07 OK   deposit                    CBKFTWCOYK...                XLM moved
+      9544b745dd9bac56d697e6db17367305a4cf3f1431e9e37d187172b498d054dd
+2026-07-08 19:57:37 OK   transfer                   CBKFTWCOYK...                
+      c092b5c3cca6ca85c001fe0326961261825d0ff7947d7b8bad888e1bd5182812
+2026-07-08 19:58:27 OK   withdraw                   CBKFTWCOYK...                XLM moved
+      c1709d176f391c594cd9118e0a4165080f2cb94611bd652b65f07b5144a330e3
+2026-07-08 20:20:25 OK   CreateContract            
+      ba7a507eb99996bd3b9e915877347bb04f99a9a4fc6794628ef65f88e16625ba
+2026-07-09 06:27:05 OK   CreateContract            
+      591c1f6dfa0f8c5a1e29af0e1cc39e0f0705761df6b05804c863a1a0d519217d
+2026-07-09 06:27:15 OK   initialize                 CCIKM7S5MH...                
+      d308712cc07a1f6952c6cf969353cba6d1315e66918e747bbf99a142024334ba
+2026-07-09 06:27:20 OK   set_vk                     CBYGUURN4T...                
+      2be6a3e45a03a2d55385814a2252e550289a2834ac538fceeb85d37f95a4449a
+2026-07-09 06:27:30 OK   set_vk                     CBYGUURN4T...                
+      1513c7d8ad2148f7a319cdc5a60e7facf08b2fe823ab14a49e3e488d733e022c
+2026-07-09 06:27:40 OK   set_vk                     CBYGUURN4T...                
+      bcacedd245393e5eae1f1f0216cdb1d4f1491b466122222686f3cf86678c3f40
+2026-07-09 06:27:50 OK   set_vk                     CBYGUURN4T...                
+      63736d278a3824cd8f3afb9a1dc178f7dd664e4f6e8a23d5765166c723569120
+2026-07-09 06:28:00 OK   set_vk                     CBYGUURN4T...                
+      f473c925594a1320fb92cf1cb7e42867cc56db7f3eb1198b8675e90b84ce4ca4
+2026-07-09 06:28:10 OK   set_vk                     CBYGUURN4T...                
+      276eba78ad95c63eaeeb067fdcb9861066c20df29a1fa37c3aae63b55ac56b41
+2026-07-09 06:28:20 OK   UploadContractWasm        
+      ed6cd1364de9f0e71f9d202dd40d6abf4adea92181052fdd46ac6c38dc331120
+2026-07-09 06:28:30 OK   CreateContract            
+      3c01bd3015f83fc20cf66c7748547986da432acfbc66f86a0e7ebd16478697ec
+2026-07-09 06:28:35 OK   UploadContractWasm        
+      3dce5d70181a3d5b232049e7b897a2ef004e179776841bb667d0a3d376ecb2f6
+2026-07-09 06:28:45 OK   CreateContract            
+      d0e74799af179a9d41ae115ab476346b3ae32ff68f3a672be2621047723d5d99
+2026-07-09 06:28:55 OK   UploadContractWasm        
+      44387f0f9ea035f119326f4d478b184cb2ec16d38cdf40f51883facaaefed94e
+2026-07-09 06:29:05 OK   CreateContract            
+      79af0f2ef463d92185601eba86f26f3973f235ce951000f10d040f34945849f3
+2026-07-09 06:29:15 OK   UploadContractWasm        
+      b8db571ee6cedca245a68dc1ff4092943882f6ca610f0a6a053579077326beee
+2026-07-09 06:29:25 OK   CreateContract            
+      444eb90c18d4201ba75a8989c00d9db464a368909db12bbc8f7f63043a9daed7
+2026-07-09 06:29:35 OK   UploadContractWasm        
+      6d5635e594d077d2d5380f92c40f982063cf900d79b1a998bf66e76fbb4b5cb9
+2026-07-09 06:29:45 OK   CreateContract            
+      1f814f931e68812649235414c23abbd8bf38e302181f3699bfb6a17d1be909cc
+2026-07-09 06:29:55 OK   initialize                 CD5PHVNW6S...                
+      ec4471f052bb29b2ae6bac7e4cbb7e312f6df11e44786cee22d6dc8af7328445
+2026-07-09 06:30:05 OK   initialize                 CDSRTHPGKS...                
+      b8302d55c11b93341a96e3ab0e8d3354a479ee54ac207655bc2ed0b7077429be
+2026-07-09 06:30:15 OK   initialize                 CBRI4ZGER6...                
+      a7174aa9b3c104b50f677ef00a0a25f5713fe4e2de4e3b33d9563b4638ecda7a
+2026-07-09 06:30:30 OK   set_vk                     CCIKM7S5MH...                
+      728ba8af4655a055a54e35b26dca2bd526663a9868c9b5aae793f08a1ed3ea93
+2026-07-09 06:30:40 OK   set_vk                     CCIKM7S5MH...                
+      bb5b37b834307f4c7a695908ecfda4e4c9fe799eda6b781cdba7551552a9974e
+2026-07-09 06:30:55 OK   set_vk                     CCIKM7S5MH...                
+      bb17da33774d501d39df88727f3f7fe1cb78a8bd64031a32c2c8dc92c51e7bc5
+2026-07-09 06:31:05 OK   set_vk                     CCIKM7S5MH...                
+      d960a1ffa888979abae539f67eaf2e36dbb0a240ab0e8565451648b8b6a82e3e
+2026-07-09 06:31:20 OK   set_vk                     CCIKM7S5MH...                
+      515d16e5f38fa2673f60a4eeb7225eaf0115510ed389e08b0ae9382af46a4b5f
+2026-07-09 06:31:35 OK   set_vk                     CCIKM7S5MH...                
+      1224777d2cb336dd6435a3dc5137a36eb65af9c34bc96b1554e147ef98829859
+2026-07-09 06:31:50 OK   set_vk                     CCIKM7S5MH...                
+      53ada28bea1aeb4c40894d2181c8eb41305545964d947d7ca201ca8aecaf57d9
+2026-07-09 06:32:05 OK   set_vk                     CCIKM7S5MH...                
+      d6d2954293815b99e89feeb4384b057c360bc56c3ead9b3d7c9a3a8c4aa64826
+2026-07-09 06:32:25 OK   set_vk                     CCIKM7S5MH...                
+      01d76acbcbc4d2790c103d327bf222170b10b79fdcbd2e00aef8fdf8d01ee61a
+2026-07-09 06:37:06 OK   CreateContract            
+      c7591682e73886a6089c2945054cd0457e7864584a480fca6f185ff83226a8f5
+2026-07-09 06:37:16 OK   CreateContract            
+      a5fde2d4adc034297bb106042218d4fbb652a1839819e117405b0baaa124f1ff
+2026-07-09 06:39:06 OK   set_price                  CCOMO6TGGW...                
+      eec04ea1e7b859b7da71058725a4f0e13a8c39622eb48c1463f51edff0a143b6
+2026-07-09 06:39:21 OK   initialize                 CA4POOLOYY...                
+      5963e1a8ce6dd00163ab8ca0e89db951f1d568622098dcef2d7c23be1f89ba02
+2026-07-09 06:39:31 OK   initialize                 CCSNQSFEH5...                
+      9795530b0da0df2a1392cb8601f525632ec9b6f290826dab073b3559b816762d
+2026-07-09 06:39:41 OK   initialize                 CDI4D6XLET...                
+      596db257b2c475d4e533290b169c3fe788eab7250fbb7c1544daca7e237dc4ea
+2026-07-09 06:39:56 OK   add_settlement_authority   CCSNQSFEH5...                
+      c1d50b70c5fe0105c98d24b406e5838e83a2b31769c41ac40716e7e3c37a7fa9
+2026-07-09 06:40:11 OK   add_settlement_authority   CCSNQSFEH5...                
+      040a1f25d72807dced80e8ab7e537a29599e0ea9061837427fab77ecc94cdcdc
+2026-07-09 06:40:26 OK   add_settlement_authority   CCSNQSFEH5...                
+      a29c506956faf556b80b34b84c88a530ea6d8f47862de261e800efe2bd6b5de7
+2026-07-09 06:40:36 OK   add_settlement_authority   CCSNQSFEH5...                
+      143d20916f85d5d388e5c27690f8efa45accbf8698e792b7795c2d04490d66be
+2026-07-09 06:49:42 OK   insert_leaf                CA4POOLOYY...                
+      891737ea75257b546ef4069984cbf025a766d8ab746a1e3e3fdd0363aec0af84
+2026-07-09 06:51:17 OK   insert_leaf                CA4POOLOYY...                
+      b0b59802248253f5e500e8c31c245f3f9cfc8781d84b5c3d57d0b12a020dc987
+2026-07-09 06:58:43 OK   deposit                    CCSNQSFEH5...                XLM moved
+      155bc9e6a2ef7d0e876b4128bb7149b7f764273dab432fe0c8277f5a149df35e
+2026-07-09 06:58:53 OK   insert_leaf                CA4POOLOYY...                
+      36f23d176afa391f91a2a695873a9e8b5d0c66adf7c257a3bccd31db98f45068
+2026-07-09 06:59:38 OK   deposit                    CCSNQSFEH5...                XLM moved
+      38814dd152241f4956da042313c613a0ac9aa19668ca2c827aa154b28dd7ae25
+2026-07-09 07:07:54 OK   UploadContractWasm        
+      baeb992803deb7a7c3587eab891c111d7c1eea929fafcb1f89e9eaac03c328c9
+2026-07-09 07:08:04 OK   upgrade                    CCSNQSFEH5...                
+      91799d2f6abc76cb02bb6b688a6979e483b12a74f7e86880d0e695929db24527
+2026-07-09 14:58:23 OK   upgrade                    CCSNQSFEH5...                
+      0530d480bb5137fa60d3bd5ad8aeb10d837d145d1cbc11c47a04e664d9be9863
+2026-07-09 14:59:53 OK   transfer                   CCSNQSFEH5...                
+      12ca6df52d49ce0a5d61192f8cd09444d1a8163882846a33509fe6980a97b119
+2026-07-09 15:00:28 OK   withdraw                   CCSNQSFEH5...                XLM moved
+      c4e5d49d6921e75b92d73622becf81a76da0bee383f73b0780deb1f0e9f8b75c
+2026-07-09 17:33:44 OK   set_price                  CCOMO6TGGW...                
+      0bbeeaac513e81ee041a47225f7df6fa3494ab970b1c48679de1e059d8e159b8
+2026-07-09 17:50:05 OK   set_price                  CCOMO6TGGW...                
+      189463426df06936d02721d716df6de1d6bcffd0a8b69d2550720a5dbc63916b
+2026-07-09 17:50:35 OK   deposit                    CCSNQSFEH5...                XLM moved
+      313a8f39c18dd2496807974718ba9e8d533db86238d039ea91216a9d03b8a7b6
+2026-07-09 17:55:36 OK   set_price                  CCOMO6TGGW...                
+      813eef2e7299f99b62b7d88903f2982a55ed7b07e4f5dc914708f025d2e3031e
+2026-07-09 17:57:11 OK   set_price                  CCOMO6TGGW...                
+      95e814dada24c1cfd6fb6233806432a512e9753edc0b972da50edc464d6a8a00
+2026-07-09 17:57:21 OK   insert_leaf                CA4POOLOYY...                
+      6c320a11fc7f2c05173f568c837e077eb56787c45bc80ff709e7b3e81736b5eb
+2026-07-09 17:57:51 OK   deposit                    CCSNQSFEH5...                XLM moved
+      932068c7dd4ece7042771426baef958c6e98d697f16b6c51608c4625ab80b16d
+2026-07-09 17:58:21 OK   open_position              CDI4D6XLET...                
+      7b77855e8bc2ed31f1bccb405f851a8a80fff52b3f63b717d3a8ccce1b95857c
+2026-07-09 17:58:31 OK   set_price                  CCOMO6TGGW...                
+      19640d7e1522147667023c5bde0b43fb1b75a544735f14638793b26e959c38e9
+2026-07-09 17:58:41 OK   attest_health              CDI4D6XLET...                
+      324ad22298bb6f743556510439e88c0fac5c85884636f09014f6aa4deff4676d
+2026-07-09 17:58:56 OK   close_or_modify_position   CDI4D6XLET...                
+      adb061f8e4398c78071f9ae417a9d8600675400e866d98ecdf0fcaa1324e6880
+2026-07-09 18:25:49 OK   set_price                  CCOMO6TGGW...                
+      56ede803e8047220d82b6de82ffbb44b81419b342799839b1f58a724f8c59f45
+2026-07-09 18:26:19 OK   deposit                    CCSNQSFEH5...                XLM moved
+      d4a8ce49edac7626c3f6ac96a3a6d3d0bb564f43832454c7e4b9de7d127f410e
+2026-07-09 18:29:09 OK   set_price                  CCOMO6TGGW...                
+      175219f58562d57baed01092351f8a6cfece3026f34bb9365c05602b5171f610
+2026-07-09 18:29:39 OK   deposit                    CCSNQSFEH5...                XLM moved
+      1801d038e2fd2bffc9cdfb43aee694d4da7fd78c51f7d3a750f4c5ce36f8592f
+2026-07-09 18:31:55 OK   set_price                  CCOMO6TGGW...                
+      67dd4884306cb80e5327f0d0a15557b094d85b64aeb883e93b1017617d1057b4
+2026-07-09 18:32:25 OK   deposit                    CCSNQSFEH5...                XLM moved
+      42c55b29803133622526143931dd385e10f18d7770e15b4a532dc224c0f3dc00
+2026-07-09 18:34:50 OK   set_price                  CCOMO6TGGW...                
+      e917e5bca8805be312d6c66befb27c2420e5c95e7323f3ecdf483ec23f64fdc3
+2026-07-09 18:35:20 OK   deposit                    CCSNQSFEH5...                XLM moved
+      41ce6bfd04c951bc3cb07cf95fcead64e91921fb96ccc8f7ee1357079632d34e
+2026-07-09 18:35:50 OK   open_position              CDI4D6XLET...                
+      409f62ce28d960deb83a450f34c2c32648ea10286af09f9cfebb3c82166bc77f
+2026-07-09 18:36:00 OK   set_price                  CCOMO6TGGW...                
+      c3247c4d206ad350c97c4ee877fb4199777aab2b32639f5e7c351030f5413833
+2026-07-09 18:37:00 OK   set_price                  CCOMO6TGGW...                
+      fe29d6a039f3b8f7a6fd07c8d76e337f2d5cd0df15b868e9995298ee50890c5f
+2026-07-09 18:37:30 OK   deposit                    CCSNQSFEH5...                XLM moved
+      3ea7433b525f2dacd1cb6b3d4d4286873c637e7a50ca2c9cdd76fcebadcf4a98
+2026-07-09 18:39:55 OK   set_price                  CCOMO6TGGW...                
+      c371d7942465507515e9d78aba4e21544356d0521a79a154c3b1879e1093280d
+2026-07-09 18:40:25 OK   deposit                    CCSNQSFEH5...                XLM moved
+      b71fcc80e4f3351f9de351487ec098d5bcf8f527a6468f985ef69a9aa82bfc54
+2026-07-09 18:40:56 OK   open_position              CDI4D6XLET...                
+      5759421e5773c80c2f57aa12284aec921a267e4450407c46eeff49c6b6ff2d44
+2026-07-09 18:41:06 OK   set_price                  CCOMO6TGGW...                
+      d3296a3ef0bf89a081de70d3bc611abaf4329e8c2b430f231a01a6d8a4deac4d
+2026-07-09 18:41:16 OK   attest_health              CDI4D6XLET...                
+      892af798415e546697ea4be9099709748e0d381efe317cecac0eae0bfec3c2c0
+2026-07-09 18:41:26 OK   initiate_liquidation       CD5PHVNW6S...                
+      18015662ff72256177043b3fd5ff427e3a1b3b05fd02bdeb1ed7c8ab19f40909
+2026-07-09 18:41:36 OK   reveal_and_seize           CD5PHVNW6S...                XLM moved
+      eca556694793b5619c0d00490e8b5db15e9644b69c56665877a6006dcff6ce44
+2026-07-09 18:43:31 OK   set_price                  CCOMO6TGGW...                
+      176a39fea6239fac5fc738c02eaa72bd9afe41b0b58e0aeed90c5f1a77227c16
+2026-07-09 18:44:01 OK   deposit                    CCSNQSFEH5...                XLM moved
+      fe761f60f36e31f09db5b1d179bc1a314cfa27a87cb9c6063ed8afd3cd6d9e41
+2026-07-09 18:45:21 OK   set_price                  CCOMO6TGGW...                
+      14aee9e8d1d1168b04c89e0d0cbc9f33d0eb712abd9ab09b0eee2251ce17c94e
+2026-07-09 18:45:56 OK   deposit                    CCSNQSFEH5...                XLM moved
+      d9178cf49fecbc71f69e6c5355f6d606b106b1ac85636d0185497012ee77e738
+2026-07-09 18:46:26 OK   open_position              CDI4D6XLET...                
+      14cde6616f356562e90303bfaaeb7b5e0c6460a898d682079a734f8162bb9265
+2026-07-09 18:46:36 OK   set_price                  CCOMO6TGGW...                
+      8da0c0d40b894d088415ef64f1bb2013ef771d60107d217049fe69b7fc3d8e80
+2026-07-09 18:46:46 OK   attest_health              CDI4D6XLET...                
+      fbd567a53eb99e278410420b7d25eb0534f8eec89dd26f4a3f2e1f2df633a77d
+2026-07-09 20:07:54 OK   set_price                  CCOMO6TGGW...                
+      8c246836fc5a8589770baff767f5b6a26e23b3d662050d2243b86eb081c02913
+2026-07-09 20:08:24 OK   deposit                    CCSNQSFEH5...                XLM moved
+      619f2735b175c7d5f423a1cd05b14917b121efcb95426c9aa2e80d762493a1db
+2026-07-09 20:10:30 OK   set_price                  CCOMO6TGGW...                
+      889e25e275d5b3963733ca105aa4e94fc5d3ffa31a4f8eb1e6911453ed001780
+2026-07-09 20:11:00 OK   deposit                    CCSNQSFEH5...                XLM moved
+      a6c1ada408edf70b06656fc3f8eaee58ba9548c4aa642dd96eaca607d5f7ced9
+2026-07-09 20:14:45 OK   set_price                  CCOMO6TGGW...                
+      d06de948e9ff563cacbcae2c9ec6e6c1697bb96d0c8b892d13db324ba0c46e8f
+2026-07-09 20:15:15 OK   deposit                    CCSNQSFEH5...                XLM moved
+      a0aa7472eba3346c173d73cacd63bd1f81ea49f1896482f80b7b72277e399644
+2026-07-09 20:15:45 OK   open_position              CDI4D6XLET...                
+      74fe2b00a47264ec0eda11720784debf9941ee14be8188f3777e4d2805944530
+2026-07-09 20:15:55 OK   set_price                  CCOMO6TGGW...                
+      90bef095e3d7da2a7ebae70ea0ffc8f63dec65e3626f7f3aacf10d715ae91749
+2026-07-09 20:16:05 OK   attest_health              CDI4D6XLET...                
+      3ec0a99b48b73766e1a5c3a05b3f7d736c0924bbf4246b22c6a427c2b881971b
+2026-07-09 20:16:20 OK   close_or_modify_position   CDI4D6XLET...                
+      2a79458247d3a304e0d8804e7907592945699b46ea1e95678b231f9b58a72764
+2026-07-10 07:07:19 OK   commit_order               CDSRTHPGKS...                XLM moved
+      6f265343d90a3529e9311080a0270ec6f89c1039338ee47ac830c65807b56efa
+2026-07-10 07:07:34 OK   reveal_and_execute         CDSRTHPGKS...                XLM moved
+      3ca1491711c6313d94ed0bd0a764b2964b07da924d16c4b32cf5b83b9fb6da6a
+2026-07-10 07:08:44 OK   create_quest               CBRI4ZGER6...                XLM moved
+      000974d96cae5f5ec91439e2e4590678158cf90f0b14a4be9182e0c4c20774b6
+2026-07-10 07:08:54 OK   claim_quest                CBRI4ZGER6...                XLM moved
+      98e6c237dd1fe62bdc49757dea66333ac400334c66047725918c5acc151c59c1
+2026-07-10 11:37:35 OK   UploadContractWasm        
+      88e7a7a032fb11f2b17d4373d749efabbcd33f7579dde9bbfc8448a4f7833c31
+2026-07-10 11:38:05 OK   upgrade                    CDI4D6XLET...                
+      64e1939ac71b9740c686894fd576ba96367d08e37339cba083f267a7bfc2db70
+2026-07-10 15:00:06 OK   set_vk                     CCIKM7S5MH...                
+      3680275f2e1a65be2a707244191b1f3be0186c6cf60e19d094d037732b326a31
+2026-07-10 15:00:16 OK   set_vk                     CCIKM7S5MH...                
+      8292ad267c9907307456136b2c9f052aff5246594176b2e7bc559bd4c9eb7ecc
+2026-07-10 15:00:26 OK   set_vk                     CCIKM7S5MH...                
+      fb563f397bd361686564b518de2f926e489f5d35f521b9079f0d19801cf7b5d0
+2026-07-10 15:00:36 OK   set_vk                     CCIKM7S5MH...                
+      f50e3d8166f5add8058cc87453b66b2a75b135bf0bfa3fd76488beb4c35dd8d1
+2026-07-10 15:00:46 OK   set_vk                     CCIKM7S5MH...                
+      aecad587686aee31faecc2ab12ddd91090f3e70c005d09bcd4c8a5663dbdc442
+2026-07-10 15:00:56 OK   set_vk                     CCIKM7S5MH...                
+      1d07bb43193ec747c22b26cdae1bb780ec63e10d7648b19df60a5d7241302c45
+2026-07-10 15:01:11 OK   set_vk                     CCIKM7S5MH...                
+      d582b1a17b461e0de62788ffdd40ea3074139ec60306a1fe3c620079dbe9c497
+2026-07-10 15:01:21 OK   set_vk                     CCIKM7S5MH...                
+      39c955e243894e6cc8d13b6ea400087f734a8b5b7641a29a64c449f0de816d7a
+2026-07-10 15:01:31 OK   set_vk                     CCIKM7S5MH...                
+      5d8f9dc7de000dc25a296c4b3e568208251b92fd4009c99c7a444fbad2258667
+2026-07-10 15:18:33 OK   set_vk                     CCIKM7S5MH...                
+      c3cb6f9875a765b9fedd0a5a8ca12b4803bfa35442f036d68c288ddadbbd5c7b
+2026-07-10 15:18:43 OK   set_vk                     CCIKM7S5MH...                
+      687d63aecc4f95273ebe2a12662fff1d197c21812a0f092c174b66bd62d5bd52
+2026-07-10 15:18:53 OK   set_vk                     CCIKM7S5MH...                
+      6dd2013089c9b15a3ef8be4de7fb3050bca9d92a7fc98b4ff63fecddbe87bca7
+2026-07-10 15:19:03 OK   set_vk                     CCIKM7S5MH...                
+      d67d0685123528423bcf85b559dda37e0103147e89e1cb8c28a707826cb6f16c
+2026-07-10 15:19:13 OK   set_vk                     CCIKM7S5MH...                
+      8fd64c8fd9c7078bdaa98f1cddde2d4e95a123b912d5f33af302238abe0ce2d4
+2026-07-10 15:19:23 OK   set_vk                     CCIKM7S5MH...                
+      d76232a8229e309a886e3c7e9efb45b8a30f45413a59c9a117b608fcda058cd0
+2026-07-10 15:19:33 OK   set_vk                     CCIKM7S5MH...                
+      3c7368de07e0914d18e3796c2e7686863bdf68ce7f49b2054930db22f2e49e5f
+2026-07-10 15:19:43 OK   set_vk                     CCIKM7S5MH...                
+      e65b0ad545fe4c7e0b4fc247605c03878c5b9ab0a1f8b45a905577662ec53d6c
+2026-07-10 15:19:53 OK   set_vk                     CCIKM7S5MH...                
+      b1d45150992af19f9855959c316a3a595311d57f2b73380e9707979fcbb6d3d9
+2026-07-10 16:03:48 OK   UploadContractWasm        
+      53ea736cc9f70e213c1f5577ba76c6e815be9d2c2a1b4c1bf112aa88ce636694
+
+############################################################################################
+# TESTNET relayer  [TESTNET]
+# GC2DCWJ4NWLWRWWJ5UMHOWNL6MHIDIEZDL33PP2XZPJA3KK6UJWLD6OI   ops: 6
+############################################################################################
+2026-07-11 10:36:19 OK   create_account             797c7f1ec578da9bdaacd0d55485fb9cb33400274620001d813eccc1c5cb566e
+2026-07-11 10:44:00 OK   withdraw_v2                TESTNET v2jul pool           XLM moved
+      62f9452c9868309d509fc421848f0ff61d9f9ed3f42b589a596dac324126c873
+2026-07-11 17:17:58 OK   withdraw_v2                TESTNET v2jul pool           XLM moved
+      c649b545db2809e76dfb0648c1f29dae6d47c70be5ebf7f638bd2d1aa4be1abc
+2026-07-12 07:28:45 OK   withdraw_v2                TESTNET v2jul pool           XLM moved
+      6d5d0b1f1a7c1a0c8122ef8bbd0a3158a85fc687aef5286207d37288fac76064
+2026-07-12 07:37:11 OK   withdraw_v2                TESTNET v2jul pool           XLM moved
+      c61e294a513280c0153708fe3946429280b32dbaf56be277646906b12d7e7a29
+2026-07-12 10:22:17 OK   withdraw_v2                TESTNET v2jul pool           XLM moved
+      1b6c6e905fe5784915501e80ab2d6d8b9867355723533a9be96a2a0afe42a2dd
+
+====================================================================================================
+TESTNET: EVERY VAYYL CONTRACT INVOCATION FOUND  (134 transactions)
+====================================================================================================
+WHEN (UTC)               CONTRACT                 FUNCTION               BY
+2026-07-09 06:27:15 OK   T-V1 verifier            initialize             v2aug deployer
+  d308712cc07a1f6952c6cf969353cba6d1315e66918e747bbf99a142024334ba
+2026-07-09 06:29:55 OK   T-V1 liquidation_engine  initialize             v2aug deployer
+  ec4471f052bb29b2ae6bac7e4cbb7e312f6df11e44786cee22d6dc8af7328445
+2026-07-09 06:30:05 OK   T-V1 order_registry      initialize             v2aug deployer
+  b8302d55c11b93341a96e3ab0e8d3354a479ee54ac207655bc2ed0b7077429be
+2026-07-09 06:30:15 OK   T-V1 agentic_hub         initialize             v2aug deployer
+  a7174aa9b3c104b50f677ef00a0a25f5713fe4e2de4e3b33d9563b4638ecda7a
+2026-07-09 06:30:30 OK   T-V1 verifier            set_vk                 v2aug deployer
+  728ba8af4655a055a54e35b26dca2bd526663a9868c9b5aae793f08a1ed3ea93
+2026-07-09 06:30:40 OK   T-V1 verifier            set_vk                 v2aug deployer
+  bb5b37b834307f4c7a695908ecfda4e4c9fe799eda6b781cdba7551552a9974e
+2026-07-09 06:30:55 OK   T-V1 verifier            set_vk                 v2aug deployer
+  bb17da33774d501d39df88727f3f7fe1cb78a8bd64031a32c2c8dc92c51e7bc5
+2026-07-09 06:31:05 OK   T-V1 verifier            set_vk                 v2aug deployer
+  d960a1ffa888979abae539f67eaf2e36dbb0a240ab0e8565451648b8b6a82e3e
+2026-07-09 06:31:20 OK   T-V1 verifier            set_vk                 v2aug deployer
+  515d16e5f38fa2673f60a4eeb7225eaf0115510ed389e08b0ae9382af46a4b5f
+2026-07-09 06:31:35 OK   T-V1 verifier            set_vk                 v2aug deployer
+  1224777d2cb336dd6435a3dc5137a36eb65af9c34bc96b1554e147ef98829859
+2026-07-09 06:31:50 OK   T-V1 verifier            set_vk                 v2aug deployer
+  53ada28bea1aeb4c40894d2181c8eb41305545964d947d7ca201ca8aecaf57d9
+2026-07-09 06:32:05 OK   T-V1 verifier            set_vk                 v2aug deployer
+  d6d2954293815b99e89feeb4384b057c360bc56c3ead9b3d7c9a3a8c4aa64826
+2026-07-09 06:32:25 OK   T-V1 verifier            set_vk                 v2aug deployer
+  01d76acbcbc4d2790c103d327bf222170b10b79fdcbd2e00aef8fdf8d01ee61a
+2026-07-09 06:39:06 OK   T-V1 oracle              set_price              v2aug deployer
+  eec04ea1e7b859b7da71058725a4f0e13a8c39622eb48c1463f51edff0a143b6
+2026-07-09 06:39:21 OK   T-V1 asp_membership      initialize             v2aug deployer
+  5963e1a8ce6dd00163ab8ca0e89db951f1d568622098dcef2d7c23be1f89ba02
+2026-07-09 06:39:31 OK   T-V1 pool                initialize             v2aug deployer
+  9795530b0da0df2a1392cb8601f525632ec9b6f290826dab073b3559b816762d
+2026-07-09 06:39:41 OK   T-V1 position_manager    initialize             v2aug deployer
+  596db257b2c475d4e533290b169c3fe788eab7250fbb7c1544daca7e237dc4ea
+2026-07-09 06:39:56 OK   T-V1 pool                add_settlement_authority v2aug deployer
+  c1d50b70c5fe0105c98d24b406e5838e83a2b31769c41ac40716e7e3c37a7fa9
+2026-07-09 06:40:11 OK   T-V1 pool                add_settlement_authority v2aug deployer
+  040a1f25d72807dced80e8ab7e537a29599e0ea9061837427fab77ecc94cdcdc
+2026-07-09 06:40:26 OK   T-V1 pool                add_settlement_authority v2aug deployer
+  a29c506956faf556b80b34b84c88a530ea6d8f47862de261e800efe2bd6b5de7
+2026-07-09 06:40:36 OK   T-V1 pool                add_settlement_authority v2aug deployer
+  143d20916f85d5d388e5c27690f8efa45accbf8698e792b7795c2d04490d66be
+2026-07-09 06:49:42 OK   T-V1 asp_membership      insert_leaf            v2aug deployer
+  891737ea75257b546ef4069984cbf025a766d8ab746a1e3e3fdd0363aec0af84
+2026-07-09 06:51:17 OK   T-V1 asp_membership      insert_leaf            v2aug deployer
+  b0b59802248253f5e500e8c31c245f3f9cfc8781d84b5c3d57d0b12a020dc987
+2026-07-09 06:58:43 OK   T-V1 pool                deposit                v2aug deployer
+  155bc9e6a2ef7d0e876b4128bb7149b7f764273dab432fe0c8277f5a149df35e
+2026-07-09 06:58:53 OK   T-V1 asp_membership      insert_leaf            v2aug deployer
+  36f23d176afa391f91a2a695873a9e8b5d0c66adf7c257a3bccd31db98f45068
+2026-07-09 06:59:38 OK   T-V1 pool                deposit                v2aug deployer
+  38814dd152241f4956da042313c613a0ac9aa19668ca2c827aa154b28dd7ae25
+2026-07-09 07:08:04 OK   T-V1 pool                upgrade                v2aug deployer
+  91799d2f6abc76cb02bb6b688a6979e483b12a74f7e86880d0e695929db24527
+2026-07-09 14:58:23 OK   T-V1 pool                upgrade                v2aug deployer
+  0530d480bb5137fa60d3bd5ad8aeb10d837d145d1cbc11c47a04e664d9be9863
+2026-07-09 14:59:53 OK   T-V1 pool                transfer               v2aug deployer
+  12ca6df52d49ce0a5d61192f8cd09444d1a8163882846a33509fe6980a97b119
+2026-07-09 15:00:28 OK   T-V1 pool                withdraw               v2aug deployer
+  c4e5d49d6921e75b92d73622becf81a76da0bee383f73b0780deb1f0e9f8b75c
+2026-07-09 17:33:44 OK   T-V1 oracle              set_price              v2aug deployer
+  0bbeeaac513e81ee041a47225f7df6fa3494ab970b1c48679de1e059d8e159b8
+2026-07-09 17:50:05 OK   T-V1 oracle              set_price              v2aug deployer
+  189463426df06936d02721d716df6de1d6bcffd0a8b69d2550720a5dbc63916b
+2026-07-09 17:50:35 OK   T-V1 pool                deposit                v2aug deployer
+  313a8f39c18dd2496807974718ba9e8d533db86238d039ea91216a9d03b8a7b6
+2026-07-09 17:55:36 OK   T-V1 oracle              set_price              v2aug deployer
+  813eef2e7299f99b62b7d88903f2982a55ed7b07e4f5dc914708f025d2e3031e
+2026-07-09 17:57:11 OK   T-V1 oracle              set_price              v2aug deployer
+  95e814dada24c1cfd6fb6233806432a512e9753edc0b972da50edc464d6a8a00
+2026-07-09 17:57:21 OK   T-V1 asp_membership      insert_leaf            v2aug deployer
+  6c320a11fc7f2c05173f568c837e077eb56787c45bc80ff709e7b3e81736b5eb
+2026-07-09 17:57:51 OK   T-V1 pool                deposit                v2aug deployer
+  932068c7dd4ece7042771426baef958c6e98d697f16b6c51608c4625ab80b16d
+2026-07-09 17:58:21 OK   T-V1 position_manager    open_position          v2aug deployer
+  7b77855e8bc2ed31f1bccb405f851a8a80fff52b3f63b717d3a8ccce1b95857c
+2026-07-09 17:58:31 OK   T-V1 oracle              set_price              v2aug deployer
+  19640d7e1522147667023c5bde0b43fb1b75a544735f14638793b26e959c38e9
+2026-07-09 17:58:41 OK   T-V1 position_manager    attest_health          v2aug deployer
+  324ad22298bb6f743556510439e88c0fac5c85884636f09014f6aa4deff4676d
+2026-07-09 17:58:56 OK   T-V1 position_manager    close_or_modify_position v2aug deployer
+  adb061f8e4398c78071f9ae417a9d8600675400e866d98ecdf0fcaa1324e6880
+2026-07-09 18:25:49 OK   T-V1 oracle              set_price              v2aug deployer
+  56ede803e8047220d82b6de82ffbb44b81419b342799839b1f58a724f8c59f45
+2026-07-09 18:26:19 OK   T-V1 pool                deposit                v2aug deployer
+  d4a8ce49edac7626c3f6ac96a3a6d3d0bb564f43832454c7e4b9de7d127f410e
+2026-07-09 18:29:09 OK   T-V1 oracle              set_price              v2aug deployer
+  175219f58562d57baed01092351f8a6cfece3026f34bb9365c05602b5171f610
+2026-07-09 18:29:39 OK   T-V1 pool                deposit                v2aug deployer
+  1801d038e2fd2bffc9cdfb43aee694d4da7fd78c51f7d3a750f4c5ce36f8592f
+2026-07-09 18:31:55 OK   T-V1 oracle              set_price              v2aug deployer
+  67dd4884306cb80e5327f0d0a15557b094d85b64aeb883e93b1017617d1057b4
+2026-07-09 18:32:25 OK   T-V1 pool                deposit                v2aug deployer
+  42c55b29803133622526143931dd385e10f18d7770e15b4a532dc224c0f3dc00
+2026-07-09 18:34:50 OK   T-V1 oracle              set_price              v2aug deployer
+  e917e5bca8805be312d6c66befb27c2420e5c95e7323f3ecdf483ec23f64fdc3
+2026-07-09 18:35:20 OK   T-V1 pool                deposit                v2aug deployer
+  41ce6bfd04c951bc3cb07cf95fcead64e91921fb96ccc8f7ee1357079632d34e
+2026-07-09 18:35:50 OK   T-V1 position_manager    open_position          v2aug deployer
+  409f62ce28d960deb83a450f34c2c32648ea10286af09f9cfebb3c82166bc77f
+2026-07-09 18:36:00 OK   T-V1 oracle              set_price              v2aug deployer
+  c3247c4d206ad350c97c4ee877fb4199777aab2b32639f5e7c351030f5413833
+2026-07-09 18:37:00 OK   T-V1 oracle              set_price              v2aug deployer
+  fe29d6a039f3b8f7a6fd07c8d76e337f2d5cd0df15b868e9995298ee50890c5f
+2026-07-09 18:37:30 OK   T-V1 pool                deposit                v2aug deployer
+  3ea7433b525f2dacd1cb6b3d4d4286873c637e7a50ca2c9cdd76fcebadcf4a98
+2026-07-09 18:39:55 OK   T-V1 oracle              set_price              v2aug deployer
+  c371d7942465507515e9d78aba4e21544356d0521a79a154c3b1879e1093280d
+2026-07-09 18:40:25 OK   T-V1 pool                deposit                v2aug deployer
+  b71fcc80e4f3351f9de351487ec098d5bcf8f527a6468f985ef69a9aa82bfc54
+2026-07-09 18:40:56 OK   T-V1 position_manager    open_position          v2aug deployer
+  5759421e5773c80c2f57aa12284aec921a267e4450407c46eeff49c6b6ff2d44
+2026-07-09 18:41:06 OK   T-V1 oracle              set_price              v2aug deployer
+  d3296a3ef0bf89a081de70d3bc611abaf4329e8c2b430f231a01a6d8a4deac4d
+2026-07-09 18:41:16 OK   T-V1 position_manager    attest_health          v2aug deployer
+  892af798415e546697ea4be9099709748e0d381efe317cecac0eae0bfec3c2c0
+2026-07-09 18:41:26 OK   T-V1 liquidation_engine  initiate_liquidation   v2aug deployer
+  18015662ff72256177043b3fd5ff427e3a1b3b05fd02bdeb1ed7c8ab19f40909
+2026-07-09 18:41:36 OK   T-V1 liquidation_engine  reveal_and_seize       v2aug deployer
+  eca556694793b5619c0d00490e8b5db15e9644b69c56665877a6006dcff6ce44
+2026-07-09 18:43:31 OK   T-V1 oracle              set_price              v2aug deployer
+  176a39fea6239fac5fc738c02eaa72bd9afe41b0b58e0aeed90c5f1a77227c16
+2026-07-09 18:44:01 OK   T-V1 pool                deposit                v2aug deployer
+  fe761f60f36e31f09db5b1d179bc1a314cfa27a87cb9c6063ed8afd3cd6d9e41
+2026-07-09 18:45:21 OK   T-V1 oracle              set_price              v2aug deployer
+  14aee9e8d1d1168b04c89e0d0cbc9f33d0eb712abd9ab09b0eee2251ce17c94e
+2026-07-09 18:45:56 OK   T-V1 pool                deposit                v2aug deployer
+  d9178cf49fecbc71f69e6c5355f6d606b106b1ac85636d0185497012ee77e738
+2026-07-09 18:46:26 OK   T-V1 position_manager    open_position          v2aug deployer
+  14cde6616f356562e90303bfaaeb7b5e0c6460a898d682079a734f8162bb9265
+2026-07-09 18:46:36 OK   T-V1 oracle              set_price              v2aug deployer
+  8da0c0d40b894d088415ef64f1bb2013ef771d60107d217049fe69b7fc3d8e80
+2026-07-09 18:46:46 OK   T-V1 position_manager    attest_health          v2aug deployer
+  fbd567a53eb99e278410420b7d25eb0534f8eec89dd26f4a3f2e1f2df633a77d
+2026-07-09 20:07:54 OK   T-V1 oracle              set_price              v2aug deployer
+  8c246836fc5a8589770baff767f5b6a26e23b3d662050d2243b86eb081c02913
+2026-07-09 20:08:24 OK   T-V1 pool                deposit                v2aug deployer
+  619f2735b175c7d5f423a1cd05b14917b121efcb95426c9aa2e80d762493a1db
+2026-07-09 20:10:30 OK   T-V1 oracle              set_price              v2aug deployer
+  889e25e275d5b3963733ca105aa4e94fc5d3ffa31a4f8eb1e6911453ed001780
+2026-07-09 20:11:00 OK   T-V1 pool                deposit                v2aug deployer
+  a6c1ada408edf70b06656fc3f8eaee58ba9548c4aa642dd96eaca607d5f7ced9
+2026-07-09 20:14:45 OK   T-V1 oracle              set_price              v2aug deployer
+  d06de948e9ff563cacbcae2c9ec6e6c1697bb96d0c8b892d13db324ba0c46e8f
+2026-07-09 20:15:15 OK   T-V1 pool                deposit                v2aug deployer
+  a0aa7472eba3346c173d73cacd63bd1f81ea49f1896482f80b7b72277e399644
+2026-07-09 20:15:45 OK   T-V1 position_manager    open_position          v2aug deployer
+  74fe2b00a47264ec0eda11720784debf9941ee14be8188f3777e4d2805944530
+2026-07-09 20:15:55 OK   T-V1 oracle              set_price              v2aug deployer
+  90bef095e3d7da2a7ebae70ea0ffc8f63dec65e3626f7f3aacf10d715ae91749
+2026-07-09 20:16:05 OK   T-V1 position_manager    attest_health          v2aug deployer
+  3ec0a99b48b73766e1a5c3a05b3f7d736c0924bbf4246b22c6a427c2b881971b
+2026-07-09 20:16:20 OK   T-V1 position_manager    close_or_modify_position v2aug deployer
+  2a79458247d3a304e0d8804e7907592945699b46ea1e95678b231f9b58a72764
+2026-07-10 07:07:19 OK   T-V1 order_registry      commit_order           v2aug deployer
+  6f265343d90a3529e9311080a0270ec6f89c1039338ee47ac830c65807b56efa
+2026-07-10 07:07:34 OK   T-V1 order_registry      reveal_and_execute     v2aug deployer
+  3ca1491711c6313d94ed0bd0a764b2964b07da924d16c4b32cf5b83b9fb6da6a
+2026-07-10 07:08:44 OK   T-V1 agentic_hub         create_quest           v2aug deployer
+  000974d96cae5f5ec91439e2e4590678158cf90f0b14a4be9182e0c4c20774b6
+2026-07-10 07:08:54 OK   T-V1 agentic_hub         claim_quest            v2aug deployer
+  98e6c237dd1fe62bdc49757dea66333ac400334c66047725918c5acc151c59c1
+2026-07-10 11:38:05 OK   T-V1 position_manager    upgrade                v2aug deployer
+  64e1939ac71b9740c686894fd576ba96367d08e37339cba083f267a7bfc2db70
+2026-07-10 15:00:06 OK   T-V1 verifier            set_vk                 v2aug deployer
+  3680275f2e1a65be2a707244191b1f3be0186c6cf60e19d094d037732b326a31
+2026-07-10 15:00:16 OK   T-V1 verifier            set_vk                 v2aug deployer
+  8292ad267c9907307456136b2c9f052aff5246594176b2e7bc559bd4c9eb7ecc
+2026-07-10 15:00:26 OK   T-V1 verifier            set_vk                 v2aug deployer
+  fb563f397bd361686564b518de2f926e489f5d35f521b9079f0d19801cf7b5d0
+2026-07-10 15:00:36 OK   T-V1 verifier            set_vk                 v2aug deployer
+  f50e3d8166f5add8058cc87453b66b2a75b135bf0bfa3fd76488beb4c35dd8d1
+2026-07-10 15:00:46 OK   T-V1 verifier            set_vk                 v2aug deployer
+  aecad587686aee31faecc2ab12ddd91090f3e70c005d09bcd4c8a5663dbdc442
+2026-07-10 15:00:56 OK   T-V1 verifier            set_vk                 v2aug deployer
+  1d07bb43193ec747c22b26cdae1bb780ec63e10d7648b19df60a5d7241302c45
+2026-07-10 15:01:11 OK   T-V1 verifier            set_vk                 v2aug deployer
+  d582b1a17b461e0de62788ffdd40ea3074139ec60306a1fe3c620079dbe9c497
+2026-07-10 15:01:21 OK   T-V1 verifier            set_vk                 v2aug deployer
+  39c955e243894e6cc8d13b6ea400087f734a8b5b7641a29a64c449f0de816d7a
+2026-07-10 15:01:31 OK   T-V1 verifier            set_vk                 v2aug deployer
+  5d8f9dc7de000dc25a296c4b3e568208251b92fd4009c99c7a444fbad2258667
+2026-07-10 15:18:33 OK   T-V1 verifier            set_vk                 v2aug deployer
+  c3cb6f9875a765b9fedd0a5a8ca12b4803bfa35442f036d68c288ddadbbd5c7b
+2026-07-10 15:18:43 OK   T-V1 verifier            set_vk                 v2aug deployer
+  687d63aecc4f95273ebe2a12662fff1d197c21812a0f092c174b66bd62d5bd52
+2026-07-10 15:18:53 OK   T-V1 verifier            set_vk                 v2aug deployer
+  6dd2013089c9b15a3ef8be4de7fb3050bca9d92a7fc98b4ff63fecddbe87bca7
+2026-07-10 15:19:03 OK   T-V1 verifier            set_vk                 v2aug deployer
+  d67d0685123528423bcf85b559dda37e0103147e89e1cb8c28a707826cb6f16c
+2026-07-10 15:19:13 OK   T-V1 verifier            set_vk                 v2aug deployer
+  8fd64c8fd9c7078bdaa98f1cddde2d4e95a123b912d5f33af302238abe0ce2d4
+2026-07-10 15:19:23 OK   T-V1 verifier            set_vk                 v2aug deployer
+  d76232a8229e309a886e3c7e9efb45b8a30f45413a59c9a117b608fcda058cd0
+2026-07-10 15:19:33 OK   T-V1 verifier            set_vk                 v2aug deployer
+  3c7368de07e0914d18e3796c2e7686863bdf68ce7f49b2054930db22f2e49e5f
+2026-07-10 15:19:43 OK   T-V1 verifier            set_vk                 v2aug deployer
+  e65b0ad545fe4c7e0b4fc247605c03878c5b9ab0a1f8b45a905577662ec53d6c
+2026-07-10 15:19:53 OK   T-V1 verifier            set_vk                 v2aug deployer
+  b1d45150992af19f9855959c316a3a595311d57f2b73380e9707979fcbb6d3d9
+2026-07-10 16:04:13 OK   T-V1 position_manager    upgrade                v2aug deployer
+  e1af539a87a6639c99a363460b3d3dc371bd94fbd2f1dff9d264b8c10ccb5168
+2026-07-11 10:34:39 OK   T-V2jul verifier         initialize             v2jul deployer(deleted alias)
+  d52300717fb9e2463cf937d58e17421da55ee292a78c055000cb9cf3e5951ac1
+2026-07-11 10:35:04 OK   T-V2jul pool             initialize_v2          v2jul deployer(deleted alias)
+  0ea01cb75593dce624027ef0229aa2be6fcc756ea99d1738159b68a25767a00b
+2026-07-11 10:35:09 OK   T-V2jul verifier         set_vk                 v2jul deployer(deleted alias)
+  ba806a8b14f2e1ab09f34a5031c2636dfd6979117ba3e44b1c37a5d9411074ed
+2026-07-11 10:35:14 OK   T-V2jul verifier         set_vk                 v2jul deployer(deleted alias)
+  1749882fd692d3d957bcaa69235c2669fea945d1c132de6de63b73fe64d30768
+2026-07-11 10:40:49 OK   T-V2jul pool             deposit_v2             wallet A
+  61b63a1b93114eb929eaf82326980d74bf655f15c1597a52eec6e2b7b30c5812
+2026-07-11 10:41:59 OK   T-V2jul pool             deposit_v2             wallet B
+  32d56cc87e96151ad7ba07cb600ef5a7d290a60f590c0f514d3cb60faabf88c9
+2026-07-11 10:42:34 OK   T-V2jul pool             deposit_v2             wallet C
+  7e8d5f4cf83bd08c1632efea3635bf9aaf90a658990cbeb76cd2b69bcebbacf1
+2026-07-11 10:43:05 OK   T-V2jul pool             deposit_v2             wallet D
+  d820eb88c3dbe1283e243e451060e84cbdd848030b48278f850feab6bf602584
+2026-07-11 10:43:35 OK   T-V2jul pool             deposit_v2             wallet E
+  65e3852df991dc52611f95693c24f3e3becee35b14defa5ffc58477938575e54
+2026-07-11 10:44:00 OK   T-V2jul pool             withdraw_v2            relayer
+  62f9452c9868309d509fc421848f0ff61d9f9ed3f42b589a596dac324126c873
+2026-07-11 17:15:08 OK   T-V2jul pool             deposit_v2             mainnet-user on testnet
+  87a0fb6b72cd3ee5709d05aa879717c295e26846e1b0f601f77908271b2f0fbf
+2026-07-11 17:17:58 OK   T-V2jul pool             withdraw_v2            relayer
+  c649b545db2809e76dfb0648c1f29dae6d47c70be5ebf7f638bd2d1aa4be1abc
+2026-07-12 07:28:45 OK   T-V2jul pool             withdraw_v2            relayer
+  6d5d0b1f1a7c1a0c8122ef8bbd0a3158a85fc687aef5286207d37288fac76064
+2026-07-12 07:37:11 OK   T-V2jul pool             withdraw_v2            relayer
+  c61e294a513280c0153708fe3946429280b32dbaf56be277646906b12d7e7a29
+2026-07-12 10:22:17 OK   T-V2jul pool             withdraw_v2            relayer
+  1b6c6e905fe5784915501e80ab2d6d8b9867355723533a9be96a2a0afe42a2dd
+2026-08-02 07:10:55 OK   T-V2aug verifier         initialize             v2aug deployer
+  5244c2a8722a818ff6e783368a7e29b8dc0efaa7dbd418c8ccb0e845928e163b
+2026-08-02 07:11:05 OK   T-V2aug asp              initialize             v2aug deployer
+  5f12b8dab33561afa7229ef5f810325a27a9d41cd12367dcc4fcaf3f5ea19b11
+2026-08-02 07:11:15 OK   T-V2aug asp_non          initialize             v2aug deployer
+  e04a074cafdd515eab130dafd13f459ca99cbe0047260c0e872ff9506a9d005d
+2026-08-02 07:11:25 OK   T-V2aug pool             initialize_v2          v2aug deployer
+  f57424d356f33ceb162396cb3bef87f0af325a9daa033f56fd3315cf14d40916
+2026-08-02 07:11:35 OK   T-V2aug verifier         set_vk                 v2aug deployer
+  774ad4112098b818eff5b812e9e18589cf2d5bdc24c688a6bd4f527298cc36e0
+2026-08-02 07:11:45 OK   T-V2aug verifier         set_vk                 v2aug deployer
+  84e407336d4ba6a2372bfbb0d368cc4ad07202f62b98bbd5fb3e2b792dda2c08
+2026-08-02 07:14:40 OK   T-V2aug asp              insert_leaf            v2aug deployer
+  2f93b44ef3a107c65c92f5c64d574e216baba130c43c5db3925e30da95bb97b4
+2026-08-02 07:15:00 OK   T-V2aug asp              insert_leaf            v2aug deployer
+  988ef09976f84476ffbee2b89c1d9dcf8950ac9037f890b20d2225674fd14d61
+2026-08-02 07:15:20 OK   T-V2aug asp              insert_leaf            v2aug deployer
+  92daf321ba334adedd6fc3d1b564bf8f67c91af2f4a53113337af26e6f33eaf5
+2026-08-02 07:15:40 OK   T-V2aug asp              insert_leaf            v2aug deployer
+  47048393b6d7b4c3ed59cfa3c0b7da9df26e343d1cd7036e70f39b0ede847c11
+2026-08-02 07:16:00 OK   T-V2aug asp              insert_leaf            v2aug deployer
+  5bacf5efb743658e158ef74633d5ee4ee1f631bfc309a0e381ec4537ff8b8c37
+2026-08-02 09:36:37 OK   T-V2aug verifier         set_vk                 v2aug deployer
+  0150903288f60a949f75b7e280bdac1c521a707e766aeb7c711c9020ae77e7cf
+2026-08-02 16:53:11 OK   T-V2aug verifier         set_vk                 v2aug deployer
+  154b656018d3571fb99dab79825ebb968fd69bdc9cbc16d817d85b5aa7922696
+2026-08-02 16:53:31 OK   T-V2aug pool             upgrade                v2aug deployer
+  b1f6658211435d54ff352bda19c1bfb162a4016ddd9f66ac14229eea75ff4000
+2026-08-02 16:56:16 OK   T-V2aug pool             transfer_v2            v2aug deployer
+  07cb67bc4a0a9a697b1a8e0ed26d4a0b29b2de3eebd7f86c98fc68657df9d22a
+2026-08-02 16:56:36 OK   T-V2aug pool             withdraw_v2            v2aug deployer
+  73e7a0686165bdbda22cb3be140ffe0ea6366b0f4a8620207faa25680ece79ea
+2026-08-02 16:58:41 OK   T-V2aug pool             transfer_v2            v2aug deployer
+  dbb86ea68f257ba14a97cf844e2413d14cd34f3434916099e95514bce66d49f7
+2026-08-02 16:59:01 OK   T-V2aug pool             withdraw_v2            v2aug deployer
+  a486ea0b2e6108876b4a3ca2046f120ff9d759ef9c7a2ec8549b8790a626e66e
+
+====================================================================================================
+PER-CONTRACT SUMMARY (testnet)
+====================================================================================================
+T-V1 verifier            initialize x1  set_vk x27
+T-V1 oracle              set_price x21
+T-V1 pool                add_settlement_authority x4  deposit x15  initialize x1  transfer x1  upgrade x2  withdraw x1
+T-V1 position_manager    attest_health x4  close_or_modify_position x2  initialize x1  open_position x5  upgrade x2
+T-V1 liquidation_engine  initialize x1  initiate_liquidation x1  reveal_and_seize x1
+T-V1 order_registry      commit_order x1  initialize x1  reveal_and_execute x1
+T-V1 agentic_hub         claim_quest x1  create_quest x1  initialize x1
+T-V1 asp_membership      initialize x1  insert_leaf x4
+T-V2jul pool             deposit_v2 x6  initialize_v2 x1  withdraw_v2 x5
+T-V2jul verifier         initialize x1  set_vk x2
+T-V2aug pool             initialize_v2 x1  transfer_v2 x2  upgrade x1  withdraw_v2 x2
+T-V2aug verifier         initialize x1  set_vk x4
+T-V2aug asp              initialize x1  insert_leaf x5
+T-V2aug asp_non          initialize x1

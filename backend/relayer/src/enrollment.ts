@@ -6,13 +6,29 @@ const { Pool } = pg;
 
 const FIELD_MODULUS = BigInt('21888242871839275222246405745257275088548364400416034343698204186575808495617');
 
+/**
+ * Seed mirror of the on-chain ASP tree, in leaf-index order.
+ *
+ * These MUST be exactly the leaves the live `asp-membership` contract holds, in
+ * the same order. The client rebuilds its ASP Merkle path from this list, so an
+ * extra, missing, or reordered entry yields an ASP root the pool has never seen
+ * and every deposit is rejected — with nothing in the message pointing here.
+ *
+ * A sixth leaf (4239942066...) used to be listed. It came from a browser session
+ * on 2026-07-11 against the previous pool (CBUNTVFH...), and it does NOT exist on
+ * the ASP tree re-bootstrapped on 2026-08-02, whose 5 leaves are below. Verified
+ * against CD5DLTOI...: leaf_count = 5, and the first five hash to the on-chain
+ * root 0x305ab746415279a18cfb09df42b68f9c9929742f528351f0bda7243e9d42e61d.
+ *
+ * `assertMatchesChain()` re-checks this at startup — do not hand-edit without
+ * re-running the service against the deployment you intend to serve.
+ */
 export const INITIAL_ASP_LEAVES = [
     '493303968121297919190709288514242366434035426510870016984691670712591500002',
     '9355251392402790607961937900655308684576976763364361612739956862647095463520',
     '14106331126009556338246032878453862687149273467692362284834967058553236230883',
     '6038008587679474091977388632319198517007692281305427930445766896380993899274',
     '431514013848352006058987078204336949099959250776040360314329397218955618469',
-    '4239942066243959329816542514082134633918529370479969264234435216308986323128',
 ];
 
 export function normalizeAspLeaf(value: unknown): string {
@@ -198,6 +214,46 @@ export class AspEnrollmentService {
         await this.store.init();
     }
 
+    /**
+     * Confirm the local mirror still describes the on-chain tree.
+     *
+     * The membership contract can look a leaf up but cannot enumerate, so the
+     * mirror is unverifiable by reading it back — the only handle is that every
+     * leaf must sit at the same index on both sides, and the totals must agree.
+     * Drift here is silent and total: clients build their ASP path from the
+     * mirror, so a single misplaced leaf makes EVERY deposit fail an ASP-root
+     * check, with an error that says nothing about enrollment.
+     *
+     * Returns a reason instead of throwing so the caller can keep relaying up;
+     * withdrawals and transfers do not touch the ASP tree.
+     */
+    async verifyAgainstChain(): Promise<{ ok: true } | { ok: false; reason: string }> {
+        const mirror = await this.store.getLeaves();
+        const chainCount = await this.readLeafCount();
+        if (chainCount === null) {
+            return { ok: false, reason: 'could not read leaf_count from the membership contract' };
+        }
+        if (chainCount !== mirror.length) {
+            return {
+                ok: false,
+                reason: `mirror holds ${mirror.length} leaves but the contract reports ${chainCount}`,
+            };
+        }
+        for (const [index, leaf] of mirror.entries()) {
+            const onChain = await this.readLeafIndex(leaf);
+            if (onChain === null) {
+                return { ok: false, reason: `mirror leaf at index ${index} is not on-chain at all` };
+            }
+            if (onChain !== index) {
+                return {
+                    ok: false,
+                    reason: `mirror leaf at index ${index} is at index ${onChain} on-chain`,
+                };
+            }
+        }
+        return { ok: true };
+    }
+
     async getLeaves(): Promise<string[]> {
         return this.store.getLeaves();
     }
@@ -235,6 +291,20 @@ export class AspEnrollmentService {
     private fieldScVal(value: string): StellarSdk.xdr.ScVal {
         const bytes = Buffer.from(BigInt(value).toString(16).padStart(64, '0'), 'hex');
         return StellarSdk.xdr.ScVal.scvBytes(bytes);
+    }
+
+    private async readLeafCount(): Promise<number | null> {
+        const source = await this.server.getAccount(this.admin.publicKey());
+        const tx = new StellarSdk.TransactionBuilder(source, {
+            fee: StellarSdk.BASE_FEE,
+            networkPassphrase: this.networkPassphrase,
+        })
+            .addOperation(this.membership.call('leaf_count'))
+            .setTimeout(30)
+            .build();
+        const result = await this.server.simulateTransaction(tx);
+        if (StellarSdk.rpc.Api.isSimulationError(result) || !result.result) return null;
+        return Number(StellarSdk.scValToNative(result.result.retval));
     }
 
     private async readLeafIndex(leaf: string): Promise<number | null> {

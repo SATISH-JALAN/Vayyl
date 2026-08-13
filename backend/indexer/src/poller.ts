@@ -2,9 +2,18 @@ import * as StellarSdk from '@stellar/stellar-sdk';
 import { Database } from './db.js';
 import { decodePoolEvent } from './decode.js';
 
-// Public RPC nodes can return an empty page when getEvents spans too many
-// ledgers. Keep the initial query comfortably inside that practical limit.
+// Fallback backfill floor when neither a stored cursor nor INDEXER_START_LEDGER
+// is available. Deliberately short: it only has to cover a restart gap, because
+// a first-time index of an existing pool should set INDEXER_START_LEDGER to the
+// pool's deployment ledger instead of relying on this.
 const RPC_EVENT_LOOKBACK_LEDGERS = 8_000;
+
+// getEvents scans a bounded ledger window per call and returns an EMPTY page —
+// with a cursor to continue from — whenever that window contains no matching
+// event. An empty page therefore means "nothing here yet", NOT "caught up";
+// backfilling the live pool from its deploy ledger took 14 pages, 13 of them
+// empty. Treating a short page as terminal silently skips the whole range.
+const MAX_PAGES_PER_TICK = 400;
 
 export class Poller {
     private server: StellarSdk.rpc.Server;
@@ -27,16 +36,28 @@ export class Poller {
         this.running = true;
         let lastLedger = await this.db.getLastLedger(this.poolAddress);
 
-        // If we have no cursor yet, start from the RPC's oldest retained ledger
-        // (events are only retained ~7 days; older history must be backfilled
-        // from an archive — out of scope for the buildathon).
+        // With no stored cursor, prefer an explicit backfill floor. Set
+        // INDEXER_START_LEDGER to the pool's deployment ledger: RPC retains
+        // events for only ~7 days, so anything older needs an archive, but
+        // everything since deployment is recoverable and MUST be indexed —
+        // clients rebuild the Merkle tree from the full commitment list, so a
+        // missing early leaf breaks spending for every later note too.
         if (lastLedger <= 0) {
-            try {
-                const latest = await this.server.getLatestLedger();
-                lastLedger = Math.max(1, latest.sequence - RPC_EVENT_LOOKBACK_LEDGERS);
-            } catch (e) {
-                console.warn('Could not fetch latest ledger; starting from 1', e);
-                lastLedger = 1;
+            const configured = Number(process.env.INDEXER_START_LEDGER ?? 0);
+            if (Number.isFinite(configured) && configured > 0) {
+                lastLedger = configured;
+            } else {
+                try {
+                    const latest = await this.server.getLatestLedger();
+                    lastLedger = Math.max(1, latest.sequence - RPC_EVENT_LOOKBACK_LEDGERS);
+                    console.warn(
+                        `INDEXER_START_LEDGER not set; starting ${RPC_EVENT_LOOKBACK_LEDGERS} ledgers back ` +
+                        `(${lastLedger}). Events older than that will be missed.`
+                    );
+                } catch (e) {
+                    console.warn('Could not fetch latest ledger; starting from 1', e);
+                    lastLedger = 1;
+                }
             }
         }
         console.log(`Resuming from ledger: ${lastLedger}`);
@@ -63,12 +84,15 @@ export class Poller {
      */
     async pollOnce(fromLedger: number): Promise<number> {
         let cursor: string | undefined = undefined;
+        let startLedger = fromLedger;
         let processedThroughLedger = fromLedger;
-        let sawAny = false;
+        let scannedThroughLedger = 0;
+        let head = 0;
+        let pages = 0;
 
-        // Follow pagination within this tick until the page isn't full.
-        // eslint-disable-next-line no-constant-condition
-        while (true) {
+        // Follow pagination until the cursor is exhausted. An empty page is NOT
+        // a stop condition — see MAX_PAGES_PER_TICK above.
+        while (pages < MAX_PAGES_PER_TICK) {
             const contractIds = [this.poolAddress];
             if (this.positionManagerAddress) {
                 contractIds.push(this.positionManagerAddress);
@@ -80,30 +104,79 @@ export class Poller {
             }];
             const req: StellarSdk.rpc.Server.GetEventsRequest = cursor
                 ? { filters, cursor, limit: 100 }
-                : { filters, startLedger: fromLedger, limit: 100 };
+                : { filters, startLedger, limit: 100 };
 
-            const response = await this.server.getEvents(req);
+            let response: StellarSdk.rpc.Api.GetEventsResponse;
+            try {
+                response = await this.server.getEvents(req);
+            } catch (err: any) {
+                // The retention window slides forward continuously. If our floor
+                // has aged out, clamp to the oldest retained ledger rather than
+                // wedging the service forever on an unsatisfiable request.
+                const floor = Poller.parseRetentionFloor(err);
+                if (floor !== null && !cursor && floor > startLedger) {
+                    console.warn(
+                        `Start ledger ${startLedger} is outside RPC retention; ` +
+                        `clamping to ${floor}. Events before ${floor} are unrecoverable from RPC.`
+                    );
+                    startLedger = floor;
+                    continue;
+                }
+                throw err;
+            }
+
             const events = response.events ?? [];
+            pages++;
+            head = response.latestLedger ?? head;
 
             for (const event of events) {
                 await this.processEvent(event);
-                sawAny = true;
                 if (typeof event.ledger === 'number') {
                     processedThroughLedger = Math.max(processedThroughLedger, event.ledger);
                 }
             }
 
-            cursor = (response as any).cursor;
-            // Stop paginating when the page wasn't full (caught up).
-            if (events.length < 100) {
-                // Advance to the network head only when there were no events to
-                // miss; otherwise stay at the last processed ledger + 1.
-                const head = response.latestLedger ?? processedThroughLedger;
-                const next = sawAny ? processedThroughLedger + 1 : head;
+            const nextCursor = (response as any).cursor as string | undefined;
+            // The cursor encodes the ledger the scan reached, which is the only
+            // reliable resume point across a run of empty pages.
+            const cursorLedger = Poller.parseCursorLedger(nextCursor);
+            if (cursorLedger !== null) {
+                scannedThroughLedger = Math.max(scannedThroughLedger, cursorLedger);
+            }
+
+            if (!nextCursor || nextCursor === cursor) {
+                // Cursor exhausted: everything up to the head has been scanned.
+                const next = Math.max(head || processedThroughLedger, processedThroughLedger + 1);
                 await this.db.setLastLedger(this.poolAddress, next);
                 return next;
             }
+            cursor = nextCursor;
         }
+
+        // Hit the per-tick page cap mid-backfill. Persist only how far we
+        // actually scanned so the next tick resumes there instead of skipping.
+        const next = Math.max(scannedThroughLedger, processedThroughLedger) + 1;
+        await this.db.setLastLedger(this.poolAddress, next);
+        console.log(`Backfill in progress; resuming from ledger ${next}`);
+        return next;
+    }
+
+    /** Oldest retained ledger from a getEvents range rejection, if present. */
+    private static parseRetentionFloor(err: any): number | null {
+        const message = err?.message ?? err?.response?.data?.error?.message ?? '';
+        const match = /ledger range:\s*(\d+)\s*-\s*(\d+)/.exec(String(message));
+        // +1 keeps us clear of the floor sliding forward between the error and
+        // the retry; the boundary ledger itself is about to age out anyway.
+        return match ? Number(match[1]) + 1 : null;
+    }
+
+    /** Leading ledger sequence from an RPC cursor ("0003927049-0000000001"). */
+    private static parseCursorLedger(cursor: string | undefined): number | null {
+        if (!cursor) return null;
+        const match = /^(\d+)/.exec(cursor);
+        if (!match) return null;
+        const ledger = Number(match[1]);
+        return Number.isFinite(ledger) && ledger > 0 ? ledger : null;
     }
 
     private async processEvent(event: StellarSdk.rpc.Api.EventResponse) {
