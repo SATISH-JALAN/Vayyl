@@ -10,6 +10,8 @@
     "test:payment-circuits": "node scripts/payment_circuits_test.mjs",
     "test:v2-proofs": "node scripts/v2_proof_test.mjs",
     "test:v2-membership-root": "node scripts/membership_root_smoke.mjs",
+    "snapshot:build": "node scripts/build_tree_snapshot.mjs",
+    "snapshot:verify": "node scripts/verify_tree_snapshot.mjs",
     "test:order-circuits": "node scripts/order_circuits_test.mjs",
     "test:position-circuits": "node scripts/position_circuits_test.mjs"
   },

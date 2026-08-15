@@ -158,6 +158,45 @@ export class Database {
         return result.rows.map(r => r.commitment_hash);
     }
 
+    /**
+     * Every leaf with the provenance needed to re-derive it from public data.
+     *
+     * `getCommitments` returns bare hashes, which is all a client needs to build
+     * a Merkle path but not enough for anyone to CHECK that list. Soroban RPC
+     * retains events for only ~7 days, so once a pool's deposits age out this
+     * database is the only copy of the leaf ordering in existence — and an
+     * unverifiable sole copy is not a record, it is a liability.
+     *
+     * `tx_hash` is what fixes that. Horizon keeps transaction envelopes forever,
+     * and the commitment is a call ARGUMENT to deposit_v2/transfer_v2, not just
+     * an event field, so each leaf here can be re-proved against permanent
+     * public history long after the event stream is gone. See
+     * `circuits/scripts/verify_tree_snapshot.mjs`.
+     */
+    async getTreeSnapshot(poolAddress: string): Promise<Array<{
+        index: number; commitment: string; source: string;
+        txHash: string; ledger: number;
+        ephemeralX: string | null; ephemeralY: string | null;
+    }>> {
+        const result = await this.pool.query(
+            `SELECT commitment_hash, leaf_index, source, tx_hash, ledger_sequence,
+                    ephemeral_x, ephemeral_y
+             FROM commitments
+             WHERE pool_address = $1
+             ORDER BY leaf_index ASC`,
+            [poolAddress]
+        );
+        return result.rows.map(r => ({
+            index: r.leaf_index,
+            commitment: r.commitment_hash,
+            source: r.source,
+            txHash: r.tx_hash,
+            ledger: r.ledger_sequence,
+            ephemeralX: r.ephemeral_x,
+            ephemeralY: r.ephemeral_y,
+        }));
+    }
+
     async getNullifiers(poolAddress: string): Promise<string[]> {
         const result = await this.pool.query(
             'SELECT nullifier_hash FROM nullifiers WHERE pool_address = $1',

@@ -24,6 +24,12 @@ import {
 } from '@stellar/stellar-sdk';
 import { signTransaction } from '@stellar/freighter-api';
 import { NETWORK_PASSPHRASE } from './network';
+import {
+  fetchCommitmentsFrom,
+  fetchSpentNullifiersFrom,
+  fetchTransfersFrom,
+  type IndexedTransferRow,
+} from './tree-source';
 
 // ---- config (env-overridable) ----------------------------------------------
 
@@ -296,6 +302,36 @@ export async function submitWithdrawV2(a: Pick<WithdrawArgs, 'proof' | 'nullifie
   return body.hash as string;
 }
 
+export interface RageQuitV2Args {
+  proof: SnarkjsProof;
+  commitment: string;
+  nullifier: string;
+  recipient: string;
+}
+
+/**
+ * Submit a public exit through the relayer.
+ *
+ * Relayed rather than wallet-signed for the same reason `withdraw_v2` is: the
+ * people who need this are, by definition, ones the pool has stopped from
+ * spending, and requiring them to hold a funded Stellar account to escape would
+ * reintroduce the trap in a different shape. The proof is bound to `recipient`,
+ * so possession of it is the authorization and the relayer cannot redirect the
+ * payout.
+ */
+export async function submitRageQuitV2(a: RageQuitV2Args): Promise<string> {
+  const response = await fetch(`${RELAYER_URL}/v2/ragequit`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pool: V2_POOL_ID, ...a }),
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok || !body.success || !body.hash) {
+    throw new Error(body.error || `Relayer request failed (${response.status})`);
+  }
+  return body.hash as string;
+}
+
 export interface TransferV2Args {
   proof: SnarkjsProof;
   nullifier: string;
@@ -325,21 +361,15 @@ export async function submitTransferV2(a: TransferV2Args): Promise<string> {
   return body.hash as string;
 }
 
-export interface IndexedTransferRow {
-  commitment: string;
-  leafIndex: number;
-  ephemeralX: string;
-  ephemeralY: string;
-  txHash?: string;
-  ledgerSequence?: number;
-}
+export type { IndexedTransferRow } from './tree-source';
 
-/** The recipient scan feed — every shielded-transfer output with its ephemeral point. */
+/**
+ * The recipient scan feed — every shielded-transfer output with its ephemeral
+ * point. Resolution rules (and the durable fallback behind them) live in
+ * `tree-source.ts`, which is kept free of wallet imports so they can be tested.
+ */
 export async function fetchTransfers(since = 0): Promise<IndexedTransferRow[]> {
-  const res = await fetch(`${INDEXER_URL}/transfers?since=${since}`);
-  if (!res.ok) throw new Error(`indexer /transfers ${res.status}`);
-  const data = await res.json();
-  return (data.transfers ?? []) as IndexedTransferRow[];
+  return fetchTransfersFrom(INDEXER_URL, V2_POOL_ID, since);
 }
 
 async function simulateRead(contractId: string, method: string, args: xdr.ScVal[]) {
@@ -411,19 +441,15 @@ export async function assertV2ServicesReady(recipient: string): Promise<void> {
 }
 
 // ---- indexer reads ---------------------------------------------------------
+// Leaf ordering is served by the indexer but is NOT solely dependent on it: see
+// `tree-source.ts` for why (Soroban RPC drops events after ~7 days) and for the
+// reconciliation rules against the bundled static snapshot.
 
-/** Ordered commitment field elements (leaf order) from the indexer. */
+/** Ordered commitment field elements in leaf order. */
 export async function fetchCommitments(): Promise<bigint[]> {
-  const res = await fetch(`${INDEXER_URL}/commitments`);
-  if (!res.ok) throw new Error(`indexer /commitments ${res.status}`);
-  const data = await res.json();
-  // commitment_hash stored as hex (64 chars) by the indexer.
-  return (data.commitments as string[]).map((h) => BigInt('0x' + h.replace(/^0x/, '')));
+  return fetchCommitmentsFrom(INDEXER_URL, V2_POOL_ID);
 }
 
 export async function fetchSpentNullifiers(): Promise<Set<string>> {
-  const res = await fetch(`${INDEXER_URL}/nullifiers`);
-  if (!res.ok) return new Set();
-  const data = await res.json();
-  return new Set((data.nullifiers as string[]).map((h) => BigInt('0x' + h.replace(/^0x/, '')).toString()));
+  return fetchSpentNullifiersFrom(INDEXER_URL, V2_POOL_ID);
 }

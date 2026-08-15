@@ -50,6 +50,30 @@ export function createApi(db: Database, poolAddress: string, network: string): e
         }
     });
 
+    /**
+     * The full leaf set with provenance, for building and auditing a durable
+     * tree snapshot. Refuses to serve a set with gaps: a snapshot built from a
+     * sparse leaf list bakes in a wrong root permanently, which is worse than
+     * having no snapshot at all.
+     */
+    app.get('/snapshot', async (req, res) => {
+        try {
+            const { dense, count, maxIndex } = await db.assertDense(poolAddress);
+            if (!dense) {
+                return res.status(409).json({
+                    error: 'leaf set has gaps; refusing to serve a snapshot',
+                    count,
+                    maxIndex,
+                });
+            }
+            const leaves = await db.getTreeSnapshot(poolAddress);
+            const nullifiers = await db.getNullifiers(poolAddress);
+            res.json({ network, pool: poolAddress, leafCount: leaves.length, leaves, nullifiers });
+        } catch (err: any) {
+            res.status(500).json({ error: err.message });
+        }
+    });
+
     app.get('/nullifiers', async (req, res) => {
         try {
             const nullifiers = await db.getNullifiers(poolAddress);

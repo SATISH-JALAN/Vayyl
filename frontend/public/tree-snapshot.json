@@ -1,0 +1,83 @@
+{
+  "$comment": "Durable copy of the pool leaf ordering. Soroban RPC only retains events ~7 days; this file is what lets a wallet rebuild Merkle paths after that window closes. Verify with: node circuits/scripts/verify_tree_snapshot.mjs",
+  "network": "testnet",
+  "pool": "CB6XFHGN4DMVEQRESJHPOUNYLUCGMOZTAIKTWH3I7KT3NVW2XY4NIOLC",
+  "tree_depth": 20,
+  "generated_at": "2026-08-15T20:04:28.478Z",
+  "leaf_count": 8,
+  "root": "1ead2a806aea715bbb979844e4005e974b4d99edf155823e2be2152569fd47c2",
+  "root_verified_against_chain": true,
+  "leaves": [
+    {
+      "index": 0,
+      "commitment": "20a5ef04d684531ca5fbba9c5f608e580478520259b7ce0b647b31527fe7cf04",
+      "source": "deposit",
+      "tx_hash": "f992833d11c26534f985b328efa383c60093fb3eb8fe2d201637fafc2ded0a6b",
+      "ledger": 3927049
+    },
+    {
+      "index": 1,
+      "commitment": "1b1c3f5a44537d65ed6db6f9c038f8f4598dfdfe909f76f57497624509b0b0d9",
+      "source": "deposit",
+      "tx_hash": "9fe5665483b539f58d0af057f6e5f22d3bbce8e81aa7783cf33ed19a7c145020",
+      "ledger": 3927053
+    },
+    {
+      "index": 2,
+      "commitment": "2635341257f7a1a6c7e3c7e018345cf89ed0e499dbe7ba98f7b4e72a6f697f03",
+      "source": "deposit",
+      "tx_hash": "f136f3f4aa2f76ba7d30149e1a5da07df3843d3a29f1cbce72742a93c570f86e",
+      "ledger": 3927057
+    },
+    {
+      "index": 3,
+      "commitment": "0c040f289deca0e1c2929d9a9f26cd70a8e3537bb912c68815e18d539f2d7c3e",
+      "source": "deposit",
+      "tx_hash": "d24ed1d4ef9a88a7e95ca0c3a4291fa1be64cbbdcdca5a2bf13b80ac267de7d2",
+      "ledger": 3927061
+    },
+    {
+      "index": 4,
+      "commitment": "2e016140c8a14caa0687b77834d6a068ba17b971fbd4750b41a264a576ceeb16",
+      "source": "deposit",
+      "tx_hash": "ec1205c292dccf74a2d7680ceb065c011c0637334e1ce3dcd7707e9947fb309f",
+      "ledger": 3927065
+    },
+    {
+      "index": 5,
+      "commitment": "262e58861c1afb5ac490af1bccf34576d7ea6a8769f3fd2f1d36e1a971ad7167",
+      "source": "transfer",
+      "tx_hash": "07cb67bc4a0a9a697b1a8e0ed26d4a0b29b2de3eebd7f86c98fc68657df9d22a",
+      "ledger": 3934012,
+      "ephemeral_x": "1cbe6b59c4f400a8e7a850cb4401ee44026ceb7a950edebb5632741083c80113",
+      "ephemeral_y": "010ceb2d7ba4aca2a43673f561aec8620d78de96fc9e5e5f413dd33449e05eeb"
+    },
+    {
+      "index": 6,
+      "commitment": "15807ff0870f38cf6a050413817275606c4f8e4db0a1e2831404493601f37ba2",
+      "source": "transfer",
+      "tx_hash": "dbb86ea68f257ba14a97cf844e2413d14cd34f3434916099e95514bce66d49f7",
+      "ledger": 3934041,
+      "ephemeral_x": "1aadd35088cb98bbc40a52d300499fcc2001930d47c38a21ae701d3a092dff5d",
+      "ephemeral_y": "15f6099aa7055b8525a2456cab8795000e7491f6d553b1d0efb62e4f2156e0d8"
+    },
+    {
+      "index": 7,
+      "commitment": "11da698c2e646489eb96f924aabcf75f06d83023287a5a884d960d1bff4f9f75",
+      "source": "transfer",
+      "tx_hash": "288411ee91f5be1e092751f03d204e0bff1595bf36327e4894fa9aadd79ee088",
+      "ledger": 4160515,
+      "ephemeral_x": "2505f283c564a1b6238c31f2a41ea9b8bf64a3208a5d1b36e09a4e9ae894f002",
+      "ephemeral_y": "26cb46cc5c0ed2bca2f6a94eb54278c658853aaaebcfa710e2d9051036f25831"
+    }
+  ],
+  "spent_nullifiers": [
+    "035b22d08bc943adb20e3a1ac0f145cc9ed60071da9042bbdc5e3037a86521d2",
+    "12a31d39aad6acf98bb8d53de2eacdff294149712ffc0614d38ae21f7d4f0daf",
+    "1789f39fb8a564d70d7fd7dd043e1855b674b1827084aab61c9034aa8d6f0e89",
+    "28959879ebc005982920572d79e130a04b44e3176b2207ad9204c4f4b4350d68",
+    "2979ee719fd869f0255dfc051cfae6534910c9d6d43086dda91a0419e3b672ef",
+    "298e267cbe0763a9ab8b7551b6d63edade30af24991dc7b06a8a45cd76657501",
+    "2b52d54c0b4644cf1bbd8e6f370b3061ade04e621d85570d5e3b444e435b625c"
+  ]
+}
