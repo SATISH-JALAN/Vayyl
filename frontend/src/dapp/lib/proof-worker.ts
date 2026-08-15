@@ -77,32 +77,6 @@ async function computeAspRoot(
   return node;
 }
 
-interface DepositPayload {
-  amount: string;
-  pubX: string;
-  pubY: string;
-  blindness: string;
-  aspRoot?: string;
-  aspPathElements?: string[];
-  aspPathIndices?: number[];
-}
-
-interface WithdrawPayload {
-  // note secrets
-  amount: string; // note value = public_amount + fee
-  pubX: string;
-  pubY: string;
-  blindness: string;
-  privKey: string;
-  leafIndex: number;
-  // public
-  publicAmount: string;
-  fee: string;
-  withdrawBinding: string;
-  // tree
-  leaves: string[]; // ordered commitment field elements (decimal)
-}
-
 interface V2DepositPayload {
   privKey: string;
   blindness: string;
@@ -127,6 +101,13 @@ interface V2TransferPayload {
   leaves: string[];
   recipientPubX: string;
   recipientPubY: string;
+}
+
+interface V2RageQuitPayload {
+  privKey: string;
+  blindness: string;
+  commitment: string;
+  exitBinding: string;
 }
 
 interface V2ScanPayload {
@@ -194,6 +175,29 @@ self.onmessage = async (e: MessageEvent) => {
         break;
       }
 
+      // Public exit. Unlike withdraw_v2 there is no Merkle path: the commitment
+      // is a PUBLIC input, so the pool checks inclusion by direct key lookup.
+      // That is also why this proof is much cheaper to produce — worth knowing,
+      // because the people who need it are the ones a blocklist has already
+      // stopped, and making them wait longest would be perverse.
+      case 'PROVE_RAGEQUIT_V2': {
+        const p = payload as V2RageQuitPayload;
+        const note = await deriveV2Note(p.privKey, p.blindness);
+        if (note.commitment !== p.commitment) throw new Error('The local note does not belong to this workspace.');
+        const input = {
+          commitment: note.commitment,
+          nullifier: note.nullifier,
+          exit_binding: p.exitBinding,
+          privKey: p.privKey,
+          blindness: p.blindness,
+        };
+        const { proof, publicSignals } = await snarkjs.groth16.fullProve(
+          input, '/circuits/v2/ragequit_v2.wasm', '/circuits/v2/ragequit_v2_final.zkey',
+        );
+        result = { proof, publicSignals, nullifier: note.nullifier, commitment: note.commitment };
+        break;
+      }
+
       case 'PROVE_TRANSFER_V2': {
         const p = payload as V2TransferPayload;
         const note = await deriveV2Note(p.privKey, p.blindness);
@@ -240,86 +244,6 @@ self.onmessage = async (e: MessageEvent) => {
           notes: await scanForIncomingNotes(
             BigInt(p.spendKey), BigInt(p.pubX), BigInt(p.pubY), p.transfers,
           ),
-        };
-        break;
-      }
-
-      case 'PROVE_DEPOSIT': {
-        const p = payload as DepositPayload;
-        const commitment = await computeCommitment(
-          BigInt(p.amount), BigInt(p.pubX), BigInt(p.pubY), BigInt(p.blindness),
-        );
-        // Default path = the real empty-subtree ladder for a leaf at index 0
-        // (sibling at level l is `zeros[l]`, all-left index bits). This is the
-        // correct membership path for the first/only approved key — NOT a
-        // placeholder — and reproduces the on-chain `asp_membership.root()`.
-        // Callers may override for a populated tree (Tier 2, indexer-served path).
-        const zeros = await zeroHashes(TREE_DEPTH); // [zeros[0]..zeros[20]]
-        const aspPathElements =
-          p.aspPathElements ?? zeros.slice(0, TREE_DEPTH).map((z) => z.toString());
-        const aspPathIndices = p.aspPathIndices ?? Array(TREE_DEPTH).fill(0);
-        // `asp_root` is derived, not chosen: it must equal what the circuit
-        // recomputes from (pubX, pubY, path), or deposit.circom:45 asserts.
-        const aspRoot = await computeAspRoot(
-          BigInt(p.pubX), BigInt(p.pubY), aspPathElements, aspPathIndices,
-        );
-        // The ASP leaf the admin must have inserted for this deposit to clear the
-        // on-chain `is_known_root` gate. Surfaced so the caller can display/insert it.
-        const aspLeaf = await poseidon2Hash2(BigInt(p.pubX), BigInt(p.pubY));
-        const input = {
-          amount: p.amount,
-          commitment: commitment.toString(),
-          asp_root: aspRoot.toString(),
-          pubX: p.pubX,
-          pubY: p.pubY,
-          blindness: p.blindness,
-          asp_pathElements: aspPathElements,
-          asp_pathIndices: aspPathIndices,
-        };
-        const { proof, publicSignals } = await snarkjs.groth16.fullProve(
-          input, '/circuits/deposit.wasm', '/circuits/deposit_final.zkey',
-        );
-        result = {
-          proof,
-          publicSignals,
-          commitment: commitment.toString(),
-          aspRoot: aspRoot.toString(),
-          aspLeaf: aspLeaf.toString(),
-        };
-        break;
-      }
-
-      case 'PROVE_WITHDRAW': {
-        const p = payload as WithdrawPayload;
-        const commitment = await computeCommitment(
-          BigInt(p.amount), BigInt(p.pubX), BigInt(p.pubY), BigInt(p.blindness),
-        );
-        const nullifier = await computeNullifier(commitment, BigInt(p.privKey));
-
-        const leaves = p.leaves.map((x) => BigInt(x));
-        const { root, pathElements, pathIndices } = await buildMerklePath(leaves, p.leafIndex);
-
-        const input = {
-          root: root.toString(),
-          nullifier: nullifier.toString(),
-          public_amount: p.publicAmount,
-          fee: p.fee,
-          withdraw_binding: p.withdrawBinding,
-          amount: p.amount,
-          pubX: p.pubX,
-          pubY: p.pubY,
-          blindness: p.blindness,
-          privKey: p.privKey,
-          pathElements: pathElements.map((x) => x.toString()),
-          pathIndices: pathIndices.map((x) => x.toString()),
-        };
-        const { proof, publicSignals } = await snarkjs.groth16.fullProve(
-          input, '/circuits/withdraw.wasm', '/circuits/withdraw_final.zkey',
-        );
-        result = {
-          proof, publicSignals,
-          nullifier: nullifier.toString(),
-          root: root.toString(),
         };
         break;
       }

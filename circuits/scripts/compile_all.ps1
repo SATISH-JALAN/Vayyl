@@ -1,8 +1,10 @@
 $ErrorActionPreference = "Stop"
 
-# Full registrable circuit set — must match scripts/register_vks.js (9 entries).
+# V1 payment circuits (deposit/transfer/withdraw) were retired: they never bound
+# the note public key to its private key, so one note could produce unlimited
+# nullifiers. The sound replacements are deposit_v2/transfer_v2/withdraw_v2,
+# built by scripts/build_vault_v2.ps1.
 $CIRCUITS = @(
-    "deposit", "transfer", "withdraw",
     "position_open", "position_health", "position_close",
     "liquidation_heartbeat", "hidden_order_trigger", "sealed_order"
 )

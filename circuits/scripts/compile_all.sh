@@ -10,11 +10,11 @@ set -e
 # all" run silently skips them and their registered VK goes stale vs the deployed
 # proving key.
 #   NOTE: asp_membership.circom is deliberately NOT here — it's a library template
-#   (its `component main` is commented out) that is proven INSIDE deposit/withdraw
+#   (its `component main` is commented out) that is proven INSIDE deposit_v2
 #   via include, never as a standalone proof. Listing it aborted this whole script
 #   at "No main specified" under `set -e`, which is why circuits used to be compiled
 #   one-by-one by hand.
-CIRCUITS=("deposit" "transfer" "withdraw" "position_open" "position_health" "position_close" "liquidation_heartbeat" "hidden_order_trigger" "sealed_order")
+CIRCUITS=("position_open" "position_health" "position_close" "liquidation_heartbeat" "hidden_order_trigger" "sealed_order")
 
 mkdir -p build/r1cs build/wasm build/zkey build/vkey
 
