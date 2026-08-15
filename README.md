@@ -5,6 +5,72 @@
 Vayyl is a privacy-focused settlement application for Stellar Soroban. It uses shielded pools, commitments, nullifiers, Circom/Groth16 proofs, Poseidon2 hashing, and Soroban's native BN254 host functions so users and protocols can prove a settlement is valid without publishing the underlying amount, identity, or strategy.
 
 
+## Traction & Empirical Verification
+
+Vayyl is deployed and executing on Stellar Mainnet and Testnet today. All figures below are stated as of **14 August 2026** and are independently verifiable from on-chain contract addresses and the transaction ledger.
+
+Across both networks, Vayyl has executed **153 verified contract invocations across 18 deployed contracts**. Every single invocation maps directly to a named protocol capability rather than generic infrastructure activity or filler.
+
+| Metric | Mainnet (Live since 11 July 2026) | Testnet (3 Deployment Generations) | Combined Total |
+| --- | --- | --- | --- |
+| **Deployed Contracts** | 4 contracts | 14 contracts | **18 contracts** |
+| **Verified Invocations** | 19 contract calls | 134 contract calls | **153 invocations** |
+| **Active Wallets** | 1 wallet (bounded demo) | 9 wallets (team test accounts) | **10 wallets** |
+| **Proving Mechanism** | Native Soroban BN254 Groth16 | Native Soroban BN254 Groth16 | **End-to-End ZK** |
+| **Steady-State Deposit Fee** | `~0.0144 XLM` (143,769 - 143,894 stroops) | Sub-cent testnet execution | **Empirically measured** |
+| **Steady-State Withdraw Fee** | `0.0274 XLM` (274,053 stroops) | Sub-cent testnet execution | **Deterministic cost** |
+
+### Mainnet Execution & Empirical Proving Costs
+
+Mainnet has been live since **11 July 2026** with 4 contracts deployed and operating:
+* **Shielded Pool:** [`CB2NWPFWW5YLD6UYWR4RFERECSMBF6SB62P7RRP2LF2P2EMDSDLAZ3OW`](https://stellar.expert/explorer/public/contract/CB2NWPFWW5YLD6UYWR4RFERECSMBF6SB62P7RRP2LF2P2EMDSDLAZ3OW)
+* **Groth16 / BN254 Verifier:** [`CATKJ2WBLQXGNVMGZ6E4JEZVTRMVJO2SKA3H7VH53TVD2HJPSBQ46MRD`](https://stellar.expert/explorer/public/contract/CATKJ2WBLQXGNVMGZ6E4JEZVTRMVJO2SKA3H7VH53TVD2HJPSBQ46MRD)
+* **ASP Membership:** [`CBJWADSNYX52I6GEASN5P7MS6NWQ4O5WWQJOPTNSKCRHYTK2BYET6YB3`](https://stellar.expert/explorer/public/contract/CBJWADSNYX52I6GEASN5P7MS6NWQ4O5WWQJOPTNSKCRHYTK2BYET6YB3)
+* **ASP Non-Membership:** [`CBJSFSZOEOEBSBTUZPTFZNAMP37PU7GKVFRERYSBTMYY7KPG6QKMAAQE`](https://stellar.expert/explorer/public/contract/CBJSFSZOEOEBSBTUZPTFZNAMP37PU7GKVFRERYSBTMYY7KPG6QKMAAQE)
+
+**Execution & Cost Findings:**
+* **19 verified contract invocations** covering the full shield and unshield cycle: 7 deposits and 5 withdrawals, each one a Groth16 proof verified on-chain through Stellar's native BN254 host functions.
+* **Honesty Boundary:** This Mainnet deployment is a capped demonstration with a single active wallet under a single-party Phase-2 setup, deployed to prove that zero-knowledge verification executes on Stellar Mainnet inside the real resource budget at a real, measured cost.
+* **Measured Fee Metrics:**
+  * **First deposit:** `2,020,008 stroops` (~0.202 XLM) due to persistent storage initialization.
+  * **Steady-state shielded deposit:** `143,769` to `143,894 stroops` (`~0.0144 XLM`).
+  * **Steady-state withdrawal:** Exactly `274,053 stroops` (`0.0274 XLM`), identical across all five withdrawals (deterministic proof-verification cost).
+* **Ecosystem Cost Benchmark:** These are the first published empirical costs of Groth16 verification on Stellar Mainnet. Compared to Nethermind's optimized Noir UltraHonk verification on Soroban at `0.09 XLM`, Vayyl's BN254 Groth16 verification costs are **3x to 6x lower**.
+
+### Testnet Generations & 8 Live Protocol Capabilities
+
+Testnet spans 3 deployment generations (9 July to 2 August 2026), with 14 contracts and 134 verified contract invocations from 9 distinct team-controlled test wallets.
+* **Current Stack Pool:** [`CB6XFHGN4DMVEQRESJHPOUNYLUCGMOZTAIKTWH3I7KT3NVW2XY4NIOLC`](https://stellar.expert/explorer/testnet/contract/CB6XFHGN4DMVEQRESJHPOUNYLUCGMOZTAIKTWH3I7KT3NVW2XY4NIOLC) *(and Vault V2 fixed-note pool [`CBUNTVFHCNN5CYNA3TLTSWPVYX5ED5V6W6X3Y5EAHUOZYJRUPYNAX33A`](https://stellar.expert/explorer/testnet/contract/CBUNTVFHCNN5CYNA3TLTSWPVYX5ED5V6W6X3Y5EAHUOZYJRUPYNAX33A))*
+* **Current Stack Verifier:** [`CBRMDGEMQERFTG3MCBHYPHMZPKVMDYFGHJAMREQW23ZDKVAMAFDRJ2J5`](https://stellar.expert/explorer/testnet/contract/CBRMDGEMQERFTG3MCBHYPHMZPKVMDYFGHJAMREQW23ZDKVAMAFDRJ2J5)
+
+**Eight Distinct Capabilities Executed End-to-End On-Chain (Not in Simulation):**
+1. **Shielded Deposit:** 15 testnet executions + 7 mainnet executions (22 total).
+2. **Private Shielded-to-Shielded Transfer:** With ephemeral-key recipient discovery.
+3. **Unshield to Arbitrary Recipient:** Relayer-submitted, with zero user address on-chain.
+4. **ASP Compliance Enrollment:** 9 membership insertions.
+5. **Private Position Open:** 5 executions.
+6. **Private Health Attestation:** 4 executions against oracle price feeds.
+7. **Completed Liquidation:** Two-phase settlement (`initiate_liquidation` followed by `reveal_and_seize`, with collateral moved).
+8. **Hidden Conditional Order & Agentic Settlement:** Hidden conditional order committed, revealed, and executed; agentic settlement quest created and paid out.
+
+### Engineering Validation & Security
+
+* **106 Contract Unit Tests Pass:** Includes real-proof verification against registered on-chain verification keys.
+* **Adversarial Security Suites:** Explicit tests against mutated public inputs, substituted nullifiers, tampered proofs, cross-circuit proof substitution, double-spend attempts, and the `gamma != delta` verification-key check (which prevents vulnerabilities that drained Veil Cash and FoomCash).
+* **Soundness Audit & Continuous CI:** Internal architecture audit identified two soundness defects in the position circuits. Both are documented publicly and costed as funded work in Tranche 2, with Deliverable 2.4 wiring automated circuit analysis directly into continuous integration.
+
+### Ecosystem Partnerships & Integrations
+
+* **Tael Protocol & Trustline (SCF #44 Winner):** Partnered to launch an SDK widget integration, enabling native confidential settlement flows directly within partner DApps on Stellar.
+
+### Independent Verification & Evidence
+
+All figures are snapshots of an actively developed protocol regenerated directly from Stellar Horizon and [stellar.expert](https://stellar.expert).
+
+* **Complete Transaction Evidence Ledger:** [Google Drive Evidence Folder](https://drive.google.com/drive/folders/1FnvSYiqEZ97zV_dEbVh4H1qMtTKeHpE7?usp=drive_link) — Contains all 153 transactions with transaction hashes, contract addresses, function names, timestamps, ledger sequences, fee breakdowns, and direct explorer links.
+* **Updates & Community:** Follow protocol progress on X at [@Vayylstellar](https://x.com/Vayylstellar).
+
+
 ## Product surface
 
 | Product area | User goal | Current release state |
