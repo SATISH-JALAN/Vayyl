@@ -118,9 +118,14 @@ impl VayylPoolFactoryContract {
             membership.into_val(&env),
             non_membership.into_val(&env),
         ];
+        // `initialize_v2`, not `initialize`. V1 mode no longer has a payment
+        // path at all — its deposit/transfer/withdraw entrypoints were retired
+        // because their circuits never bound a note's public key to its private
+        // key. A factory that still deployed V1 pools would mint pools nobody
+        // could ever deposit into.
         env.invoke_contract::<()>(
             &pool_address,
-            &Symbol::new(&env, "initialize"),
+            &Symbol::new(&env, "initialize_v2"),
             init_args,
         );
 
@@ -285,12 +290,15 @@ mod test {
         let pool_client = pool::Client::new(&env, &pool_address);
         assert_eq!(pool_client.admin(), admin);
 
-        // Fund user
+        // Factory-deployed pools are fixed-denomination V2 pools, so amounts
+        // are set by the contract rather than by the caller.
+        let denomination = pool_client.get_denomination();
+
+        // Fund user with exactly two notes' worth.
         let user = Address::generate(&env);
         let token_admin_client = soroban_sdk::token::StellarAssetClient::new(&env, &asset);
-        token_admin_client.mint(&user, &1000);
+        token_admin_client.mint(&user, &(denomination * 2));
 
-        // Deposit
         let proof = pool::Groth16Proof {
             a: soroban_sdk::BytesN::from_array(&env, &[0u8; 64]),
             b: soroban_sdk::BytesN::from_array(&env, &[0u8; 128]),
@@ -299,19 +307,18 @@ mod test {
         let commitment = soroban_sdk::BytesN::from_array(&env, &[1u8; 32]);
         let asp_root = soroban_sdk::BytesN::from_array(&env, &[2u8; 32]);
 
-        pool_client.deposit(&user, &proof, &commitment, &500, &asp_root);
-        
+        pool_client.deposit_v2(&user, &proof, &commitment, &asp_root);
+
         let token_client = soroban_sdk::token::Client::new(&env, &asset);
-        assert_eq!(token_client.balance(&user), 500);
-        assert_eq!(token_client.balance(&pool_address), 500);
+        assert_eq!(token_client.balance(&user), denomination);
+        assert_eq!(token_client.balance(&pool_address), denomination);
         assert_eq!(pool_client.get_leaf_count(), 1);
 
-        // Withdraw
         let pool_root = pool_client.get_root();
         let nullifier = soroban_sdk::BytesN::from_array(&env, &[3u8; 32]);
-        pool_client.withdraw(&proof, &nullifier, &500, &user, &pool_root, &0, &user);
-        
-        assert_eq!(token_client.balance(&user), 1000);
+        pool_client.withdraw_v2(&proof, &nullifier, &user, &pool_root);
+
+        assert_eq!(token_client.balance(&user), denomination * 2);
         assert_eq!(token_client.balance(&pool_address), 0);
     }
 

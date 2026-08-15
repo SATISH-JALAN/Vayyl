@@ -1,7 +1,12 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { RelayerService, type V2WithdrawRequest, type V2TransferRequest } from './relay.js';
+import {
+    RelayerService,
+    type V2WithdrawRequest,
+    type V2TransferRequest,
+    type V2RageQuitRequest,
+} from './relay.js';
 import { AspEnrollmentService } from './enrollment.js';
 import * as StellarSdk from '@stellar/stellar-sdk';
 
@@ -15,6 +20,19 @@ const ASP_ADMIN_SECRET = process.env.ASP_ADMIN_SECRET;
 const ASP_MEMBERSHIP_ID = process.env.ASP_MEMBERSHIP_ID;
 const DATABASE_URL = process.env.DATABASE_URL;
 const ASP_MAX_ENROLLMENTS = Number(process.env.ASP_MAX_ENROLLMENTS ?? 128);
+// Who may add themselves to the ASP set.
+//
+//   open  — anyone can enrol (rate-limited and capped). This is the CORRECT
+//           setting for the public testnet demo: the ASP set is an open
+//           allowlist so that anyone can try the product. It is emphatically
+//           NOT a compliance control, and must not be described as one.
+//   token — callers must present ASP_ENROLL_TOKEN. For closed pilots, where
+//           the operator decides who is in the set out of band.
+//
+// The mode is reported by /health so what is actually enforced is machine
+// readable, rather than something a reader has to infer from a README.
+const ASP_ENROLL_MODE = (process.env.ASP_ENROLL_MODE ?? 'open').toLowerCase();
+const ASP_ENROLL_TOKEN = process.env.ASP_ENROLL_TOKEN;
 const ASP_LEAF_STORE_PATH = process.env.ASP_LEAF_STORE_PATH;
 const ALLOWED_POOLS = process.env.ALLOWED_POOLS ? process.env.ALLOWED_POOLS.split(',') : [];
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3002;
@@ -114,6 +132,29 @@ async function main() {
 
     const enrollmentMode = enrollment ? enrollment.backend : 'disabled';
 
+    if (enrollment && ASP_ENROLL_MODE === 'token' && !ASP_ENROLL_TOKEN) {
+        console.error(
+            'Error: ASP_ENROLL_MODE=token requires ASP_ENROLL_TOKEN. Refusing to start with ' +
+            'enrollment that claims to be gated but is not.',
+        );
+        process.exit(1);
+    }
+    if (enrollment && ASP_ENROLL_MODE !== 'token') {
+        console.warn(
+            'ASP enrollment is OPEN: any caller may join the approval set, subject only to the ' +
+            `rate limit and the ${ASP_MAX_ENROLLMENTS}-leaf cap. This is the intended public ` +
+            'testnet posture — the ASP set is an open allowlist, not a compliance control. ' +
+            'Set ASP_ENROLL_MODE=token for a closed pilot.',
+        );
+    }
+
+    /** Token gate for /v2/enroll. Returns an error string when the call is refused. */
+    const enrollmentGate = (req: express.Request): string | null => {
+        if (ASP_ENROLL_MODE !== 'token') return null;
+        const presented = req.header('x-enroll-token');
+        return presented === ASP_ENROLL_TOKEN ? null : 'Enrollment is closed on this deployment';
+    };
+
     app.get('/health', async (req, res) => {
         try {
             const account = await horizon.loadAccount(relayerPubkey);
@@ -123,6 +164,8 @@ async function main() {
                 address: relayerPubkey,
                 nativeBalance: native?.balance ?? '0',
                 enrollment: enrollmentMode,
+                // What the ASP gate actually enforces, stated rather than implied.
+                enrollmentAccess: enrollment ? (ASP_ENROLL_MODE === 'token' ? 'token' : 'open') : 'disabled',
             });
         } catch {
             res.json({ status: 'ok', address: relayerPubkey, nativeBalance: null, enrollment: enrollmentMode });
@@ -158,6 +201,8 @@ async function main() {
 
     app.post('/v2/enroll', async (req, res) => {
         if (!enrollment) return res.status(503).json({ success: false, ...enrollmentUnavailable });
+        const refused = enrollmentGate(req);
+        if (refused) return res.status(403).json({ success: false, error: refused });
         try {
             const result = await enrollment.enroll(req.body?.leaf);
             res.json({ success: true, ...result });
@@ -184,6 +229,16 @@ async function main() {
         } catch (err: any) {
             console.error('V2 transfer relay error:', err);
             res.status(400).json({ success: false, error: err?.message ?? 'Transfer relay failed' });
+        }
+    });
+
+    app.post('/v2/ragequit', async (req, res) => {
+        try {
+            const hash = await relayer.relayV2RageQuit(req.body as V2RageQuitRequest);
+            res.json({ success: true, hash });
+        } catch (err: any) {
+            console.error('V2 rage-quit relay error:', err);
+            res.status(400).json({ success: false, error: err?.message ?? 'Rage-quit relay failed' });
         }
     });
 

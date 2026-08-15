@@ -17,18 +17,6 @@ pub struct Deposit {
     pub amount: i128,
 }
 
-/// C4: transfer event — both spent nullifiers as topics, both new commitments
-/// as data (so the client note-scan sees the fresh outputs).
-#[contractevent]
-pub struct Transfer {
-    #[topic]
-    pub nullifier1: BytesN<32>,
-    #[topic]
-    pub nullifier2: BytesN<32>,
-    pub commitment1: BytesN<32>,
-    pub commitment2: BytesN<32>,
-}
-
 /// V2 shielded transfer: one 1-XLM note is spent and one is created for a
 /// recipient only they can identify. `ephemeral_*` is the sender's one-time
 /// BabyJubjub point R — the recipient recovers the new note's blindness as
@@ -38,7 +26,7 @@ pub struct Transfer {
 /// `leaf_index` is load-bearing, not informational: without it the indexer
 /// cannot place this commitment in the tree, and an unplaceable commitment
 /// corrupts the leaf ordering every client rebuilds its Merkle paths from.
-/// The V1 `Transfer` event above omits it, which is exactly that bug.
+/// The retired V1 `Transfer` event omitted it, which is exactly that bug.
 ///
 /// The topic string is pinned rather than derived, because the indexer routes
 /// on it and the SDK's default is `to_snake_case(StructName)`.
@@ -169,6 +157,10 @@ pub enum DataKey {
     /// (position-manager, liquidation-engine, and later the order/agentic hubs).
     /// Admin-managed. Presence of the key = authorized.
     SettlementAuthority(Address),
+    /// Whether spends consult the ASP blocklist. **Absent means enabled**, so a
+    /// pool that is upgraded and never configured enforces by default; disabling
+    /// is an explicit, visible admin decision. See `assert_nullifier_not_blocked`.
+    BlocklistEnabled,
 }
 
 #[contracterror]
@@ -197,6 +189,12 @@ pub enum Error {
     /// checks inclusion by key lookup rather than by Merkle proof, so an unknown
     /// commitment is rejected here instead of failing proof verification.
     UnknownCommitment = 13,
+    /// Blocklist enforcement is enabled but the non-membership contract could
+    /// not be consulted. Rejecting is deliberate: an unavailable compliance
+    /// check is an unmet one, and the pool must not report success for a check
+    /// it never performed. Note this never traps funds — `ragequit_v2` does not
+    /// consult the blocklist and remains available.
+    BlocklistUnavailable = 14,
 }
 
 #[contract]
@@ -237,57 +235,55 @@ fn hash2(env: &Env, left: &BytesN<32>, right: &BytesN<32>) -> BytesN<32> {
     BytesN::from_array(env, &array)
 }
 
-/// M2: encode a full i128 amount/fee as a 32-byte big-endian field element.
+/// Reject nullifiers on the ASP blocklist.
 ///
-/// The old code copied only `to_be_bytes()[8..16]` — the low 64 bits — so any
-/// value ≥ 2^64 was silently truncated and its commitment/binding never matched
-/// the circuit. Amounts and fees are non-negative by protocol; a negative value
-/// here is nonsensical and would mis-encode (two's-complement ≠ field-negative),
-/// so we reject it rather than encode it wrongly. i128::MAX < BN254 prime, so a
-/// non-negative i128 is always a canonical field element in the low 16 bytes.
-fn i128_to_field_bytes(value: i128) -> Result<[u8; 32], Error> {
-    if value < 0 {
-        return Err(Error::InvalidAmount);
-    }
-    let mut out = [0u8; 32];
-    out[16..32].copy_from_slice(&value.to_be_bytes());
-    Ok(out)
-}
-
-/// Reject nullifiers on the ASP blocklist when a real non-membership contract
-/// is wired. Skipped if the contract at `NonMembership` was never initialized
-/// (backwards-compatible with pools that pass a placeholder address).
+/// **This check fails closed.** The previous implementation inferred whether a
+/// blocklist was "really" wired by comparing the non-membership address against
+/// the verifier/membership addresses and by probing `admin()`, returning
+/// `Ok(())` whenever either heuristic said no. Both inferences silently turned
+/// enforcement off: a placeholder address, a not-yet-initialized contract, or a
+/// transient failure of the `admin()` call all read as "blocklist disabled", and
+/// nothing on-chain or in any event distinguished that from a nullifier that had
+/// genuinely been checked and cleared. A compliance control that reports success
+/// when it did not run is worse than no control at all, because it gets claimed.
+///
+/// Enforcement is now an explicit, inspectable state. `DataKey::BlocklistEnabled`
+/// is set by the admin via `set_blocklist_enabled`, readable by anyone via
+/// `blocklist_enabled()`, and **absent means enabled** — so an upgraded pool that
+/// has never been configured enforces rather than quietly waves spends through.
+/// Turning it off is a deliberate admin action recorded on the ledger.
+///
+/// If the blocklist is enabled but cannot be consulted (address never
+/// initialized, wrong contract wired, call reverts), the spend is REJECTED with
+/// `BlocklistUnavailable` rather than allowed. That is the whole point of
+/// failing closed: an unavailable check is an unmet check.
 fn assert_nullifier_not_blocked(env: &Env, nullifier: &BytesN<32>) -> Result<(), Error> {
+    if !blocklist_is_enabled(env) {
+        return Ok(());
+    }
     let nm_addr: Address = env
         .storage()
         .instance()
         .get(&DataKey::NonMembership)
         .ok_or(Error::NotInitialized)?;
-    // Deploy scripts may pass verifier/membership as a placeholder until a real
-    // AspNonMembership contract is wired. Those contracts expose `admin` but not
-    // `is_not_blocked`, so treat them as "blocklist not yet enabled".
-    let verifier: Address = env
-        .storage()
-        .instance()
-        .get(&DataKey::Verifier)
-        .ok_or(Error::NotInitialized)?;
-    let membership: Address = env
-        .storage()
-        .instance()
-        .get(&DataKey::Membership)
-        .ok_or(Error::NotInitialized)?;
-    if nm_addr == verifier || nm_addr == membership {
-        return Ok(());
-    }
     let nm_client = AspNonMembershipClient::new(env, &nm_addr);
-    // `admin()` returns Err when the blocklist contract was never initialized.
-    if nm_client.try_admin().is_err() {
-        return Ok(());
+    match nm_client.try_is_not_blocked(nullifier) {
+        Ok(Ok(true)) => Ok(()),
+        Ok(Ok(false)) => Err(Error::NullifierBlocked),
+        // Either the cross-contract call itself failed (no such contract, no
+        // such function, contract not initialized) or it returned a value we
+        // could not read. Both mean the blocklist did not answer.
+        _ => Err(Error::BlocklistUnavailable),
     }
-    if !nm_client.is_not_blocked(nullifier) {
-        return Err(Error::NullifierBlocked);
-    }
-    Ok(())
+}
+
+/// Blocklist enforcement state. Absent = enabled, so the safe behaviour is the
+/// one you get by doing nothing, including across an in-place `upgrade()`.
+fn blocklist_is_enabled(env: &Env) -> bool {
+    env.storage()
+        .instance()
+        .get(&DataKey::BlocklistEnabled)
+        .unwrap_or(true)
 }
 
 #[contractimpl]
@@ -550,28 +546,6 @@ impl VayylPool {
         history.iter().any(|r| &r == root)
     }
 
-    /// Compute a binding hash for metadata (relayer address, etc.)
-    /// This produces a 32-byte hash that binds the proof to specific transaction metadata,
-    /// preventing proof replay/front-running attacks.
-    fn compute_meta_hash(env: &Env, relayer: &Address, fee: i128) -> BytesN<32> {
-        use soroban_sdk::xdr::ToXdr;
-        let mut bytes = soroban_sdk::Bytes::new(env);
-        bytes.append(&relayer.to_xdr(env));
-
-        let mut fee_bytes = [0u8; 16];
-        fee_bytes[0..16].copy_from_slice(&fee.to_be_bytes());
-        bytes.append(&soroban_sdk::Bytes::from_array(env, &fee_bytes));
-
-        let sha_hash = env.crypto().sha256(&bytes);
-
-        // Poseidon2 expects field elements. A 32-byte SHA256 hash might be >= BN254 prime.
-        // We clear the top 3 bits to ensure it fits in BN254 scalar field.
-        let mut hash_bytes = sha_hash.to_array();
-        hash_bytes[0] &= 0x1F;
-
-        BytesN::from_array(env, &hash_bytes)
-    }
-
     /// Compute withdraw binding hash from recipient address
     /// Binds the proof to a specific withdrawal destination
     fn compute_withdraw_binding(env: &Env, recipient: &Address, amount: i128) -> BytesN<32> {
@@ -590,80 +564,6 @@ impl VayylPool {
         hash_bytes[0] &= 0x1F;
 
         BytesN::from_array(env, &hash_bytes)
-    }
-
-    /// Deposit public funds into the shielded pool
-    pub fn deposit(
-        env: Env,
-        depositor: Address,
-        proof: Groth16Proof,
-        commitment: BytesN<32>,
-        public_amount: i128,
-        asp_root: BytesN<32>,
-    ) -> Result<(), Error> {
-        Self::assert_v1(&env)?;
-        depositor.require_auth();
-
-        let asset: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Asset)
-            .ok_or(Error::NotInitialized)?;
-        let verifier: Address = env.storage().instance().get(&DataKey::Verifier).unwrap();
-
-        // C3: bind `asp_root` to the trusted ASP set BEFORE the expensive Groth16
-        // verify (fail fast, cheapest check first) and before any token move (M6).
-        // The circuit proves the depositor's key is a member of the tree with root
-        // `asp_root`; without this check the depositor could prove membership in a
-        // tree they built themselves. Requiring the ASP contract to recognise
-        // `asp_root` (current or in its recent-root window) makes compliance real.
-        let membership: Address = env.storage().instance().get(&DataKey::Membership).unwrap();
-        let membership_client = AspMembershipClient::new(&env, &membership);
-        if !membership_client.is_known_root(&asp_root) {
-            return Err(Error::InvalidAspRoot);
-        }
-
-        // M6: verify the ZK proof BEFORE moving any tokens. The previous order
-        // transferred first, so an invalid-proof deposit still pulled funds.
-        let verifier_client = Groth16VerifierClient::new(&env, &verifier);
-
-        // Build public inputs: [amount, commitment, asp_root]  (M2: full i128)
-        let mut public_inputs = Vec::new(&env);
-        public_inputs.push_back(BytesN::from_array(
-            &env,
-            &i128_to_field_bytes(public_amount)?,
-        ));
-        public_inputs.push_back(commitment.clone());
-        public_inputs.push_back(asp_root);
-
-        let is_valid = verifier_client.verify(&CircuitId::Deposit, &proof, &public_inputs);
-        if !is_valid {
-            return Err(Error::InvalidProof);
-        }
-
-        // 1. Transfer tokens from depositor to the pool (only after verify).
-        let token_client = token::Client::new(&env, &asset);
-        token_client.transfer(&depositor, &env.current_contract_address(), &public_amount);
-
-        // 2. Insert commitment into the Merkle tree
-        let leaf_index = env
-            .storage()
-            .instance()
-            .get::<DataKey, u32>(&DataKey::TreeNextIndex)
-            .unwrap_or(0);
-        Self::insert_leaf(&env, commitment.clone())?;
-
-        // C4: emit a structured deposit event for the indexer / client note scan.
-        Deposit {
-            commitment,
-            leaf_index,
-            amount: public_amount,
-        }
-        .publish(&env);
-
-        log!(&env, "Deposit of {} completed successfully", public_amount);
-
-        Ok(())
     }
 
     /// Deposit one fixed 1-XLM note into a Vault V2 pool.
@@ -823,167 +723,6 @@ impl VayylPool {
             amount: denomination,
         }
         .publish(&env);
-        Ok(())
-    }
-
-    /// Transfer shielded funds (2-in / 2-out)
-    pub fn transfer(
-        env: Env,
-        proof: Groth16Proof,
-        nullifier1: BytesN<32>,
-        nullifier2: BytesN<32>,
-        commitment1: BytesN<32>,
-        commitment2: BytesN<32>,
-        root: BytesN<32>,
-        fee: i128,
-        relayer: Address,
-    ) -> Result<(), Error> {
-        Self::assert_v1(&env)?;
-        let asset: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Asset)
-            .ok_or(Error::NotInitialized)?;
-        let verifier: Address = env.storage().instance().get(&DataKey::Verifier).unwrap();
-
-        // H4: accept the caller-supplied root only if it is the current root or
-        // still inside the historical-roots window (survives concurrent deposits).
-        if !Self::is_known_root(&env, &root) {
-            return Err(Error::UnknownRoot);
-        }
-
-        // V2-ready blocklist: reject blocked nullifiers before any state change.
-        assert_nullifier_not_blocked(&env, &nullifier1)?;
-        assert_nullifier_not_blocked(&env, &nullifier2)?;
-
-        // 1. Mark Nullifiers (prevents double-spend)
-        Self::mark_nullifier(&env, nullifier1.clone())?;
-        Self::mark_nullifier(&env, nullifier2.clone())?;
-
-        // 2. Compute meta_hash binding proof to this specific relayer + fee
-        let meta_hash = Self::compute_meta_hash(&env, &relayer, fee);
-
-        // 3. Verify ZK Proof for Transfer
-        let verifier_client = Groth16VerifierClient::new(&env, &verifier);
-
-        // Build public inputs: [root, nullifier1, nullifier2, commitment1, commitment2, fee, meta_hash]
-        let mut public_inputs = Vec::new(&env);
-        public_inputs.push_back(root);
-        public_inputs.push_back(nullifier1.clone());
-        public_inputs.push_back(nullifier2.clone());
-        public_inputs.push_back(commitment1.clone());
-        public_inputs.push_back(commitment2.clone());
-
-        public_inputs.push_back(BytesN::from_array(&env, &i128_to_field_bytes(fee)?)); // M2
-
-        public_inputs.push_back(meta_hash);
-
-        let is_valid = verifier_client.verify(&CircuitId::Transfer, &proof, &public_inputs);
-        if !is_valid {
-            return Err(Error::InvalidProof);
-        }
-
-        // 4. Insert new commitments into the Merkle tree
-        Self::insert_leaf(&env, commitment1.clone())?;
-        Self::insert_leaf(&env, commitment2.clone())?;
-
-        // 5. Pay Relayer fee from the pool's held tokens
-        if fee > 0 {
-            let token_client = token::Client::new(&env, &asset);
-            token_client.transfer(&env.current_contract_address(), &relayer, &fee);
-        }
-
-        // C4: emit a transfer event (both spent nullifiers + both new commitments).
-        Transfer {
-            nullifier1,
-            nullifier2,
-            commitment1,
-            commitment2,
-        }
-        .publish(&env);
-
-        log!(&env, "Transfer completed. 2 new commitments inserted.");
-
-        Ok(())
-    }
-
-    /// Withdraw funds from the shielded pool to a public address
-    pub fn withdraw(
-        env: Env,
-        proof: Groth16Proof,
-        nullifier: BytesN<32>,
-        public_amount: i128,
-        recipient: Address,
-        root: BytesN<32>,
-        fee: i128,
-        relayer: Address,
-    ) -> Result<(), Error> {
-        Self::assert_v1(&env)?;
-        let asset: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Asset)
-            .ok_or(Error::NotInitialized)?;
-        let verifier: Address = env.storage().instance().get(&DataKey::Verifier).unwrap();
-
-        // H4: accept the proof's bound root if it is current or still in-window.
-        if !Self::is_known_root(&env, &root) {
-            return Err(Error::UnknownRoot);
-        }
-
-        // V2-ready blocklist: reject blocked nullifiers before any state change.
-        assert_nullifier_not_blocked(&env, &nullifier)?;
-
-        // 1. Mark Nullifier (prevents double-spend)
-        Self::mark_nullifier(&env, nullifier.clone())?;
-
-        // 2. Compute withdraw_binding = Poseidon2(recipient, amount)
-        let withdraw_binding = Self::compute_withdraw_binding(&env, &recipient, public_amount);
-
-        // 3. Verify ZK Proof for Withdraw
-        let verifier_client = Groth16VerifierClient::new(&env, &verifier);
-
-        // Build public inputs: [root, nullifier, public_amount, fee, withdraw_binding]
-        let mut public_inputs = Vec::new(&env);
-        public_inputs.push_back(root);
-        public_inputs.push_back(nullifier.clone());
-
-        public_inputs.push_back(BytesN::from_array(
-            &env,
-            &i128_to_field_bytes(public_amount)?,
-        )); // M2
-        public_inputs.push_back(BytesN::from_array(&env, &i128_to_field_bytes(fee)?)); // M2
-
-        public_inputs.push_back(withdraw_binding);
-
-        let is_valid = verifier_client.verify(&CircuitId::Withdraw, &proof, &public_inputs);
-        if !is_valid {
-            return Err(Error::InvalidProof);
-        }
-
-        // 4. Transfer tokens to recipient and relayer (only after verify).
-        let token_client = token::Client::new(&env, &asset);
-        if public_amount > 0 {
-            token_client.transfer(&env.current_contract_address(), &recipient, &public_amount);
-        }
-        if fee > 0 {
-            token_client.transfer(&env.current_contract_address(), &relayer, &fee);
-        }
-
-        // C4: emit a withdraw event (nullifier, recipient, amount) for the indexer.
-        Withdraw {
-            nullifier,
-            recipient,
-            amount: public_amount,
-        }
-        .publish(&env);
-
-        log!(
-            &env,
-            "Withdraw of {} completed to recipient.",
-            public_amount
-        );
-
         Ok(())
     }
 
@@ -1209,6 +948,32 @@ impl VayylPool {
         .publish(&env);
 
         Ok(())
+    }
+
+    /// Admin: turn ASP blocklist enforcement on or off.
+    ///
+    /// Exists so that "not enforcing" is a state someone chose and anyone can
+    /// read, rather than something inferred at call time from whether a probe
+    /// happened to succeed. Disabling is legitimate — a pool with no blocklist
+    /// wired yet — but it should be visible on the ledger and in
+    /// `blocklist_enabled()`, not implied by an address comparison.
+    pub fn set_blocklist_enabled(env: Env, enabled: bool) -> Result<(), Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+        env.storage()
+            .instance()
+            .set(&DataKey::BlocklistEnabled, &enabled);
+        Ok(())
+    }
+
+    /// Whether spends currently consult the ASP blocklist. Absent state reads as
+    /// enabled, matching `assert_nullifier_not_blocked`.
+    pub fn blocklist_enabled(env: Env) -> bool {
+        blocklist_is_enabled(&env)
     }
 
     /// Admin: add a contract to the settlement-authority allowlist.
