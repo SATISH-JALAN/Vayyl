@@ -85,8 +85,14 @@ const V1_VKEY_DIR = "circuits/build/vkey";
 const V2_VKEY_DIR = "circuits/build/v2/vkey";
 
 const CIRCUITS = {
+    // All three payment slots point at the V2 build. The V1 circuits that once
+    // filled them were retired (they never bound a note's public key to its
+    // private key), and their vkeys are gone — but leaving the mapping behind
+    // was the real hazard: registering a V1 key into a slot the live V2 pool
+    // reads makes every spend fail proof verification with no on-chain error
+    // that explains why.
     "Deposit": { id: 0, file: "deposit_v2", dir: V2_VKEY_DIR },
-    "Transfer": { id: 1, file: "transfer" },
+    "Transfer": { id: 1, file: "transfer_v2", dir: V2_VKEY_DIR },
     "Withdraw": { id: 2, file: "withdraw_v2", dir: V2_VKEY_DIR },
     "PositionOpen": { id: 3, file: "position_open" },
     "PositionHealth": { id: 4, file: "position_health" },
@@ -96,7 +102,10 @@ const CIRCUITS = {
     "LiquidationHeartbeat": { id: 6, file: "liquidation_heartbeat" },
     // Order/agentic circuits — HiddenOrderTrigger=7, SealedOrder=11 in CircuitId enum.
     "HiddenOrderTrigger": { id: 7, file: "hidden_order_trigger" },
-    "SealedOrder": { id: 11, file: "sealed_order" }
+    "SealedOrder": { id: 11, file: "sealed_order" },
+    // Public exit. Appended at 12 to match the CircuitId enum, which is
+    // append-only: inserting above this line silently repoints every later VK.
+    "RageQuit": { id: 12, file: "ragequit_v2", dir: V2_VKEY_DIR }
 };
 
 // Default: register every circuit below that has a built VK. Set REGISTER_ALL=0
@@ -111,13 +120,30 @@ const V1_CIRCUITS = new Set([
     "LiquidationHeartbeat",
     "HiddenOrderTrigger",
     "SealedOrder",
+    "RageQuit",
 ]);
 const registerAll = process.env.REGISTER_ALL === "1";
 const vaultOnly = process.env.REGISTER_VAULT_ONLY === "1";
+// Narrow the run to named circuits, e.g. ONLY=RageQuit. Adding one circuit to a
+// live verifier should not mean re-submitting the keys every deployed pool is
+// already verifying against; the fewer live slots a routine operation touches,
+// the fewer ways it can go wrong.
+const only = (process.env.ONLY ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+if (only.length > 0) {
+    const unknown = only.filter((name) => !(name in CIRCUITS));
+    if (unknown.length > 0) {
+        console.error(`Unknown circuit(s) in ONLY: ${unknown.join(", ")}`);
+        process.exit(1);
+    }
+}
 
 console.log(`Target verifier: ${VERIFIER_ID} (network=${NETWORK}${DRY_RUN ? ", DRY_RUN" : ""})`);
 
 for (const [name, config] of Object.entries(CIRCUITS)) {
+    if (only.length > 0 && !only.includes(name)) continue;
     if (vaultOnly && name !== 'Deposit' && name !== 'Withdraw') {
         console.log(`Skipping ${name}: outside Vault v1 scope.`);
         continue;

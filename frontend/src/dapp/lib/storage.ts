@@ -44,7 +44,11 @@ const key = (viewingKey: string) => `vayyl_notes_${viewingKey}`;
 // withdraw's tx hash and time are otherwise lost. Record non-deposit events
 // (withdraw / transfer) here so the dashboard can show real recent activity.
 
-export type ActivityType = 'Deposit' | 'Withdraw' | 'Transfer';
+// 'RageQuit' is kept distinct from 'Withdraw' on purpose. A rage-quit publishes
+// the commitment, so it permanently links that deposit to the payout address on
+// the ledger. Folding it into "Withdraw" in the history would hide from the user
+// which of their exits was the private one and which was not.
+export type ActivityType = 'Deposit' | 'Withdraw' | 'Transfer' | 'RageQuit';
 
 export interface ActivityEvent {
   id: string; // tx hash (or a unique fallback)

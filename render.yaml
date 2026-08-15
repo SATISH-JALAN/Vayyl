@@ -1,0 +1,96 @@
+# Render blueprint for the Vayyl testnet services.
+#
+# Apply with: Render dashboard -> New -> Blueprint -> point at this repo.
+# Secrets are deliberately NOT in this file; every `sync: false` value must be
+# set in the dashboard. See docs/vayyl-hosting-runbook.md.
+#
+# Two decisions here are load-bearing and should not be "optimised" later:
+#
+#   1. The indexer is a WORKER, not a web service. Render's free web tier spins
+#      down after ~15 minutes of no HTTP traffic. A spun-down indexer stops
+#      polling, and Soroban RPC only retains events for ~7 days — so a long
+#      enough nap permanently loses commitments, and a missing commitment makes
+#      every later note in the pool unspendable. A worker does not spin down.
+#      It costs money; the alternative costs user funds.
+#
+#   2. Postgres is external (Neon/Supabase), not Render's free tier, which is
+#      DELETED after 30 days. Same failure, slower fuse.
+#
+# The wallet also carries a committed tree snapshot and falls back to it when
+# the indexer is unreachable, so an outage degrades freshness rather than
+# breaking spends. That is a safety net, not a licence to run this on free tiers.
+
+services:
+  - type: worker
+    name: vayyl-indexer
+    runtime: node
+    plan: starter
+    rootDir: backend/indexer
+    buildCommand: pnpm install --frozen-lockfile && pnpm build
+    startCommand: pnpm start
+    autoDeploy: false
+    envVars:
+      - key: RPC_URL
+        value: https://soroban-testnet.stellar.org
+      - key: POOL_ADDRESS
+        value: CB6XFHGN4DMVEQRESJHPOUNYLUCGMOZTAIKTWH3I7KT3NVW2XY4NIOLC
+      # The pool's first event. Starting later silently omits early leaves,
+      # which corrupts the Merkle tree for EVERY note rather than just the
+      # missing ones. The poller clamps this forward if it has aged out of the
+      # RPC retention window, and logs when it does.
+      - key: INDEXER_START_LEDGER
+        value: "3927000"
+      - key: INDEXER_CURSOR_NAMESPACE
+        value: vault-v2-2026-08-02
+      - key: PORT
+        value: "3001"
+      - key: DATABASE_URL
+        sync: false
+
+  - type: web
+    name: vayyl-relayer
+    runtime: node
+    plan: starter
+    rootDir: backend/relayer
+    buildCommand: pnpm install --frozen-lockfile && pnpm build
+    startCommand: pnpm start
+    healthCheckPath: /health
+    autoDeploy: false
+    envVars:
+      - key: RPC_URL
+        value: https://soroban-testnet.stellar.org
+      - key: HORIZON_URL
+        value: https://horizon-testnet.stellar.org
+      - key: NETWORK_PASSPHRASE
+        value: Test SDF Network ; September 2015
+      # A pool missing here has every relayed call rejected before it reaches
+      # the chain, with an error that does not mention this list.
+      - key: ALLOWED_POOLS
+        value: CB6XFHGN4DMVEQRESJHPOUNYLUCGMOZTAIKTWH3I7KT3NVW2XY4NIOLC
+      - key: ASP_MEMBERSHIP_ID
+        value: CD5DLTOIEAYA6CATHKELFAYRBOEFQN5TMADCEAURVZMMTYVD6Y5POCMO
+      # 'open' is the intended public-testnet posture: the approval set is an
+      # open allowlist so anyone can try the product. It is NOT a compliance
+      # control and must not be described as one. Use 'token' for a closed
+      # pilot, which additionally requires ASP_ENROLL_TOKEN.
+      - key: ASP_ENROLL_MODE
+        value: open
+      - key: ASP_MAX_ENROLLMENTS
+        value: "128"
+      - key: PORT
+        value: "3002"
+      # Signing keys. Set in the dashboard, never here.
+      #
+      # ASP_ADMIN_SECRET should be a key whose ONLY authority is
+      # asp-membership.insert_leaf. Do not reuse the deployer identity: the
+      # deployer is also the pool's upgrade() admin, and hosting the relayer
+      # with it hands contract-upgrade authority to the host.
+      - key: RELAYER_SECRET
+        sync: false
+      - key: ASP_ADMIN_SECRET
+        sync: false
+      # Durable leaf mirror. The membership contract can look a leaf up but
+      # cannot ENUMERATE, so a lost list is not reconstructible from chain and
+      # those users can no longer deposit. Use the same Postgres as the indexer.
+      - key: DATABASE_URL
+        sync: false

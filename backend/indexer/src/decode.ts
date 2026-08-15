@@ -11,6 +11,10 @@
 //   Transfer { nullifier1(topic), nullifier2(topic), commitment1, commitment2 }
 //     topics: [ symbol("transfer"), BytesN<32> n1, BytesN<32> n2 ]
 //     data:   Map { commitment1: BytesN<32>, commitment2: BytesN<32> }
+//     RETIRED — the pool no longer emits this. Decoding is kept deliberately:
+//     the event still exists in ledger history on the older pools, and it
+//     carries no leaf index, so an indexer pointed at one of them must SAY so
+//     (see poller.ts) rather than skip the rows in silence.
 //
 // #[contractevent] default data format is scvMap of the non-topic fields, keyed
 // by symbol. We decode topic[0] (the event name symbol) to route.
@@ -27,6 +31,7 @@ export type PoolEvent =
       commitment1: string;
       commitment2: string;
     }
+  | { kind: 'rageQuitV2'; nullifier: string; commitment: string; recipient: string; amount: bigint }
   | {
       kind: 'transferV2';
       nullifier: string;
@@ -120,6 +125,24 @@ export function decodePoolEvent(topic: xdr.ScVal[], value: xdr.ScVal): PoolEvent
         leafIndex: Number(data.leaf_index ?? 0),
         ephemeralX: hex(data.ephemeral_x as Buffer | Uint8Array | undefined),
         ephemeralY: hex(data.ephemeral_y as Buffer | Uint8Array | undefined),
+        amount: BigInt((data.amount as bigint | number | string) ?? 0),
+      };
+    }
+    // Public exit. The nullifier here MUST be indexed like any other spend:
+    // wallets hide already-spent notes by checking the nullifier feed, so
+    // missing these would leave a rage-quit note looking spendable forever and
+    // every attempt to spend it failing on-chain with NullifierAlreadyUsed.
+    // The commitment is carried too, because rage-quit publishes it on purpose
+    // — that public deposit-to-payout link is the trade being made.
+    case 'ragequit_v2': {
+      if (topic.length < 2) return null;
+      const hex = (b?: Buffer | Uint8Array) =>
+        b ? Buffer.from(b).toString('hex').padStart(64, '0') : '';
+      return {
+        kind: 'rageQuitV2',
+        nullifier: bytesN32ToHex(topic[1]),
+        commitment: hex(data.commitment as Buffer | Uint8Array | undefined),
+        recipient: String(data.recipient ?? ''),
         amount: BigInt((data.amount as bigint | number | string) ?? 0),
       };
     }

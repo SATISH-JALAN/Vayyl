@@ -96,6 +96,31 @@ describe('decodePoolEvent', () => {
     });
   });
 
+  it('decodes a rage-quit event', () => {
+    // If this ever stops decoding, a publicly-exited note keeps looking
+    // spendable in every wallet, because wallets learn about spends from the
+    // nullifier feed. Each attempt then fails on-chain with a bare
+    // NullifierAlreadyUsed and nothing explains why.
+    const nullifier = '55'.repeat(32);
+    const commitment = '66'.repeat(32);
+    const recipient = 'GCL7FQ6NIJBMZNBUMI6Z6CLAMZZIRM4U6XHSYEXPQRARLZAMXUUI5CFC';
+    const topic = [sym('ragequit_v2'), bytesN(nullifier)];
+    const value = xdr.ScVal.scvMap([
+      mapEntry('commitment', bytesN(commitment)),
+      mapEntry('recipient', xdr.ScVal.scvAddress(Address.fromString(recipient).toScAddress())),
+      mapEntry('amount', xdr.ScVal.scvI128(new xdr.Int128Parts({ hi: xdr.Int64.fromString('0'), lo: xdr.Uint64.fromString('10000000') }))),
+    ]);
+
+    const decoded = decodePoolEvent(topic, value);
+    expect(decoded).toEqual({
+      kind: 'rageQuitV2',
+      nullifier,
+      commitment,
+      recipient,
+      amount: 10_000_000n,
+    });
+  });
+
   it('returns null for an unrelated event', () => {
     expect(decodePoolEvent([sym('mint')], xdr.ScVal.scvVoid())).toBeNull();
     expect(decodePoolEvent([], xdr.ScVal.scvVoid())).toBeNull();

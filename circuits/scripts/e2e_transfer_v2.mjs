@@ -180,7 +180,12 @@ assert.equal(rebuilt.root, onchainRoot, 'rebuilt root does not match on-chain ro
 console.log(`· rebuilt Merkle root matches on-chain root (${priorTransfers} prior transfer(s))`);
 
 // Spend a deposit that has not been spent yet: one per run.
-const spendIndex = priorTransfers;
+//
+// The default derivation assumes seeded deposits are consumed only by this
+// script. `e2e_ragequit_v2.mjs` also consumes one, so pass TRANSFER_INDEX
+// explicitly after a rage-quit run rather than letting this collide with an
+// already-spent note.
+const spendIndex = Number(process.env.TRANSFER_INDEX ?? priorTransfers);
 assert.ok(spendIndex < DEPOSIT_COUNT, `all ${DEPOSIT_COUNT} seeded deposits are spent; re-seed with e2e_vault_v2.mjs`);
 const alice = seeded[spendIndex];
 console.log(`· Alice spends deposit ${spendIndex}`);

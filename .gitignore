@@ -1,16 +1,33 @@
 # Dependencies
 node_modules/
 target/
+.pnpm-store/
 
 # Build outputs
 dist/
 *.wasm
+*.tsbuildinfo
+coverage/
+.turbo/
+
 # Environment (contains secrets: DB passwords, connection strings, keys)
 .env
 .env.*
 wallet.env
 !.env.example
 !frontend/.env.mainnet.example
+# Tracked on purpose: this file holds ONLY public contract IDs and localhost
+# URLs — no keys, no connection strings. It is the template you copy to
+# .env.local. Verified secret-free; keep it that way.
+!frontend/.env.testnet
+
+# Credentials of any kind. Nothing in this repo should ever need one committed.
+*.pem
+*.p12
+*.pfx
+id_rsa*
+*.keystore
+secrets.json
 
 # Agent customizations
 .claude
@@ -24,6 +41,7 @@ docs/
 circuits/build/
 *.sym
 *.wtns
+*.r1cs
 *.zkey
 *.ptau
 *.json.bak
@@ -61,27 +79,32 @@ yarn.lock
 # Impeccable local runtime state
 /.impeccable/config.local.json
 /.impeccable/live/sessions/
-/
+
 # Local code-graph output
 /graphify-out/
 /.graphifyignore
 
-# Local visual verification artifacts
+# Local scratch space and one-off experiments
+/scratch/
+
+# Local visual verification artifacts. Screenshots are regenerable output of a
+# test run, not sources — they age badly and bloat clones.
+/output/
 /.playwright-mcp/
 /.playwright-cli/
 /frontend/.playwright-cli/
-/output/playwright/
 /vayyl-next-landing-*.png
 /vayyl-hero-polish-*.png
-.pnpm-store/
 
 # Local handover, tooling, and runtime artifacts
 /handover_request/
 /Vayyl-docs/
 /circuits/reference/
 /logs/
+*.log
 /vayyl_handover_docs.md
 /vayyl_progress_report.md
+/inspect_vayyl_pool.txt
 /stellar.exe
 /stellar.tar.gz
 
@@ -105,11 +128,23 @@ yarn.lock
 !frontend/public/circuits/v2/*.wasm
 !frontend/public/circuits/v2/*_final.zkey
 
+# The committed leaf ordering. Soroban RPC retains events only ~7 days and this
+# pool's deposits are already past that, so these files are the durable record
+# of which commitment sits at which leaf index. Losing them makes EVERY note in
+# the pool unspendable, not just a missing one. They must never be ignored.
+!/deployments/testnet-vault-v2-tree.json
+!/frontend/public/tree-snapshot.json
+
 # Local archives and handover bundles. These are snapshots of the working tree,
 # not sources — committing one would embed a copy of the repo inside the repo.
 *.7z
 *.zip
 *.tar.gz
+
+# One-off debugging scripts. `check_relayer.js` was tracked with a hardcoded
+# testnet seed in it — a 14-line balance check is not worth a committed key.
+# Keep throwaways like this out of the index rather than sanitising them.
+/backend/check_relayer.js
 
 # Relayer ASP leaf mirror: local service state, rebuilt per deployment.
 # Not secret (leaves are public on-chain), but it must never be shared between

@@ -1,23 +1,32 @@
 {
-    "network":  "testnet",
-    "deployed_at":  "2026-08-02T07:11:51.7601737Z",
-    "source_account":  "GCZTDHO2FG2ABMQ46ON2MN262Z7RXD7TRA2QWGGKQIZVT7ZXK6AUJ3TH",
-    "asset":  "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
-    "verifier":  "CBRMDGEMQERFTG3MCBHYPHMZPKVMDYFGHJAMREQW23ZDKVAMAFDRJ2J5",
-    "asp_membership":  "CD5DLTOIEAYA6CATHKELFAYRBOEFQN5TMADCEAURVZMMTYVD6Y5POCMO",
-    "asp_non_membership":  "CAYNUQUPVQF7K35LG4VKNBFUHVULAKN27CDBP4N7EVXXEAGICWVYB4WD",
-    "pool":  "CB6XFHGN4DMVEQRESJHPOUNYLUCGMOZTAIKTWH3I7KT3NVW2XY4NIOLC",
-    "denomination_stroops":  10000000,
-    "verification_keys":  {
-                              "deposit_public_inputs":  2,
-                              "withdraw_public_inputs":  3,
-                              "transfer_public_inputs":  5
-                          },
-    "wasm_sha256":  {
-                        "pool":  "7317f2f34a7d7920c49c5634e34a2696497ae8649ff951f552211b472ecae16b",
-                        "verifier":  "d74951e4a3a6092c7b15021c4a376d8330aeb70edfdff37626b3068804bdc63d"
-                    },
-    "setup":  "single-machine testnet proving setup; not a production ceremony",
-    "wasm_sha256_pool_upgraded":  "aebb0d55212638aab3af25f6ac18bd378c042a5873d4e9a215a6e87417caeba5",
-    "upgraded_at":  "2026-08-02T16:53:31.9275426Z"
+    "network": "testnet",
+    "deployed_at": "2026-08-02T07:11:51.7601737Z",
+    "source_account": "GCZTDHO2FG2ABMQ46ON2MN262Z7RXD7TRA2QWGGKQIZVT7ZXK6AUJ3TH",
+    "asset": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+    "verifier": "CBRMDGEMQERFTG3MCBHYPHMZPKVMDYFGHJAMREQW23ZDKVAMAFDRJ2J5",
+    "asp_membership": "CD5DLTOIEAYA6CATHKELFAYRBOEFQN5TMADCEAURVZMMTYVD6Y5POCMO",
+    "asp_non_membership": "CAYNUQUPVQF7K35LG4VKNBFUHVULAKN27CDBP4N7EVXXEAGICWVYB4WD",
+    "pool": "CB6XFHGN4DMVEQRESJHPOUNYLUCGMOZTAIKTWH3I7KT3NVW2XY4NIOLC",
+    "denomination_stroops": 10000000,
+    "verification_keys": {
+        "deposit_public_inputs": 2,
+        "withdraw_public_inputs": 3,
+        "transfer_public_inputs": 5,
+        "ragequit_public_inputs": 3
+    },
+    "wasm_sha256": {
+        "pool": "7317f2f34a7d7920c49c5634e34a2696497ae8649ff951f552211b472ecae16b",
+        "verifier": "d74951e4a3a6092c7b15021c4a376d8330aeb70edfdff37626b3068804bdc63d"
+    },
+    "setup": "single-machine testnet proving setup; not a production ceremony",
+    "wasm_sha256_pool_upgraded": "af83527c1c8761c9108159609517e247b9b8b3fcb5bd70b49e12a2a801650378",
+    "upgraded_at": "2026-08-16T01:15:00Z",
+    "wasm_sha256_verifier_upgraded": "b1e32c6fd2486ff46cf5340cb81a35a95aa737b8896de1a8054055bab7956808",
+    "upgrade_notes": [
+        "Pool + verifier upgraded in place; contract IDs unchanged.",
+        "Added ragequit_v2 (public exit) and registered CircuitId::RageQuit (ordinal 12).",
+        "Blocklist enforcement now fails CLOSED: absent state reads as enabled, an unconsultable blocklist rejects the spend (Error #14 BlocklistUnavailable), and disabling is an explicit admin action readable via blocklist_enabled().",
+        "Retired the V1 payment entrypoints (deposit/transfer/withdraw) and their circuits: they never bound a note public key to its private key."
+    ],
+    "leaf_ordering_snapshot": "deployments/testnet-vault-v2-tree.json"
 }

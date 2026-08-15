@@ -108,18 +108,41 @@ Supporting services
 
 ## Testnet Vault V2
 
-The current `/app` interface targets the isolated Vault V2 Testnet deployment. V2 uses one fixed 1 XLM denomination, binds the recipient into the withdrawal proof, and submits withdrawals through a separate relayer account. The proof hides which eligible commitment authorizes a withdrawal; the pool interaction, fixed amount, recipient, relayer, and timing remain public on Stellar's ledger.
+The current `/app` interface targets the isolated Vault V2 Testnet deployment. V2 uses one fixed 1 XLM denomination, binds the recipient into every spend proof, and submits through a separate relayer account. The proof hides which eligible commitment authorizes a spend; the pool interaction, fixed amount, recipient, relayer, and timing remain public on Stellar's ledger.
+
+Source of truth for these addresses is [`deployments/testnet-vault-v2.json`](deployments/testnet-vault-v2.json).
 
 | Component | Contract / endpoint |
 | --- | --- |
-| Fixed-note XLM pool | [`CBUNTVFHCNN5CYNA3TLTSWPVYX5ED5V6W6X3Y5EAHUOZYJRUPYNAX33A`](https://stellar.expert/explorer/testnet/contract/CBUNTVFHCNN5CYNA3TLTSWPVYX5ED5V6W6X3Y5EAHUOZYJRUPYNAX33A) |
-| Groth16 verifier | [`CA7VKFZRWSYIZTW34QXQCQJGON5R4PQSJGTUKJQIHLCCUILVGRI55PEP`](https://stellar.expert/explorer/testnet/contract/CA7VKFZRWSYIZTW34QXQCQJGON5R4PQSJGTUKJQIHLCCUILVGRI55PEP) |
-| ASP membership | `CCGQLQS5JZQWXG72FFPLM3PKPBPBAP636C7YSVTJY5VYA5UXGLR4Q4WZ` |
-| ASP non-membership | `CD3HTYBLAQVGQQSTONHPS5PQ4G4Y7T7ZRHH7FJ776W46MS7HYP6YAANY` |
-| Indexer | [`vault-v2-indexer-production.up.railway.app`](https://vault-v2-indexer-production.up.railway.app/health) |
-| Relayer | [`vault-v2-relayer-production.up.railway.app`](https://vault-v2-relayer-production.up.railway.app/health) |
+| Fixed-note XLM pool | [`CB6XFHGN4DMVEQRESJHPOUNYLUCGMOZTAIKTWH3I7KT3NVW2XY4NIOLC`](https://stellar.expert/explorer/testnet/contract/CB6XFHGN4DMVEQRESJHPOUNYLUCGMOZTAIKTWH3I7KT3NVW2XY4NIOLC) |
+| Groth16 verifier | [`CBRMDGEMQERFTG3MCBHYPHMZPKVMDYFGHJAMREQW23ZDKVAMAFDRJ2J5`](https://stellar.expert/explorer/testnet/contract/CBRMDGEMQERFTG3MCBHYPHMZPKVMDYFGHJAMREQW23ZDKVAMAFDRJ2J5) |
+| ASP membership | `CD5DLTOIEAYA6CATHKELFAYRBOEFQN5TMADCEAURVZMMTYVD6Y5POCMO` |
+| ASP non-membership | `CAYNUQUPVQF7K35LG4VKNBFUHVULAKN27CDBP4N7EVXXEAGICWVYB4WD` |
+| Indexer | not currently hosted — run locally (`backend/indexer`, port 3001) |
+| Relayer | not currently hosted — run locally (`backend/relayer`, port 3002) |
 
-The browser keeps proof generation in a Web Worker and supports encrypted, wallet-bound note backup/import. Testnet proving keys were produced with a single-machine setup and are not a production trusted ceremony.
+Registered verification keys: `Deposit` (2 public inputs), `Withdraw` (3), `Transfer` (5), `RageQuit` (3).
+
+The browser keeps proof generation in a Web Worker and supports encrypted, wallet-bound note backup/import.
+
+### What this deployment does not claim
+
+Stated plainly, because each of these is the kind of thing a reader would otherwise assume works:
+
+- **The proving keys are not from a trusted ceremony.** They were produced by a single-machine Phase-2 setup, so whoever ran it could forge proofs. Fine for a testnet demo; not a basis for holding real value.
+- **The approval set is an open allowlist, not a compliance control.** Anyone may enrol, subject to a rate limit and a leaf cap. It demonstrates the mechanism; it does not screen anyone. The relayer reports what it actually enforces at `/health` (`enrollmentAccess`).
+- **There is no hosted indexer or relayer.** Both must be run locally. The wallet does not depend on the indexer for leaf ordering — see below.
+- **The anonymity set is small.** With single-digit deposits, timing and amount correlation identify most spends regardless of the cryptography. `docs/vayyl-privacy-model.md` covers what is and is not hidden.
+
+### Durability of the leaf set
+
+Soroban RPC retains contract events for about 7 days, and this pool's deposits are already older than that. Leaf ORDERING is therefore shipped as a committed artifact, [`deployments/testnet-vault-v2-tree.json`](deployments/testnet-vault-v2-tree.json), rather than living only in an indexer database — losing it would make every note in the pool unspendable, not just a missing one.
+
+The snapshot is verifiable without trusting us. Each leaf carries the hash of the transaction that created it, and the commitment is a call *argument* to `deposit_v2`/`transfer_v2`, so it can be re-read from Horizon's permanent history long after the events are gone. The ordered set must also reproduce the pool's own `get_root()`:
+
+```bash
+cd circuits && pnpm snapshot:verify
+```
 
 ## Mainnet deployment
 

@@ -8,7 +8,9 @@ import { useWalletStore } from '../../store/wallet';
 
 export default function WithdrawForm() {
   const [destination, setDestination] = useState('');
-  const { withdraw, isProving, shieldedBalance, notes, activity, status } = usePoolStore();
+  const [showExit, setShowExit] = useState(false);
+  const [exitAcknowledged, setExitAcknowledged] = useState(false);
+  const { withdraw, ragequit, isProving, shieldedBalance, notes, activity, status } = usePoolStore();
   const { address } = useWalletStore();
   const isError = !!status && /failed|error/i.test(status);
   const activeNotes = notes.filter((note) => !note.isSpent);
@@ -25,6 +27,18 @@ export default function WithdrawForm() {
     try {
       await withdraw(destination);
       setDestination('');
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const handleRageQuit = async () => {
+    if (!destination || !exitAcknowledged) return;
+    try {
+      await ragequit(destination);
+      setDestination('');
+      setShowExit(false);
+      setExitAcknowledged(false);
     } catch (error) {
       console.error(error);
     }
@@ -68,6 +82,55 @@ export default function WithdrawForm() {
           <p className={`dapp-status ${isError ? 'dapp-status--error' : 'dapp-status--success'}`}>{status}</p>
         ) : null}
       </form>
+
+      {/*
+        The escape hatch. A private unshield is refused if the note's nullifier
+        is on the approval-set blocklist; without this route those funds would be
+        stuck permanently, which is a worse outcome than the one the blocklist
+        guards against. It is offered to everyone rather than only to blocked
+        users, because detecting "you are blocked" client-side would leak the
+        blocklist and be unreliable anyway. The cost is stated plainly up front,
+        and the confirmation is required — nobody should give up their privacy by
+        misclicking.
+      */}
+      <div className="dapp-exit">
+        <button
+          type="button"
+          className="dapp-exit__toggle"
+          onClick={() => setShowExit((open) => !open)}
+          aria-expanded={showExit}
+        >
+          {showExit ? 'Hide public exit' : 'Unshield blocked? Use a public exit'}
+        </button>
+
+        {showExit ? (
+          <div className="dapp-exit__body">
+            <p className="dapp-exit__warning">
+              A public exit releases your note without privacy. The deposit and the
+              destination address are linked on the Stellar ledger permanently, and
+              that link cannot be undone. Use it only if a normal unshield is being
+              refused.
+            </p>
+            <label className="dapp-exit__ack">
+              <input
+                type="checkbox"
+                checked={exitAcknowledged}
+                onChange={(e) => setExitAcknowledged(e.target.checked)}
+                disabled={isProving}
+              />
+              I understand this exit is public and permanent.
+            </label>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={handleRageQuit}
+              disabled={isProving || !destination || !address || !exitAcknowledged || activeNotes.length === 0}
+            >
+              {!destination ? 'Enter a destination above' : isProving ? 'Generating proof' : 'Exit publicly (1 XLM)'}
+            </Button>
+          </div>
+        ) : null}
+      </div>
     </Card>
   );
 }

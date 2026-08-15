@@ -69,6 +69,39 @@ export class RelayerService {
     }
 
     /**
+     * Public exit: releases a note whose nullifier the blocklist has denied.
+     *
+     * Relayed for the same reason `withdraw_v2` is, and more urgently: the only
+     * people who reach for this are ones the pool has already refused to let
+     * spend, so requiring them to hold a funded Stellar account would rebuild
+     * the trap this entrypoint exists to remove.
+     *
+     * Argument order must match `VayylPool::ragequit_v2`. Note the commitment
+     * is public here — that is the deliberate trade, privacy for liquidity.
+     */
+    async relayV2RageQuit(request: V2RageQuitRequest): Promise<string> {
+        this.assertAllowedContract(request.pool);
+
+        const source = await this.server.getAccount(this.relayerKeypair.publicKey());
+        const contract = new StellarSdk.Contract(request.pool);
+        const tx = new StellarSdk.TransactionBuilder(source, {
+            fee: StellarSdk.BASE_FEE,
+            networkPassphrase: this.networkPassphrase,
+        })
+            .addOperation(contract.call(
+                'ragequit_v2',
+                this.proofScVal(request.proof),
+                this.fieldScVal(request.commitment),
+                this.fieldScVal(request.nullifier),
+                new StellarSdk.Address(request.recipient).toScVal(),
+            ))
+            .setTimeout(60)
+            .build();
+
+        return this.submitAndConfirm(tx);
+    }
+
+    /**
      * Shielded transfer: spends one note and creates one owned by the recipient.
      *
      * The relayer is the transaction source, so the sender's Stellar address
@@ -227,6 +260,14 @@ export interface V2WithdrawRequest {
     nullifier: string;
     recipient: string;
     root: string;
+}
+
+export interface V2RageQuitRequest {
+    pool: string;
+    proof: SnarkjsProof;
+    commitment: string;
+    nullifier: string;
+    recipient: string;
 }
 
 export interface V2TransferRequest {

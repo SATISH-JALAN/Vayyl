@@ -14,6 +14,7 @@ import {
 import {
   submitDepositV2,
   submitWithdrawV2,
+  submitRageQuitV2,
   submitTransferV2,
   fetchTransfers,
   fetchCommitments,
@@ -54,6 +55,7 @@ interface PoolState {
   fetchState: () => Promise<void>;
   deposit: () => Promise<void>;
   withdraw: (destination: string) => Promise<void>;
+  ragequit: (destination: string) => Promise<void>;
   /**
    * Send one shielded note to a Vayyl shielded address. Amount and asset are
    * fixed by the pool denomination, so the recipient is the only parameter.
@@ -287,6 +289,85 @@ export const usePoolStore = create<PoolState>((set, get) => ({
     } catch (e: any) {
       set({ status: `Withdraw failed: ${e.message}` });
       useToastStore.getState().addToast(`Withdraw failed: ${e.message}`, 'error');
+      throw e;
+    } finally {
+      set({ isProving: false });
+    }
+  },
+
+  /**
+   * Public exit. Releases a note without an anonymity set, by publishing the
+   * commitment and letting the pool confirm inclusion by direct lookup.
+   *
+   * This exists because `withdraw` and `transfer` both refuse a nullifier the
+   * ASP blocklist has denied. With no other route out, a delisted depositor's
+   * funds would be stuck permanently — confiscation by omission, and a worse
+   * outcome than whatever the blocklist was guarding against. Rage-quit trades
+   * the user's privacy for their liquidity: the deposit and the payout address
+   * are linked on the ledger forever, which is exactly why the compliance
+   * property survives. It denies an anonymous exit, not an exit.
+   *
+   * Deliberately NOT gated on being blocked. Checking would mean asking the
+   * blocklist whether it is refusing you, from a client that has already been
+   * refused; anyone willing to give up their privacy may take this route.
+   */
+  ragequit: async (destination: string) => {
+    const wallet = useWalletStore.getState();
+    if (!wallet.address) throw new Error('Connect your wallet first');
+    const keys = await wallet.unlockShieldedKeys();
+
+    set({ isProving: true, status: 'Selecting note…' });
+    try {
+      const notes = await getNotes(keys.viewingKey);
+      const note = notes.find((n) => !n.isSpent && n.protocol === 'v2' && n.pool === V2_POOL_ID);
+      if (!note) throw new Error('No unspent 1 XLM note was found for this wallet.');
+
+      set({ status: 'Checking destination and relayer…' });
+      await assertV2ServicesReady(destination);
+      // Same binding as withdraw: the pool recomputes it from (recipient,
+      // amount), so a relayer cannot redirect the payout.
+      const exitBinding = await computeWithdrawBinding(destination, V2_DENOMINATION_STROOPS);
+
+      // No Merkle path and no indexer dependency — the commitment is public and
+      // the pool looks it up directly. That matters here more than anywhere
+      // else: this is the escape hatch, so it must not depend on the indexer
+      // being up.
+      set({ status: 'Generating exit proof…' });
+      const proveResult = await runWorkerTask('PROVE_RAGEQUIT_V2', {
+        blindness: note.blindness,
+        privKey: keys.spendKey.toString(),
+        commitment: note.commitment,
+        exitBinding,
+      });
+
+      set({ status: 'Submitting public exit…' });
+      const txHash = await submitRageQuitV2({
+        proof: proveResult.proof,
+        commitment: proveResult.commitment,
+        nullifier: proveResult.nullifier,
+        recipient: destination,
+      });
+
+      await markNoteSpent(keys.viewingKey, note.id);
+      await addActivity(keys.viewingKey, {
+        id: txHash,
+        type: 'RageQuit',
+        amount: note.amount,
+        asset: 'XLM',
+        protocol: 'v2',
+        pool: V2_POOL_ID,
+        txHash,
+        timestamp: Date.now(),
+      });
+      set({ status: `Public exit confirmed: ${txHash}` });
+      useToastStore.getState().addToast(
+        `Public exit confirmed. This withdrawal is publicly linked to your deposit.`,
+        'success',
+      );
+      await get().fetchState();
+    } catch (e: any) {
+      set({ status: `Public exit failed: ${e.message}` });
+      useToastStore.getState().addToast(`Public exit failed: ${e.message}`, 'error');
       throw e;
     } finally {
       set({ isProving: false });

@@ -224,6 +224,15 @@ export class Poller {
                         `Merkle paths for this pool are incomplete.`,
                     );
                     break;
+                case 'rageQuitV2':
+                    // Spend only — rage-quit inserts no leaf, so there is no
+                    // commitment to place in the tree.
+                    await this.db.insertNullifier(this.poolAddress, decoded.nullifier, txHash, ledgerSeq);
+                    console.log(
+                        `RageQuit: nullifier=${decoded.nullifier.slice(0, 12)}… ` +
+                        `commitment=${decoded.commitment.slice(0, 12)}… (public exit) amount=${decoded.amount}`,
+                    );
+                    break;
                 case 'transferV2':
                     await this.db.insertNullifier(this.poolAddress, decoded.nullifier, txHash, ledgerSeq);
                     await this.db.insertCommitment(
