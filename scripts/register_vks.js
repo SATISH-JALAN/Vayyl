@@ -83,6 +83,7 @@ function assertGammaNeDelta(vkeyObj, name) {
 // that scripts/deploy_testnet_vault_v2.ps1 performs.
 const V1_VKEY_DIR = "circuits/build/vkey";
 const V2_VKEY_DIR = "circuits/build/v2/vkey";
+const V3_VKEY_DIR = "circuits/build/v3/vkey";
 
 const CIRCUITS = {
     // All three payment slots point at the V2 build. The V1 circuits that once
@@ -105,7 +106,14 @@ const CIRCUITS = {
     "SealedOrder": { id: 11, file: "sealed_order" },
     // Public exit. Appended at 12 to match the CircuitId enum, which is
     // append-only: inserting above this line silently repoints every later VK.
-    "RageQuit": { id: 12, file: "ragequit_v2", dir: V2_VKEY_DIR }
+    "RageQuit": { id: 12, file: "ragequit_v2", dir: V2_VKEY_DIR },
+    // V3 arbitrary-amount vertical. Registered in NEW slots rather than over the
+    // V2 ones: the verifier rejects on ic.len() mismatch, so overwriting a live
+    // slot whose public-input count changed would break every note already in
+    // the pool.
+    "DepositV3": { id: 13, file: "deposit_v3", dir: V3_VKEY_DIR },
+    "TransferV3": { id: 14, file: "transfer_v3", dir: V3_VKEY_DIR },
+    "WithdrawV3": { id: 15, file: "withdraw_v3", dir: V3_VKEY_DIR }
 };
 
 // Default: register every circuit below that has a built VK. Set REGISTER_ALL=0
@@ -121,6 +129,9 @@ const V1_CIRCUITS = new Set([
     "HiddenOrderTrigger",
     "SealedOrder",
     "RageQuit",
+    "DepositV3",
+    "TransferV3",
+    "WithdrawV3",
 ]);
 const registerAll = process.env.REGISTER_ALL === "1";
 const vaultOnly = process.env.REGISTER_VAULT_ONLY === "1";

@@ -598,6 +598,216 @@ fn test_ragequit_survives_an_unavailable_blocklist() {
     assert_eq!(balance(&f, &recipient), V2_DENOMINATION);
 }
 
+// ---- V3: arbitrary amounts ------------------------------------------------
+//
+// The mock verifier returns whatever we tell it, so these do NOT test the
+// balance equation — that lives in the circuit and is covered by
+// circuits/scripts/payment_circuits_test.mjs, which proves mint, burn,
+// field-wrap and note-reuse are all rejected. What these cover is the half the
+// circuit cannot: that the CONTRACT moves the right number of tokens, refuses
+// to reuse a nullifier or a commitment, and keeps the tree consistent.
+
+/// Deposit an arbitrary amount, returning the depositor.
+fn seed_v3_note(f: &Fixture, tag: u8, amount: i128) -> Address {
+    let depositor = Address::generate(&f.env);
+    fund(f, &depositor, amount);
+    f.pool.deposit_v3(
+        &depositor,
+        &dummy_proof(&f.env),
+        &commitment(&f.env, tag),
+        &f.asp_root(),
+        &amount,
+    );
+    depositor
+}
+
+#[test]
+fn test_v3_deposit_moves_the_exact_amount_requested() {
+    // The point of the whole deliverable: a pool that is not confined to one
+    // denomination. 100 XLM in, 100 XLM held, one leaf.
+    let f = setup_v2();
+    let hundred = 1_000_000_000i128;
+    let depositor = seed_v3_note(&f, 0xF1, hundred);
+
+    assert_eq!(balance(&f, &depositor), 0);
+    assert_eq!(balance(&f, &f.pool.address), hundred);
+    assert_eq!(f.pool.get_leaf_count(), 1);
+
+    let inputs = f.verifier.public_inputs();
+    assert_eq!(inputs.len(), 3, "commitment, asp_root, amount");
+}
+
+#[test]
+fn test_v3_deposit_rejects_nonpositive_amounts() {
+    let f = setup_v2();
+    let depositor = Address::generate(&f.env);
+    fund(&f, &depositor, 1_000);
+    for bad in [0i128, -1i128] {
+        assert_eq!(
+            f.pool.try_deposit_v3(
+                &depositor,
+                &dummy_proof(&f.env),
+                &commitment(&f.env, 0xF2),
+                &f.asp_root(),
+                &bad,
+            ),
+            Err(Ok(Error::InvalidAmount))
+        );
+    }
+}
+
+#[test]
+fn test_v3_withdraw_pays_the_bound_amount() {
+    let f = setup_v2();
+    let hundred = 1_000_000_000i128;
+    seed_v3_note(&f, 0xF3, hundred);
+
+    let recipient = Address::generate(&f.env);
+    let thirty_seven = 370_000_000i128;
+    f.pool.withdraw_v3(
+        &dummy_proof(&f.env),
+        &commitment(&f.env, 0xF4),
+        &recipient,
+        &f.pool.get_root(),
+        &thirty_seven,
+    );
+    assert_eq!(balance(&f, &recipient), thirty_seven);
+    assert_eq!(balance(&f, &f.pool.address), hundred - thirty_seven);
+    assert_eq!(f.verifier.public_inputs().len(), 4, "root, nullifier, amount, binding");
+}
+
+#[test]
+fn test_v3_transfer_moves_two_notes_into_two_without_moving_tokens() {
+    // 100 + 20 in, 37 + 83 out. No tokens move: the pool's balance is invariant
+    // and the amounts never appear on the ledger.
+    let f = setup_v2();
+    seed_v3_note(&f, 0xA1, 1_000_000_000);
+    seed_v3_note(&f, 0xA2, 200_000_000);
+    let held = balance(&f, &f.pool.address);
+
+    f.pool.transfer_v3(
+        &dummy_proof(&f.env),
+        &f.pool.get_root(),
+        &commitment(&f.env, 0xA3),
+        &commitment(&f.env, 0xA4),
+        &commitment(&f.env, 0xA5),
+        &commitment(&f.env, 0xA6),
+        &commitment(&f.env, 0xA7),
+        &commitment(&f.env, 0xA8),
+        &commitment(&f.env, 0xA9),
+        &commitment(&f.env, 0xAA),
+        &commitment(&f.env, 0xCC), &commitment(&f.env, 0xCD),
+    );
+
+    assert_eq!(balance(&f, &f.pool.address), held, "a transfer must move no tokens");
+    assert_eq!(f.pool.get_leaf_count(), 4, "two inputs spent, two outputs inserted");
+    // root, 2 nullifiers, 2 commitments, 2 ephemeral points, 2 encrypted amounts.
+    assert_eq!(f.verifier.public_inputs().len(), 11);
+}
+
+#[test]
+fn test_v3_transfer_rejects_reusing_a_nullifier() {
+    let f = setup_v2();
+    seed_v3_note(&f, 0xB1, 1_000_000_000);
+    let spent = commitment(&f.env, 0xB2);
+    f.pool.transfer_v3(
+        &dummy_proof(&f.env), &f.pool.get_root(),
+        &spent, &commitment(&f.env, 0xB3),
+        &commitment(&f.env, 0xB4), &commitment(&f.env, 0xB5),
+        &commitment(&f.env, 0xB6), &commitment(&f.env, 0xB7),
+        &commitment(&f.env, 0xB8), &commitment(&f.env, 0xB9),
+        &commitment(&f.env, 0xCC), &commitment(&f.env, 0xCD),
+    );
+
+    // Same note offered again in a later transfer.
+    assert_eq!(
+        f.pool.try_transfer_v3(
+            &dummy_proof(&f.env), &f.pool.get_root(),
+            &spent, &commitment(&f.env, 0xBB),
+            &commitment(&f.env, 0xBC), &commitment(&f.env, 0xBD),
+            &commitment(&f.env, 0xBE), &commitment(&f.env, 0xBF),
+            &commitment(&f.env, 0xC0), &commitment(&f.env, 0xC1),
+            &commitment(&f.env, 0xCC), &commitment(&f.env, 0xCD),
+        ),
+        Err(Ok(Error::NullifierAlreadyUsed))
+    );
+}
+
+#[test]
+fn test_v3_transfer_rejects_one_note_presented_as_both_inputs() {
+    // Belt and braces on the circuit's own distinctness constraint. Without
+    // either, a wallet could double its spendable balance in a single transfer.
+    let f = setup_v2();
+    seed_v3_note(&f, 0xC2, 1_000_000_000);
+    let same = commitment(&f.env, 0xC3);
+    assert_eq!(
+        f.pool.try_transfer_v3(
+            &dummy_proof(&f.env), &f.pool.get_root(),
+            &same, &same,
+            &commitment(&f.env, 0xC4), &commitment(&f.env, 0xC5),
+            &commitment(&f.env, 0xC6), &commitment(&f.env, 0xC7),
+            &commitment(&f.env, 0xC8), &commitment(&f.env, 0xC9),
+            &commitment(&f.env, 0xCC), &commitment(&f.env, 0xCD),
+        ),
+        Err(Ok(Error::NullifierAlreadyUsed))
+    );
+}
+
+#[test]
+fn test_v3_transfer_rejects_duplicate_output_commitments() {
+    // Two identical outputs would insert two leaves sharing one nullifier,
+    // silently making the second note unspendable.
+    let f = setup_v2();
+    seed_v3_note(&f, 0xD1, 1_000_000_000);
+    let dup = commitment(&f.env, 0xD2);
+    assert_eq!(
+        f.pool.try_transfer_v3(
+            &dummy_proof(&f.env), &f.pool.get_root(),
+            &commitment(&f.env, 0xD3), &commitment(&f.env, 0xD4),
+            &dup, &dup,
+            &commitment(&f.env, 0xD5), &commitment(&f.env, 0xD6),
+            &commitment(&f.env, 0xD7), &commitment(&f.env, 0xD8),
+            &commitment(&f.env, 0xCC), &commitment(&f.env, 0xCD),
+        ),
+        Err(Ok(Error::CommitmentAlreadyExists))
+    );
+}
+
+#[test]
+fn test_v3_transfer_output_cannot_collide_with_an_existing_note() {
+    let f = setup_v2();
+    let existing = commitment(&f.env, 0xE1);
+    let depositor = Address::generate(&f.env);
+    fund(&f, &depositor, 1_000_000_000);
+    f.pool
+        .deposit_v3(&depositor, &dummy_proof(&f.env), &existing, &f.asp_root(), &1_000_000_000);
+
+    assert_eq!(
+        f.pool.try_transfer_v3(
+            &dummy_proof(&f.env), &f.pool.get_root(),
+            &commitment(&f.env, 0xE2), &commitment(&f.env, 0xE3),
+            &existing, &commitment(&f.env, 0xE4),
+            &commitment(&f.env, 0xE5), &commitment(&f.env, 0xE6),
+            &commitment(&f.env, 0xE7), &commitment(&f.env, 0xE8),
+            &commitment(&f.env, 0xCC), &commitment(&f.env, 0xCD),
+        ),
+        Err(Ok(Error::CommitmentAlreadyExists))
+    );
+}
+
+#[test]
+fn test_v3_entrypoints_are_disabled_on_a_v1_pool() {
+    let f = setup(); // V1 settlement pool: no denomination key
+    let depositor = Address::generate(&f.env);
+    assert_eq!(
+        f.pool.try_deposit_v3(
+            &depositor, &dummy_proof(&f.env), &commitment(&f.env, 0xF9),
+            &f.asp_root(), &1_000i128,
+        ),
+        Err(Ok(Error::WrongPoolMode))
+    );
+}
+
 #[test]
 fn test_transfer_v2_is_disabled_on_v1_pool() {
     let f = setup();

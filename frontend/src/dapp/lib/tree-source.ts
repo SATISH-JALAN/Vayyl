@@ -24,6 +24,8 @@ export interface TreeSnapshotLeaf {
   ledger: number;
   ephemeral_x?: string;
   ephemeral_y?: string;
+  /** V3 only: the output's amount under a one-time pad. */
+  amount_cipher?: string;
 }
 
 export interface TreeSnapshot {
@@ -39,6 +41,8 @@ export interface IndexedTransferRow {
   leafIndex: number;
   ephemeralX: string;
   ephemeralY: string;
+  /** V3 only. Absent on V2 rows, whose amount was a known constant. */
+  amountCipher?: string;
   txHash?: string;
   ledgerSequence?: number;
 }
@@ -139,6 +143,7 @@ export async function fetchTransfersFrom(
         leafIndex: l.index,
         ephemeralX: l.ephemeral_x!,
         ephemeralY: l.ephemeral_y!,
+        amountCipher: l.amount_cipher,
         txHash: l.tx_hash,
         ledgerSequence: l.ledger,
       }));

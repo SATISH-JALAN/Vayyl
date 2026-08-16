@@ -3,9 +3,9 @@
   "network": "testnet",
   "pool": "CB6XFHGN4DMVEQRESJHPOUNYLUCGMOZTAIKTWH3I7KT3NVW2XY4NIOLC",
   "tree_depth": 20,
-  "generated_at": "2026-08-15T20:04:28.478Z",
-  "leaf_count": 8,
-  "root": "1ead2a806aea715bbb979844e4005e974b4d99edf155823e2be2152569fd47c2",
+  "generated_at": "2026-08-15T22:53:41.734Z",
+  "leaf_count": 17,
+  "root": "13fd9204bf760f91a442340ee7ffd2703a0dae06669a883da8f7c9b3d98f7f46",
   "root_verified_against_chain": true,
   "leaves": [
     {
@@ -69,15 +69,102 @@
       "ledger": 4160515,
       "ephemeral_x": "2505f283c564a1b6238c31f2a41ea9b8bf64a3208a5d1b36e09a4e9ae894f002",
       "ephemeral_y": "26cb46cc5c0ed2bca2f6a94eb54278c658853aaaebcfa710e2d9051036f25831"
+    },
+    {
+      "index": 8,
+      "commitment": "226cc69fc3c6a95945aae3546eb430b62dae691ec94588a2359045a4de7e2b3f",
+      "source": "deposit",
+      "tx_hash": "8103e098a62b162541dded0cd85142d04c66887bbf7e5d62b530f3dc60673a97",
+      "ledger": 4162057
+    },
+    {
+      "index": 9,
+      "commitment": "0ede5e3f918f467c8badc9a04a5a079e26f06c6c511cfc276dec4dac6365144a",
+      "source": "transfer",
+      "tx_hash": "9ed78565485b4806aeb3a7904f8a8e367085a27ce18ba7f3581dfc6f1b2bfc5f",
+      "ledger": 4162061,
+      "ephemeral_x": "0be76d6f0fa91a4d1349a1d16cb651dab45edc75e624cd3b69f40736d33373af",
+      "ephemeral_y": "284e00792df79feabdffd3287646968a8cb74ffc462787ced1d07484b0c4213a"
+    },
+    {
+      "index": 10,
+      "commitment": "2cc025b8d846f31f779977df861e0c1718fe64c4efd3cb1d464e431081f5f700",
+      "source": "transfer",
+      "tx_hash": "9ed78565485b4806aeb3a7904f8a8e367085a27ce18ba7f3581dfc6f1b2bfc5f",
+      "ledger": 4162061,
+      "ephemeral_x": "0b5f2a207a6234c7e8008cba614f16e6a802e01ce434fb3dff6751ab622b0c84",
+      "ephemeral_y": "042150693c9e382fd39e24ea611c724998f9e6e50a5bad502cf58a732c4604e3"
+    },
+    {
+      "index": 11,
+      "commitment": "1a2c78215be046a6c6dcd22e803627baa745b2e165c5fca4e531484c937fa42e",
+      "source": "deposit",
+      "tx_hash": "a6276772e562fb7f129af782b44feaa09c1becdf88ec52eb9776a06c949619be",
+      "ledger": 4162243
+    },
+    {
+      "index": 12,
+      "commitment": "21a51edad93852f121c5da5bd2c2049c4ef727d428746f26a7052c3a510464f7",
+      "source": "transfer",
+      "tx_hash": "0b768f704814ff81b37b26554307cd1b4fc867cca895896a47b876909483801c",
+      "ledger": 4162246,
+      "ephemeral_x": "2f91f74455930afaed637b2fd3e8732ec42fda47773200bce3881aa1b133a6d5",
+      "ephemeral_y": "1d7ad08d96d6e89e95b8ac9a888355a4b8a0b905ca01a32c84e626c81aee008f"
+    },
+    {
+      "index": 13,
+      "commitment": "0ac73a985c81bb0a9fd3f99793490f4b05e8a148d0ca264e6f507d6f7678a509",
+      "source": "transfer",
+      "tx_hash": "0b768f704814ff81b37b26554307cd1b4fc867cca895896a47b876909483801c",
+      "ledger": 4162246,
+      "ephemeral_x": "1a036978aaee0af6294823e0a1ab79f3a96d2f555fadeac3f0f2d7c9dea865e9",
+      "ephemeral_y": "11b98fb98e0ff529860f58f793e480a9fa20d7ee519400310973a9596503c287"
+    },
+    {
+      "index": 14,
+      "commitment": "119fa1b963315b94c9cfec39b1865efe798909cad6fd2eedc211042a9e60f751",
+      "source": "deposit",
+      "tx_hash": "baba91b257032897997bea9691409228c0f70833110b6d49ef982c15c56dca0a",
+      "ledger": 4162532
+    },
+    {
+      "index": 15,
+      "commitment": "205349ab2a9650a6964a9c74e794c937ba4c8112a98fa5853038583ff782de54",
+      "source": "transfer",
+      "tx_hash": "eec15635508dd968331f6a3f72cfd67e042ff8103526f650ae5def1a60dba200",
+      "ledger": 4162535,
+      "ephemeral_x": "0930832d6b5d54415f426d342a08687f63a291019f1354fae480e17f27386fd9",
+      "ephemeral_y": "056f7b2a35052cb89d1e1cb9cef3b2d34cc7ae92455c98137735317d1c22e18f"
+    },
+    {
+      "index": 16,
+      "commitment": "0e0d3729e3f60956202dc490cce240a4b706c81d7fe4b229ecaf05b34daff745",
+      "source": "transfer",
+      "tx_hash": "eec15635508dd968331f6a3f72cfd67e042ff8103526f650ae5def1a60dba200",
+      "ledger": 4162535,
+      "ephemeral_x": "05440b37bfe61a9bd522d7fbcd23ca91d710e4d33c0051bf6a15d44482f34171",
+      "ephemeral_y": "0f7429c26a97ffa0aacde299585e3e62a4d759ebaab9bc726fb794fbdeec3b45"
     }
   ],
   "spent_nullifiers": [
     "035b22d08bc943adb20e3a1ac0f145cc9ed60071da9042bbdc5e3037a86521d2",
+    "052bcf74489adcdeb8bc79b1396ed3e88320bdb2992fb456c2014c07f801c4c6",
+    "0d6b438c3e6ae7865a129c9200870637e14c3d9b56364412737219d96e10a950",
+    "0f5f6fb9b61f45c1b0f502640a464b7d5a85ecacc22d98932bc4a2a04755567b",
+    "0f8ef8f39f78188f628247130f87d83c535df5e4d00b76a1eac518f1fedc05f6",
     "12a31d39aad6acf98bb8d53de2eacdff294149712ffc0614d38ae21f7d4f0daf",
+    "16daf9ef739261cf68cf1543a5e5f81f0848b3e6e73a5a9213295b38f3fd4c98",
     "1789f39fb8a564d70d7fd7dd043e1855b674b1827084aab61c9034aa8d6f0e89",
+    "1ca0b7120b237961cf4bd1a20d485dbff59b1080ad8cd40c064b1f6b3ee89fb0",
+    "21ea60232393a28036874f2c2f4ba21a916c1630cc348bd2f3e0eb157b59c581",
+    "24dca33302b816b67a00709f8cf045438be468658fc15df8419b5de72acad7dc",
+    "251f7249166854e538f203dd4755b67f2b7a932c10e848b82e63950b76409268",
     "28959879ebc005982920572d79e130a04b44e3176b2207ad9204c4f4b4350d68",
     "2979ee719fd869f0255dfc051cfae6534910c9d6d43086dda91a0419e3b672ef",
     "298e267cbe0763a9ab8b7551b6d63edade30af24991dc7b06a8a45cd76657501",
-    "2b52d54c0b4644cf1bbd8e6f370b3061ade04e621d85570d5e3b444e435b625c"
+    "2b52d54c0b4644cf1bbd8e6f370b3061ade04e621d85570d5e3b444e435b625c",
+    "2b83ba8a68694ed4b57fcbb4448906fbcb118aa4fae3dba1d19593fc029509b7",
+    "2d58ca45aa56f22f9cd134ee34c8a6bc09c73aed8af78ae57f40db89a546a911",
+    "2dced6caf8a9b9d3e2774635028800ab21bb36746ae51037ef23ce86ad2138d0"
   ]
 }

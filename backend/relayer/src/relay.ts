@@ -69,6 +69,75 @@ export class RelayerService {
     }
 
     /**
+     * V3 shielded transfer: two notes in, two out, amounts hidden.
+     *
+     * No tokens move and no amount appears in the call, which is the whole
+     * feature. The two `amount_ct` arguments are the outputs' values under a
+     * one-time pad; without the owner's key they are uniform field elements.
+     *
+     * Argument order must match `VayylPool::transfer_v3`.
+     */
+    async relayV3Transfer(request: V3TransferRequest): Promise<string> {
+        this.assertAllowedContract(request.pool);
+
+        const source = await this.server.getAccount(this.relayerKeypair.publicKey());
+        const contract = new StellarSdk.Contract(request.pool);
+        const tx = new StellarSdk.TransactionBuilder(source, {
+            fee: StellarSdk.BASE_FEE,
+            networkPassphrase: this.networkPassphrase,
+        })
+            .addOperation(contract.call(
+                'transfer_v3',
+                this.proofScVal(request.proof),
+                this.fieldScVal(request.root),
+                this.fieldScVal(request.nullifier1),
+                this.fieldScVal(request.nullifier2),
+                this.fieldScVal(request.commitment1),
+                this.fieldScVal(request.commitment2),
+                this.fieldScVal(request.eph1X),
+                this.fieldScVal(request.eph1Y),
+                this.fieldScVal(request.eph2X),
+                this.fieldScVal(request.eph2Y),
+                this.fieldScVal(request.amountCt1),
+                this.fieldScVal(request.amountCt2),
+            ))
+            .setTimeout(60)
+            .build();
+
+        return this.submitAndConfirm(tx);
+    }
+
+    /**
+     * V3 withdraw of an arbitrary amount.
+     *
+     * `amount` is both the payout and a public input to the proof — the pool
+     * uses the same value for the token transfer and for the recipient binding,
+     * so a relayer cannot pay out more or less than the note authorises.
+     */
+    async relayV3Withdraw(request: V3WithdrawRequest): Promise<string> {
+        this.assertAllowedContract(request.pool);
+
+        const source = await this.server.getAccount(this.relayerKeypair.publicKey());
+        const contract = new StellarSdk.Contract(request.pool);
+        const tx = new StellarSdk.TransactionBuilder(source, {
+            fee: StellarSdk.BASE_FEE,
+            networkPassphrase: this.networkPassphrase,
+        })
+            .addOperation(contract.call(
+                'withdraw_v3',
+                this.proofScVal(request.proof),
+                this.fieldScVal(request.nullifier),
+                new StellarSdk.Address(request.recipient).toScVal(),
+                this.fieldScVal(request.root),
+                StellarSdk.nativeToScVal(BigInt(request.amountStroops), { type: 'i128' }),
+            ))
+            .setTimeout(60)
+            .build();
+
+        return this.submitAndConfirm(tx);
+    }
+
+    /**
      * Public exit: releases a note whose nullifier the blocklist has denied.
      *
      * Relayed for the same reason `withdraw_v2` is, and more urgently: the only
@@ -260,6 +329,32 @@ export interface V2WithdrawRequest {
     nullifier: string;
     recipient: string;
     root: string;
+}
+
+export interface V3TransferRequest {
+    pool: string;
+    proof: SnarkjsProof;
+    root: string;
+    nullifier1: string;
+    nullifier2: string;
+    commitment1: string;
+    commitment2: string;
+    eph1X: string;
+    eph1Y: string;
+    eph2X: string;
+    eph2Y: string;
+    amountCt1: string;
+    amountCt2: string;
+}
+
+export interface V3WithdrawRequest {
+    pool: string;
+    proof: SnarkjsProof;
+    nullifier: string;
+    recipient: string;
+    root: string;
+    /** Decimal stroops. String, not number: i128 exceeds JS integer precision. */
+    amountStroops: string;
 }
 
 export interface V2RageQuitRequest {

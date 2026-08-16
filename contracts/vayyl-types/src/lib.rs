@@ -22,6 +22,15 @@ pub enum CircuitId {
     /// the numeric circuit ID used when registering verification keys on-chain,
     /// so inserting above this line silently repoints every later VK.
     RageQuit,
+    /// V3 arbitrary-amount deposit (`deposit_v3.circom`), 3 public inputs.
+    /// Separate from `Deposit` rather than replacing it: the V2 slot is live on
+    /// testnet with a 2-input key, and the verifier rejects on `ic.len()`
+    /// mismatch, so overwriting it would break every V2 note still in the pool.
+    DepositV3,
+    /// V3 2-in/2-out arbitrary-amount transfer (`transfer_v3.circom`), 9 inputs.
+    TransferV3,
+    /// V3 arbitrary-amount withdraw (`withdraw_v3.circom`), 4 public inputs.
+    WithdrawV3,
 }
 
 /// Verification key components for Groth16/BN254

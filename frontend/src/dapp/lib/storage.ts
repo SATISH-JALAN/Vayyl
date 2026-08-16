@@ -14,7 +14,7 @@ export interface ShieldedNote {
   amount: number;
   amountStroops?: string; // exact contract amount; optional only for legacy local notes
   asset: string;
-  protocol?: 'v1' | 'v2';
+  protocol?: 'v1' | 'v2' | 'v3';
   pool?: string;
   // secrets needed to spend
   commitment: string; // decimal field element
@@ -29,7 +29,10 @@ export interface ShieldedNote {
    * transfer existed, which were all deposits — treat undefined as 'deposit'.
    * Without this the activity feed labels received payments as deposits.
    */
-  source?: 'deposit' | 'received';
+  // 'change' is distinct from 'received' on purpose: change is money coming
+  // back from your own spend, not a payment someone made to you, and folding
+  // the two together would make the activity feed misreport what happened.
+  source?: 'deposit' | 'received' | 'change';
   /** Sender's one-time point R, kept for provenance on received notes. */
   ephemeralX?: string;
   ephemeralY?: string;
@@ -55,7 +58,7 @@ export interface ActivityEvent {
   type: ActivityType;
   amount: number;
   asset: string;
-  protocol?: 'v1' | 'v2';
+  protocol?: 'v1' | 'v2' | 'v3';
   pool?: string;
   txHash?: string;
   timestamp: number; // ms epoch

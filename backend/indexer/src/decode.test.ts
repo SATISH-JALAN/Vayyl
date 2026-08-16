@@ -121,6 +121,48 @@ describe('decodePoolEvent', () => {
     });
   });
 
+  it('decodes both outputs of a V3 transfer, with their amount ciphertexts', () => {
+    // Every field here is load-bearing. Lose an output and the sender's CHANGE
+    // is never indexed, so a wallet restored on a clean device silently comes
+    // back short. Lose an amountCipher and the owner cannot recompute
+    // `commitment = Poseidon2(amount, pubX, pubY, blindness)` at all, leaving a
+    // note that exists on-chain and can never be found or spent.
+    const n1 = '11'.repeat(32), n2 = '22'.repeat(32);
+    const c1 = '33'.repeat(32), c2 = '44'.repeat(32);
+    const topic = [sym('transfer_v3'), bytesN(n1), bytesN(n2)];
+    const value = xdr.ScVal.scvMap([
+      mapEntry('commitment1', bytesN(c1)),
+      mapEntry('leaf_index1', xdr.ScVal.scvU32(9)),
+      mapEntry('eph1_x', bytesN('55'.repeat(32))),
+      mapEntry('eph1_y', bytesN('66'.repeat(32))),
+      mapEntry('amount_ct1', bytesN('77'.repeat(32))),
+      mapEntry('commitment2', bytesN(c2)),
+      mapEntry('leaf_index2', xdr.ScVal.scvU32(10)),
+      mapEntry('eph2_x', bytesN('88'.repeat(32))),
+      mapEntry('eph2_y', bytesN('99'.repeat(32))),
+      mapEntry('amount_ct2', bytesN('aa'.repeat(32))),
+    ]);
+
+    const decoded = decodePoolEvent(topic, value);
+    expect(decoded).toEqual({
+      kind: 'transferV3',
+      nullifier1: n1,
+      nullifier2: n2,
+      outputs: [
+        {
+          commitment: c1, leafIndex: 9,
+          ephemeralX: '55'.repeat(32), ephemeralY: '66'.repeat(32),
+          amountCipher: '77'.repeat(32),
+        },
+        {
+          commitment: c2, leafIndex: 10,
+          ephemeralX: '88'.repeat(32), ephemeralY: '99'.repeat(32),
+          amountCipher: 'aa'.repeat(32),
+        },
+      ],
+    });
+  });
+
   it('returns null for an unrelated event', () => {
     expect(decodePoolEvent([sym('mint')], xdr.ScVal.scvVoid())).toBeNull();
     expect(decodePoolEvent([], xdr.ScVal.scvVoid())).toBeNull();

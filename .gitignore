@@ -121,12 +121,14 @@ yarn.lock
 # phase-2 setup (`groth16 setup` -> `zkey contribute` -> `_final`); nothing loads
 # one, build_vault_v2.ps1 deletes it, and shipping ~41 MB of them alongside a
 # single-party setup invites the wrong conclusion about the ceremony.
+# Written to match ANY version subdirectory. The previous form listed v2
+// explicitly, so adding v3 silently left its proving keys untracked — the app
+// would deploy and then fail at proving time with a 404 nobody would connect
+// back to this file.
 !frontend/public/circuits/
-!frontend/public/circuits/*.wasm
-!frontend/public/circuits/*_final.zkey
-!frontend/public/circuits/v2/
-!frontend/public/circuits/v2/*.wasm
-!frontend/public/circuits/v2/*_final.zkey
+!frontend/public/circuits/**/
+!frontend/public/circuits/**/*.wasm
+!frontend/public/circuits/**/*_final.zkey
 
 # The committed leaf ordering. Soroban RPC retains events only ~7 days and this
 # pool's deposits are already past that, so these files are the durable record

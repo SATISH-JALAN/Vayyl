@@ -16,6 +16,14 @@ ALTER TABLE commitments ADD COLUMN IF NOT EXISTS source VARCHAR(16) NOT NULL DEF
 ALTER TABLE commitments ADD COLUMN IF NOT EXISTS ephemeral_x VARCHAR(64);
 ALTER TABLE commitments ADD COLUMN IF NOT EXISTS ephemeral_y VARCHAR(64);
 
+-- V3 outputs carry their amount encrypted to the owner under a one-time pad
+-- derived from the same ECDH secret as the blindness. This is NOT optional
+-- metadata: with arbitrary amounts an owner cannot recompute
+-- `commitment = Poseidon2(amount, pubX, pubY, blindness)` without the amount,
+-- so a row missing this is a note nobody can ever find or spend. Null for V2
+-- rows, whose amount was a fixed constant everybody already knew.
+ALTER TABLE commitments ADD COLUMN IF NOT EXISTS amount_cipher VARCHAR(64);
+
 -- Repair, then make the bug unrepresentable. Rows with leaf_index = -1 (written
 -- by an older build for V1 transfer events, which carry no index) sort ahead of
 -- every deposit under `ORDER BY leaf_index ASC`, shifting every leaf index and

@@ -68,6 +68,34 @@ pub struct RageQuit {
     pub amount: i128,
 }
 
+/// V3 arbitrary-amount transfer: two notes spent, two created. The amounts are
+/// NOT in this event and never touch the ledger — that is the entire point of
+/// the deliverable. Both output leaf indices are carried because the indexer
+/// places commitments by index, and both ephemeral points because a wallet
+/// restored on a clean device rediscovers its own CHANGE through the same
+/// agreement it uses for receipts.
+#[contractevent(topics = ["transfer_v3"])]
+pub struct TransferV3 {
+    #[topic]
+    pub nullifier1: BytesN<32>,
+    #[topic]
+    pub nullifier2: BytesN<32>,
+    pub commitment1: BytesN<32>,
+    pub leaf_index1: u32,
+    pub eph1_x: BytesN<32>,
+    pub eph1_y: BytesN<32>,
+    pub commitment2: BytesN<32>,
+    pub leaf_index2: u32,
+    pub eph2_x: BytesN<32>,
+    pub eph2_y: BytesN<32>,
+    /// Each output's amount, one-time-padded to its owner's ECDH secret. Not a
+    /// leak: without the secret these are uniform field elements. They are
+    /// carried because an owner cannot RECOMPUTE a commitment without the
+    /// amount, so a note whose value was never transmitted can never be found.
+    pub amount_ct1: BytesN<32>,
+    pub amount_ct2: BytesN<32>,
+}
+
 /// D1: settlement event — topic `authority` (the settlement contract that drove
 /// it); data carries how many output commitments were inserted and the public
 /// payout amount (0 for a pure re-shield). Lets the indexer / client note-scan
@@ -235,6 +263,25 @@ fn hash2(env: &Env, left: &BytesN<32>, right: &BytesN<32>) -> BytesN<32> {
     BytesN::from_array(env, &array)
 }
 
+/// Encode a full i128 amount as a 32-byte big-endian field element.
+///
+/// The circuits take `amount` as a public input, so the contract and the prover
+/// must agree on its byte encoding exactly or verification fails with nothing to
+/// explain why. An earlier version of this copied only `to_be_bytes()[8..16]`,
+/// the low 64 bits, so any value >= 2^64 was silently truncated. Amounts are
+/// non-negative by protocol; a negative one is nonsensical and would mis-encode
+/// (two's complement is not field-negative), so it is rejected rather than
+/// encoded wrongly. i128::MAX < the BN254 prime, so a non-negative i128 is always
+/// a canonical field element sitting in the low 16 bytes.
+fn i128_to_field_bytes(value: i128) -> Result<[u8; 32], Error> {
+    if value < 0 {
+        return Err(Error::InvalidAmount);
+    }
+    let mut out = [0u8; 32];
+    out[16..32].copy_from_slice(&value.to_be_bytes());
+    Ok(out)
+}
+
 /// Reject nullifiers on the ASP blocklist.
 ///
 /// **This check fails closed.** The previous implementation inferred whether a
@@ -398,6 +445,18 @@ impl VayylPool {
             return Err(Error::WrongPoolMode);
         }
         Ok(())
+    }
+
+    /// The V3 entrypoints take arbitrary amounts, so they have no denomination
+    /// to read, but they still belong only to a shielded-payment pool. This
+    /// keeps them off a V1 settlement pool, whose tree and nullifier set serve
+    /// the positions vertical.
+    fn assert_v2_mode(env: &Env) -> Result<(), Error> {
+        if env.storage().instance().has(&DataKey::Denomination) {
+            Ok(())
+        } else {
+            Err(Error::WrongPoolMode)
+        }
     }
 
     fn v2_denomination(env: &Env) -> Result<i128, Error> {
@@ -771,6 +830,283 @@ impl VayylPool {
             nullifier,
             recipient,
             amount: denomination,
+        }
+        .publish(&env);
+        Ok(())
+    }
+
+    // ── V3: arbitrary amounts ────────────────────────────────────────────
+    // V2 fixed every note at 10,000,000 stroops, which meant the pool could
+    // express exactly one payment size. These three entrypoints take the amount
+    // as a parameter and bind it into the proof, so a user can shield 100 and
+    // pay 37. They coexist with the V2 paths rather than replacing them: V2
+    // notes are live in the pool and must stay spendable.
+    //
+    // Deliberately NOT solved with 10 / 100 XLM pools. Three pools is three
+    // anonymity sets, and splitting a single-digit crowd is a privacy deletion
+    // rather than a trade. The denomination a user picks would also be public
+    // forever, putting a permanent floor under linkability.
+
+    /// V3 deposit of an arbitrary amount into a fixed-denomination-free note.
+    ///
+    /// `amount` is public: the token transfer from `depositor` is visible on the
+    /// ledger regardless, and the contract must be able to check that the note
+    /// it records matches the tokens it actually received. Privacy begins at
+    /// `transfer_v3`, where amounts are genuinely hidden.
+    pub fn deposit_v3(
+        env: Env,
+        depositor: Address,
+        proof: Groth16Proof,
+        commitment: BytesN<32>,
+        asp_root: BytesN<32>,
+        amount: i128,
+    ) -> Result<(), Error> {
+        Self::assert_v2_mode(&env)?;
+        depositor.require_auth();
+        if amount <= 0 {
+            return Err(Error::InvalidAmount);
+        }
+
+        let commitment_key = DataKey::Commitment(commitment.clone());
+        if env.storage().persistent().has(&commitment_key) {
+            return Err(Error::CommitmentAlreadyExists);
+        }
+
+        let membership: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Membership)
+            .ok_or(Error::NotInitialized)?;
+        if !AspMembershipClient::new(&env, &membership).is_known_root(&asp_root) {
+            return Err(Error::InvalidAspRoot);
+        }
+
+        let verifier: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Verifier)
+            .ok_or(Error::NotInitialized)?;
+        // Order must match `component main {public [...]}` in deposit_v3.circom.
+        let amount_field = BytesN::from_array(&env, &i128_to_field_bytes(amount)?);
+        let public_inputs =
+            Vec::from_array(&env, [commitment.clone(), asp_root, amount_field]);
+        if !Groth16VerifierClient::new(&env, &verifier).verify(
+            &CircuitId::DepositV3,
+            &proof,
+            &public_inputs,
+        ) {
+            return Err(Error::InvalidProof);
+        }
+
+        let asset: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Asset)
+            .ok_or(Error::NotInitialized)?;
+        token::Client::new(&env, &asset).transfer(
+            &depositor,
+            &env.current_contract_address(),
+            &amount,
+        );
+
+        let leaf_index = env
+            .storage()
+            .instance()
+            .get::<DataKey, u32>(&DataKey::TreeNextIndex)
+            .unwrap_or(0);
+        Self::insert_leaf(&env, commitment.clone())?;
+        env.storage().persistent().set(&commitment_key, &true);
+        env.storage().persistent().extend_ttl(
+            &commitment_key,
+            PERSISTENT_TTL_THRESHOLD,
+            PERSISTENT_TTL_EXTEND,
+        );
+
+        Deposit {
+            commitment,
+            leaf_index,
+            amount,
+        }
+        .publish(&env);
+        Ok(())
+    }
+
+    /// V3 shielded transfer: 2-in / 2-out, amounts hidden.
+    ///
+    /// No tokens move, so the pool's balance is invariant across this call and
+    /// there is no payout to race for. Conservation is enforced entirely inside
+    /// the proof (`in1 + in2 === out1 + out2`, every term range-checked to 64
+    /// bits), which is why the contract can accept two commitments without
+    /// knowing what they are worth.
+    ///
+    /// Not `require_auth`'d: possession of a proof bound to this exact tuple is
+    /// the authorization, which is what lets a relayer submit it and keeps the
+    /// sender's Stellar address off the ledger entirely.
+    pub fn transfer_v3(
+        env: Env,
+        proof: Groth16Proof,
+        root: BytesN<32>,
+        nullifier1: BytesN<32>,
+        nullifier2: BytesN<32>,
+        commitment1: BytesN<32>,
+        commitment2: BytesN<32>,
+        eph1_x: BytesN<32>,
+        eph1_y: BytesN<32>,
+        eph2_x: BytesN<32>,
+        eph2_y: BytesN<32>,
+        amount_ct1: BytesN<32>,
+        amount_ct2: BytesN<32>,
+    ) -> Result<(), Error> {
+        Self::assert_v2_mode(&env)?;
+        if !Self::is_known_root(&env, &root) {
+            return Err(Error::UnknownRoot);
+        }
+
+        // Share the deposit commitment namespace so a transfer output can never
+        // collide with an existing note. A repeated commitment would insert a
+        // second leaf sharing the first one's nullifier, silently making the
+        // newer note unspendable.
+        for c in [commitment1.clone(), commitment2.clone()] {
+            if env.storage().persistent().has(&DataKey::Commitment(c)) {
+                return Err(Error::CommitmentAlreadyExists);
+            }
+        }
+        if commitment1 == commitment2 {
+            return Err(Error::CommitmentAlreadyExists);
+        }
+
+        assert_nullifier_not_blocked(&env, &nullifier1)?;
+        assert_nullifier_not_blocked(&env, &nullifier2)?;
+        // Marking both also rejects nullifier1 == nullifier2, since the second
+        // mark sees the first. The circuit forbids it too; this is belt and
+        // braces on the property that stops one note being spent twice.
+        Self::mark_nullifier(&env, nullifier1.clone())?;
+        Self::mark_nullifier(&env, nullifier2.clone())?;
+
+        let verifier: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Verifier)
+            .ok_or(Error::NotInitialized)?;
+        // Order must match `component main {public [...]}` in transfer_v3.circom.
+        let public_inputs = Vec::from_array(
+            &env,
+            [
+                root,
+                nullifier1.clone(),
+                nullifier2.clone(),
+                commitment1.clone(),
+                commitment2.clone(),
+                eph1_x.clone(),
+                eph1_y.clone(),
+                eph2_x.clone(),
+                eph2_y.clone(),
+                amount_ct1.clone(),
+                amount_ct2.clone(),
+            ],
+        );
+        if !Groth16VerifierClient::new(&env, &verifier).verify(
+            &CircuitId::TransferV3,
+            &proof,
+            &public_inputs,
+        ) {
+            return Err(Error::InvalidProof);
+        }
+
+        let leaf_index1 = env
+            .storage()
+            .instance()
+            .get::<DataKey, u32>(&DataKey::TreeNextIndex)
+            .unwrap_or(0);
+        Self::insert_leaf(&env, commitment1.clone())?;
+        let leaf_index2 = leaf_index1 + 1;
+        Self::insert_leaf(&env, commitment2.clone())?;
+
+        for c in [commitment1.clone(), commitment2.clone()] {
+            let key = DataKey::Commitment(c);
+            env.storage().persistent().set(&key, &true);
+            env.storage().persistent().extend_ttl(
+                &key,
+                PERSISTENT_TTL_THRESHOLD,
+                PERSISTENT_TTL_EXTEND,
+            );
+        }
+
+        TransferV3 {
+            nullifier1,
+            nullifier2,
+            commitment1,
+            leaf_index1,
+            eph1_x,
+            eph1_y,
+            commitment2,
+            leaf_index2,
+            eph2_x,
+            eph2_y,
+            amount_ct1,
+            amount_ct2,
+        }
+        .publish(&env);
+        Ok(())
+    }
+
+    /// V3 withdraw of an arbitrary amount.
+    ///
+    /// `amount` is a public input to the proof AND the value paid out, and they
+    /// are the same variable on purpose. If the amount lived only inside the
+    /// witness, the circuit would prove "some note exists" while the contract
+    /// paid out whatever the caller asked for, and a 1 XLM note would authorize
+    /// a 100 XLM withdrawal.
+    pub fn withdraw_v3(
+        env: Env,
+        proof: Groth16Proof,
+        nullifier: BytesN<32>,
+        recipient: Address,
+        root: BytesN<32>,
+        amount: i128,
+    ) -> Result<(), Error> {
+        Self::assert_v2_mode(&env)?;
+        if amount <= 0 {
+            return Err(Error::InvalidAmount);
+        }
+        if !Self::is_known_root(&env, &root) {
+            return Err(Error::UnknownRoot);
+        }
+        assert_nullifier_not_blocked(&env, &nullifier)?;
+        Self::mark_nullifier(&env, nullifier.clone())?;
+
+        let binding = Self::compute_withdraw_binding(&env, &recipient, amount);
+        let verifier: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Verifier)
+            .ok_or(Error::NotInitialized)?;
+        // Order must match `component main {public [...]}` in withdraw_v3.circom.
+        let amount_field = BytesN::from_array(&env, &i128_to_field_bytes(amount)?);
+        let public_inputs =
+            Vec::from_array(&env, [root, nullifier.clone(), amount_field, binding]);
+        if !Groth16VerifierClient::new(&env, &verifier).verify(
+            &CircuitId::WithdrawV3,
+            &proof,
+            &public_inputs,
+        ) {
+            return Err(Error::InvalidProof);
+        }
+
+        let asset: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Asset)
+            .ok_or(Error::NotInitialized)?;
+        token::Client::new(&env, &asset).transfer(
+            &env.current_contract_address(),
+            &recipient,
+            &amount,
+        );
+        Withdraw {
+            nullifier,
+            recipient,
+            amount,
         }
         .publish(&env);
         Ok(())

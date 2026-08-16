@@ -6,6 +6,8 @@ import {
     type V2WithdrawRequest,
     type V2TransferRequest,
     type V2RageQuitRequest,
+    type V3TransferRequest,
+    type V3WithdrawRequest,
 } from './relay.js';
 import { AspEnrollmentService } from './enrollment.js';
 import * as StellarSdk from '@stellar/stellar-sdk';
@@ -229,6 +231,26 @@ async function main() {
         } catch (err: any) {
             console.error('V2 transfer relay error:', err);
             res.status(400).json({ success: false, error: err?.message ?? 'Transfer relay failed' });
+        }
+    });
+
+    app.post('/v3/transfer', async (req, res) => {
+        try {
+            const hash = await relayer.relayV3Transfer(req.body as V3TransferRequest);
+            res.json({ success: true, hash });
+        } catch (err: any) {
+            console.error('V3 transfer relay error:', err);
+            res.status(400).json({ success: false, error: err?.message ?? 'Transfer relay failed' });
+        }
+    });
+
+    app.post('/v3/withdraw', async (req, res) => {
+        try {
+            const hash = await relayer.relayV3Withdraw(req.body as V3WithdrawRequest);
+            res.json({ success: true, hash });
+        } catch (err: any) {
+            console.error('V3 withdraw relay error:', err);
+            res.status(400).json({ success: false, error: err?.message ?? 'Withdrawal relay failed' });
         }
     });
 

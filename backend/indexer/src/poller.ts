@@ -224,6 +224,25 @@ export class Poller {
                         `Merkle paths for this pool are incomplete.`,
                     );
                     break;
+                case 'transferV3':
+                    await this.db.insertNullifier(this.poolAddress, decoded.nullifier1, txHash, ledgerSeq);
+                    await this.db.insertNullifier(this.poolAddress, decoded.nullifier2, txHash, ledgerSeq);
+                    for (const out of decoded.outputs) {
+                        await this.db.insertCommitment(
+                            this.poolAddress, out.commitment, out.leafIndex, txHash, ledgerSeq,
+                            {
+                                source: 'transfer',
+                                ephemeralX: out.ephemeralX,
+                                ephemeralY: out.ephemeralY,
+                                amountCipher: out.amountCipher,
+                            },
+                        );
+                    }
+                    console.log(
+                        `TransferV3: spent ${decoded.nullifier1.slice(0, 10)}…/${decoded.nullifier2.slice(0, 10)}… ` +
+                        `-> leaves ${decoded.outputs.map((o) => o.leafIndex).join(', ')} (amounts private)`,
+                    );
+                    break;
                 case 'rageQuitV2':
                     // Spend only — rage-quit inserts no leaf, so there is no
                     // commitment to place in the tree.

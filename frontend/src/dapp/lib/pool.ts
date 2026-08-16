@@ -263,6 +263,33 @@ export async function submitDepositV2(a: Omit<DepositArgs, 'publicAmount' | 'ass
   ]);
 }
 
+export interface DepositV3Args {
+  depositor: string;
+  proof: SnarkjsProof;
+  commitment: string;
+  aspRoot: string;
+  /** Decimal stroops. String, not number: i128 exceeds JS integer precision. */
+  amountStroops: string;
+}
+
+/**
+ * Shield an arbitrary amount.
+ *
+ * Wallet-signed rather than relayed, unlike every spend path: the pool pulls
+ * tokens from the depositor, so `depositor.require_auth()` has to be satisfied
+ * by the account that owns them. The deposit is public by nature — the transfer
+ * is on the ledger either way — and privacy begins at the next hop.
+ */
+export async function submitDepositV3(a: DepositV3Args): Promise<string> {
+  return buildSignSubmit(a.depositor, V2_POOL_ID, 'deposit_v3', [
+    addr(a.depositor),
+    proofScVal(a.proof),
+    bytesN(a.commitment),
+    bytesN(a.aspRoot),
+    i128(BigInt(a.amountStroops)),
+  ]);
+}
+
 export interface WithdrawArgs {
   source: string; // account that pays fees / submits (connected wallet or relayer)
   proof: SnarkjsProof;
@@ -291,6 +318,65 @@ export async function submitWithdraw(a: WithdrawArgs): Promise<string> {
 
 export async function submitWithdrawV2(a: Pick<WithdrawArgs, 'proof' | 'nullifier' | 'recipient' | 'root'>): Promise<string> {
   const response = await fetch(`${RELAYER_URL}/v2/withdraw`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pool: V2_POOL_ID, ...a }),
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok || !body.success || !body.hash) {
+    throw new Error(body.error || `Relayer request failed (${response.status})`);
+  }
+  return body.hash as string;
+}
+
+// ---- V3: arbitrary amounts -------------------------------------------------
+
+export interface TransferV3Args {
+  proof: SnarkjsProof;
+  root: string;
+  nullifier1: string;
+  nullifier2: string;
+  commitment1: string;
+  commitment2: string;
+  eph1X: string;
+  eph1Y: string;
+  eph2X: string;
+  eph2Y: string;
+  amountCt1: string;
+  amountCt2: string;
+}
+
+/**
+ * Submit an arbitrary-amount shielded transfer through the relayer.
+ *
+ * Never wallet-signed, for the same reason the V2 transfer is not: the relayer
+ * is the transaction source, so the sender's Stellar address never touches the
+ * ledger. A wallet-signed transfer would defeat the feature entirely.
+ */
+export async function submitTransferV3(a: TransferV3Args): Promise<string> {
+  const response = await fetch(`${RELAYER_URL}/v3/transfer`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pool: V2_POOL_ID, ...a }),
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok || !body.success || !body.hash) {
+    throw new Error(body.error || `Relayer request failed (${response.status})`);
+  }
+  return body.hash as string;
+}
+
+export interface WithdrawV3Args {
+  proof: SnarkjsProof;
+  nullifier: string;
+  recipient: string;
+  root: string;
+  /** Decimal stroops. A string throughout: i128 exceeds JS number precision. */
+  amountStroops: string;
+}
+
+export async function submitWithdrawV3(a: WithdrawV3Args): Promise<string> {
+  const response = await fetch(`${RELAYER_URL}/v3/withdraw`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ pool: V2_POOL_ID, ...a }),

@@ -62,7 +62,13 @@ export class Database {
         leafIndex: number,
         txHash: string,
         ledgerSeq: number,
-        transfer?: { source: 'transfer'; ephemeralX: string; ephemeralY: string }
+        transfer?: {
+            source: 'transfer';
+            ephemeralX: string;
+            ephemeralY: string;
+            /** V3 only: the output's amount under a one-time pad. */
+            amountCipher?: string;
+        }
     ) {
         // A commitment with no real leaf index cannot be ordered, and an
         // unordered commitment corrupts every client's Merkle path. Refuse it
@@ -76,14 +82,15 @@ export class Database {
         await this.pool.query(
             `INSERT INTO commitments
                  (pool_address, commitment_hash, leaf_index, tx_hash, ledger_sequence,
-                  source, ephemeral_x, ephemeral_y)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                  source, ephemeral_x, ephemeral_y, amount_cipher)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
              ON CONFLICT DO NOTHING`,
             [
                 poolAddress, commitmentHash, leafIndex, txHash, ledgerSeq,
                 transfer?.source ?? 'deposit',
                 transfer?.ephemeralX ?? null,
                 transfer?.ephemeralY ?? null,
+                transfer?.amountCipher ?? null,
             ]
         );
     }
@@ -96,10 +103,11 @@ export class Database {
      */
     async getTransfers(poolAddress: string, sinceLedger = 0): Promise<Array<{
         commitment: string; leafIndex: number; ephemeralX: string; ephemeralY: string;
-        txHash: string; ledgerSequence: number;
+        amountCipher: string | null; txHash: string; ledgerSequence: number;
     }>> {
         const result = await this.pool.query(
-            `SELECT commitment_hash, leaf_index, ephemeral_x, ephemeral_y, tx_hash, ledger_sequence
+            `SELECT commitment_hash, leaf_index, ephemeral_x, ephemeral_y, amount_cipher,
+                    tx_hash, ledger_sequence
              FROM commitments
              WHERE pool_address = $1 AND source = 'transfer' AND ledger_sequence >= $2
              ORDER BY leaf_index ASC`,
@@ -110,6 +118,9 @@ export class Database {
             leafIndex: r.leaf_index,
             ephemeralX: r.ephemeral_x,
             ephemeralY: r.ephemeral_y,
+            // Null on V2 rows, whose amount was a known constant. A V3 row
+            // without it is unusable: the owner cannot rebuild the commitment.
+            amountCipher: r.amount_cipher,
             txHash: r.tx_hash,
             ledgerSequence: r.ledger_sequence,
         }));
@@ -177,10 +188,11 @@ export class Database {
         index: number; commitment: string; source: string;
         txHash: string; ledger: number;
         ephemeralX: string | null; ephemeralY: string | null;
+        amountCipher: string | null;
     }>> {
         const result = await this.pool.query(
             `SELECT commitment_hash, leaf_index, source, tx_hash, ledger_sequence,
-                    ephemeral_x, ephemeral_y
+                    ephemeral_x, ephemeral_y, amount_cipher
              FROM commitments
              WHERE pool_address = $1
              ORDER BY leaf_index ASC`,
@@ -194,6 +206,10 @@ export class Database {
             ledger: r.ledger_sequence,
             ephemeralX: r.ephemeral_x,
             ephemeralY: r.ephemeral_y,
+            // Carried into the snapshot so an offline wallet can still recover a
+            // V3 note's value. Without it the snapshot would let a user rebuild
+            // the tree but not identify which leaves are theirs.
+            amountCipher: r.amount_cipher,
         }));
     }
 

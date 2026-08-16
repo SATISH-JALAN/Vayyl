@@ -33,6 +33,15 @@ export type PoolEvent =
     }
   | { kind: 'rageQuitV2'; nullifier: string; commitment: string; recipient: string; amount: bigint }
   | {
+      kind: 'transferV3';
+      nullifier1: string;
+      nullifier2: string;
+      outputs: Array<{
+        commitment: string; leafIndex: number;
+        ephemeralX: string; ephemeralY: string; amountCipher: string;
+      }>;
+    }
+  | {
       kind: 'transferV2';
       nullifier: string;
       commitment: string;
@@ -144,6 +153,38 @@ export function decodePoolEvent(topic: xdr.ScVal[], value: xdr.ScVal): PoolEvent
         commitment: hex(data.commitment as Buffer | Uint8Array | undefined),
         recipient: String(data.recipient ?? ''),
         amount: BigInt((data.amount as bigint | number | string) ?? 0),
+      };
+    }
+    // V3 arbitrary-amount transfer: two notes spent, two created. Carries NO
+    // amounts, which is the point — the values stay inside the proof. Both
+    // outputs must be indexed with their own leaf index and ephemeral point:
+    // output 2 is the sender's CHANGE, and a wallet restored on a clean device
+    // rediscovers it through the same scan it uses for receipts. Dropping it
+    // would silently lose most of a sender's balance on recovery.
+    case 'transfer_v3': {
+      if (topic.length < 3) return null;
+      const hex = (b?: Buffer | Uint8Array) =>
+        b ? Buffer.from(b).toString('hex').padStart(64, '0') : '';
+      return {
+        kind: 'transferV3',
+        nullifier1: bytesN32ToHex(topic[1]),
+        nullifier2: bytesN32ToHex(topic[2]),
+        outputs: [
+          {
+            commitment: hex(data.commitment1 as Buffer | Uint8Array | undefined),
+            leafIndex: Number(data.leaf_index1 ?? 0),
+            ephemeralX: hex(data.eph1_x as Buffer | Uint8Array | undefined),
+            ephemeralY: hex(data.eph1_y as Buffer | Uint8Array | undefined),
+            amountCipher: hex(data.amount_ct1 as Buffer | Uint8Array | undefined),
+          },
+          {
+            commitment: hex(data.commitment2 as Buffer | Uint8Array | undefined),
+            leafIndex: Number(data.leaf_index2 ?? 0),
+            ephemeralX: hex(data.eph2_x as Buffer | Uint8Array | undefined),
+            ephemeralY: hex(data.eph2_y as Buffer | Uint8Array | undefined),
+            amountCipher: hex(data.amount_ct2 as Buffer | Uint8Array | undefined),
+          },
+        ],
       };
     }
     case 'position_open': {

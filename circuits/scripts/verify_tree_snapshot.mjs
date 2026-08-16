@@ -50,9 +50,15 @@ const HORIZON = (process.env.HORIZON_URL || 'https://horizon-testnet.stellar.org
 // list. Anything not listed here cannot legitimately have produced a leaf.
 //   deposit_v2(depositor, proof, commitment, asp_root)
 //   transfer_v2(proof, nullifier, commitment, ephemeral_x, ephemeral_y, root)
+//   deposit_v3(depositor, proof, commitment, asp_root, amount)
+//   transfer_v3(proof, root, nf1, nf2, commitment1, commitment2, eph…)  <- TWO leaves
 const LEAF_FUNCTIONS = {
-  deposit_v2: { commitmentArg: 2, source: 'deposit' },
-  transfer_v2: { commitmentArg: 2, source: 'transfer' },
+  deposit_v2: { commitmentArgs: [2], source: 'deposit' },
+  transfer_v2: { commitmentArgs: [2], source: 'transfer' },
+  deposit_v3: { commitmentArgs: [2], source: 'deposit' },
+  // Both outputs of a V3 transfer are leaves: the recipient's note and the
+  // sender's change. Either may be the one being verified.
+  transfer_v3: { commitmentArgs: [4, 5], source: 'transfer' },
 };
 
 const snapshot = JSON.parse(
@@ -144,7 +150,7 @@ for (const leaf of snapshot.leaves) {
 
   const match = calls.find((c) => {
     const spec = LEAF_FUNCTIONS[c.fn];
-    return spec && argHex(c.args[spec.commitmentArg]) === leaf.commitment;
+    return spec && spec.commitmentArgs.some((i) => argHex(c.args[i]) === leaf.commitment);
   });
   if (!match) {
     fail(`${label}  no ${Object.keys(LEAF_FUNCTIONS).join('/')} call carrying this commitment ` +

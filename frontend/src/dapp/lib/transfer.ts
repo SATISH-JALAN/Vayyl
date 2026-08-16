@@ -98,6 +98,140 @@ export async function deriveOutgoingNote(recipient: Point): Promise<OutgoingNote
   return { ephemeralX: ephemeral[0], ephemeralY: ephemeral[1], blindness, commitment };
 }
 
+// ============================================================
+// V3: the amount has to travel with the note
+// ============================================================
+// The V2 handoff above works because the amount was a constant everyone knew.
+// With arbitrary amounts the recipient cannot reproduce
+// `C = Poseidon2_4(amount, PK, b)` without knowing `amount`, so a note whose
+// value was never transmitted is a note nobody can ever find or spend. Hiding
+// the amount from its own owner is not privacy.
+//
+// Each output therefore publishes its amount under a one-time pad drawn from
+// the same ECDH secret, with a DIFFERENT domain tag:
+//
+//     amount_ct = amount + Poseidon2(S.x, TAG_ECDH_AMOUNT)   (mod p)
+//
+// The tags must differ. Sharing one would make the pad equal the blindness,
+// which is published inside the commitment — the amount would be recoverable by
+// anyone. The pad is uniform over the field and S is fresh per transfer, so the
+// ciphertext on its own reveals nothing.
+
+/** BN254 scalar field order; the pad arithmetic is modulo this. */
+const FIELD_P =
+  21888242871839275222246405745257275088548364400416034343698204186575808495617n;
+
+/** Domain tag for the ECDH-derived amount pad. MUST differ from the blindness tag. */
+const TAG_ECDH_AMOUNT = 1n;
+
+export interface OutgoingNoteV3 extends OutgoingNote {
+  /** `amount + pad (mod p)`, published on-chain and bound into the proof. */
+  amountCipher: bigint;
+  amount: bigint;
+}
+
+/**
+ * Build an output note of an arbitrary amount for `recipient`.
+ *
+ * Used for BOTH outputs of a transfer: the payment, where `recipient` is the
+ * payee, and the change, where `recipient` is the sender's own key. Treating
+ * them identically is what lets one rescan routine recover everything a wallet
+ * owns, including change it sent to itself.
+ */
+export async function deriveOutgoingNoteV3(
+  recipient: Point,
+  amount: bigint,
+): Promise<OutgoingNoteV3> {
+  assertUsablePoint(recipient, 'Recipient key');
+  if (amount < 0n) throw new Error('Note amount cannot be negative.');
+
+  const r = randomScalar();
+  const ephemeral = mulPointEscalar(BASE8, r);
+  const shared = mulPointEscalar(recipient, r);
+  const blindness = await poseidon2Hash2(shared[0], TAG_ECDH_BLINDNESS);
+  const commitment = await poseidon2Hash4(amount, recipient[0], recipient[1], blindness);
+  const pad = await poseidon2Hash2(shared[0], TAG_ECDH_AMOUNT);
+
+  return {
+    ephemeralX: ephemeral[0],
+    ephemeralY: ephemeral[1],
+    blindness,
+    commitment,
+    amount,
+    amountCipher: (amount + pad) % FIELD_P,
+  };
+}
+
+export interface IndexedTransferV3 {
+  commitment: string;
+  leafIndex: number;
+  ephemeralX: string;
+  ephemeralY: string;
+  /** Hex, from the event. */
+  amountCipher: string;
+  txHash?: string;
+}
+
+export interface DiscoveredNoteV3 extends DiscoveredNote {
+  /** Recovered plaintext amount, in stroops. */
+  amountStroops: string;
+}
+
+/**
+ * Trial-decrypt V3 transfer outputs against our own key.
+ *
+ * Unlike the V2 scan this must recover the amount BEFORE it can check the
+ * commitment, because the amount is an input to the commitment. A wrong
+ * candidate simply fails to reproduce the commitment, which is the same
+ * all-or-nothing match as before.
+ *
+ * A recovered amount is rejected if it does not fit in 64 bits. The circuits
+ * range-check every amount, so no legitimate note can exceed that; a larger
+ * value means the sender constructed the ciphertext wrongly, and storing it
+ * would leave the wallet holding a note it can never prove.
+ */
+export async function scanForIncomingNotesV3(
+  spendKey: bigint,
+  pubX: bigint,
+  pubY: bigint,
+  transfers: IndexedTransferV3[],
+): Promise<DiscoveredNoteV3[]> {
+  const found: DiscoveredNoteV3[] = [];
+
+  for (const event of transfers) {
+    let ephemeral: Point;
+    try {
+      ephemeral = [BigInt(event.ephemeralX), BigInt(event.ephemeralY)];
+      assertUsablePoint(ephemeral, 'Ephemeral point');
+    } catch {
+      // One malicious sender must not be able to break scanning for everyone.
+      continue;
+    }
+
+    const shared = mulPointEscalar(ephemeral, spendKey);
+    const blindness = await poseidon2Hash2(shared[0], TAG_ECDH_BLINDNESS);
+    const pad = await poseidon2Hash2(shared[0], TAG_ECDH_AMOUNT);
+    const cipher = BigInt(`0x${event.amountCipher.replace(/^0x/, '')}`);
+    const amount = (cipher - pad + FIELD_P) % FIELD_P;
+    if (amount >= 1n << 64n) continue;
+
+    const commitment = await poseidon2Hash4(amount, pubX, pubY, blindness);
+    if (commitment !== BigInt(`0x${event.commitment}`)) continue;
+
+    found.push({
+      commitment: commitment.toString(),
+      blindness: blindness.toString(),
+      amountStroops: amount.toString(),
+      leafIndex: event.leafIndex,
+      ephemeralX: event.ephemeralX,
+      ephemeralY: event.ephemeralY,
+      txHash: event.txHash,
+    });
+  }
+
+  return found;
+}
+
 export interface IndexedTransfer {
   commitment: string;
   leafIndex: number;

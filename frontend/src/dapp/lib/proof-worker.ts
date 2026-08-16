@@ -14,8 +14,12 @@ import { computeCommitment, computeNullifier, poseidon2Hash2, poseidon2Hash4 } f
 import { buildMerklePath, zeroHashes, TREE_DEPTH } from './merkle';
 import {
   deriveOutgoingNote,
+  deriveOutgoingNoteV3,
   scanForIncomingNotes,
+  scanForIncomingNotesV3,
+  randomScalar,
   type IndexedTransfer,
+  type IndexedTransferV3,
 } from './transfer';
 import buildWitnessCalculator from './witness_calculator.js';
 
@@ -24,6 +28,21 @@ const V2_AMOUNT = '10000000';
 let v2NoteCalculator: ReturnType<typeof buildWitnessCalculator> | null = null;
 
 async function deriveV2Note(privKey: string, blindness: string) {
+  return deriveNote(privKey, V2_AMOUNT, blindness);
+}
+
+/**
+ * Derive a note of any amount through the SAME `Note()` circuit the proofs use.
+ *
+ * Going through the circuit rather than reimplementing the derivation in JS is
+ * the point: a JS version that drifts from the circuit produces commitments the
+ * proof cannot open, and that failure surfaces on-chain as an opaque
+ * verification error with nothing pointing at the cause.
+ *
+ * It also inherits the circuit's range check, so an out-of-range amount fails
+ * here — locally, with a real message — instead of at proving time.
+ */
+async function deriveNote(privKey: string, amount: string, blindness: string) {
   v2NoteCalculator ??= fetch('/circuits/v2/note.wasm')
     .then((response) => {
       if (!response.ok) throw new Error(`Failed to load V2 note circuit (${response.status})`);
@@ -31,7 +50,7 @@ async function deriveV2Note(privKey: string, blindness: string) {
     })
     .then((wasm) => buildWitnessCalculator(wasm));
   const calculator = await v2NoteCalculator;
-  const witness = await calculator.calculateWitness({ privKey, amount: V2_AMOUNT, blindness }, true);
+  const witness = await calculator.calculateWitness({ privKey, amount, blindness }, true);
   return {
     pubX: witness[1].toString(),
     pubY: witness[2].toString(),
@@ -103,6 +122,55 @@ interface V2TransferPayload {
   recipientPubY: string;
 }
 
+// ---- V3 payloads -----------------------------------------------------------
+// Amounts travel as decimal STRINGS of stroops throughout. Never as numbers:
+// stroops are i128 on-chain and anything above 2^53 loses precision silently in
+// a JS number, which would mis-price a note with no error anywhere.
+
+interface V3DepositPayload {
+  privKey: string;
+  blindness: string;
+  amountStroops: string;
+  aspLeafIndex: number;
+  aspLeaves: string[];
+}
+
+interface V3WithdrawPayload {
+  privKey: string;
+  blindness: string;
+  amountStroops: string;
+  commitment: string;
+  leafIndex: number;
+  leaves: string[];
+  withdrawBinding: string;
+}
+
+interface V3InputNote {
+  amountStroops: string;
+  blindness: string;
+  leafIndex: number;
+}
+
+interface V3TransferPayload {
+  privKey: string;
+  /** The note being spent. Always real. */
+  in1: V3InputNote;
+  /** A second real note, or absent to spend a single note against a dummy. */
+  in2?: V3InputNote;
+  leaves: string[];
+  recipientPubX: string;
+  recipientPubY: string;
+  /** What the recipient receives; the remainder returns as change. */
+  amountStroops: string;
+}
+
+interface V3ScanPayload {
+  spendKey: string;
+  pubX: string;
+  pubY: string;
+  transfers: IndexedTransferV3[];
+}
+
 interface V2RageQuitPayload {
   privKey: string;
   blindness: string;
@@ -172,6 +240,159 @@ self.onmessage = async (e: MessageEvent) => {
           input, '/circuits/v2/withdraw_v2.wasm', '/circuits/v2/withdraw_v2_final.zkey',
         );
         result = { proof, publicSignals, nullifier: note.nullifier, root: path.root.toString() };
+        break;
+      }
+
+      // ── V3: arbitrary amounts ──────────────────────────────────────────
+      // The amount is a real signal now rather than a circuit constant, so it
+      // has to be carried consistently through every step: into the note, into
+      // the proof's public statement, and (for transfer) encrypted to whoever
+      // ends up owning the output.
+
+      case 'PROVE_DEPOSIT_V3': {
+        const p = payload as V3DepositPayload;
+        const note = await deriveNote(p.privKey, p.amountStroops, p.blindness);
+        const aspLeaf = await poseidon2Hash2(BigInt(note.pubX), BigInt(note.pubY));
+        const aspLeaves = p.aspLeaves.map(BigInt);
+        if (aspLeaves[p.aspLeafIndex] !== aspLeaf) {
+          throw new Error('The workspace membership path does not match this shielded identity.');
+        }
+        const aspPath = await buildMerklePath(aspLeaves, p.aspLeafIndex);
+        const { proof, publicSignals } = await snarkjs.groth16.fullProve(
+          {
+            commitment: note.commitment,
+            asp_root: aspPath.root.toString(),
+            amount: p.amountStroops,
+            privKey: p.privKey,
+            blindness: p.blindness,
+            asp_pathElements: aspPath.pathElements.map(String),
+            asp_pathIndices: aspPath.pathIndices.map(String),
+          },
+          '/circuits/v3/deposit_v3.wasm', '/circuits/v3/deposit_v3_final.zkey',
+        );
+        result = { ...note, proof, publicSignals, aspLeaf: aspLeaf.toString(), aspRoot: aspPath.root.toString() };
+        break;
+      }
+
+      case 'PROVE_WITHDRAW_V3': {
+        const p = payload as V3WithdrawPayload;
+        const note = await deriveNote(p.privKey, p.amountStroops, p.blindness);
+        if (note.commitment !== p.commitment) throw new Error('The local note does not belong to this workspace.');
+        const path = await buildMerklePath(p.leaves.map(BigInt), p.leafIndex);
+        const { proof, publicSignals } = await snarkjs.groth16.fullProve(
+          {
+            root: path.root.toString(),
+            nullifier: note.nullifier,
+            amount: p.amountStroops,
+            withdraw_binding: p.withdrawBinding,
+            privKey: p.privKey,
+            blindness: p.blindness,
+            pathElements: path.pathElements.map(String),
+            pathIndices: path.pathIndices.map(String),
+          },
+          '/circuits/v3/withdraw_v3.wasm', '/circuits/v3/withdraw_v3_final.zkey',
+        );
+        result = { proof, publicSignals, nullifier: note.nullifier, root: path.root.toString() };
+        break;
+      }
+
+      case 'PROVE_TRANSFER_V3': {
+        const p = payload as V3TransferPayload;
+        const leaves = p.leaves.map(BigInt);
+
+        // Input 1 is always real.
+        const in1 = await deriveNote(p.privKey, p.in1.amountStroops, p.in1.blindness);
+        const path1 = await buildMerklePath(leaves, p.in1.leafIndex);
+
+        // Input 2 is either a second real note or a dummy worth nothing. The
+        // dummy's blindness MUST be fresh per transfer: it still produces a
+        // nullifier the pool marks spent, so reusing one makes the next
+        // transfer fail on-chain as a double spend.
+        const in2 = p.in2
+          ? await deriveNote(p.privKey, p.in2.amountStroops, p.in2.blindness)
+          : await deriveNote(p.privKey, '0', randomScalar().toString());
+        const path2 = p.in2 ? await buildMerklePath(leaves, p.in2.leafIndex) : path1;
+        const in2Amount = p.in2 ? p.in2.amountStroops : '0';
+        const isDummy2 = p.in2 ? '0' : '1';
+
+        const total = BigInt(p.in1.amountStroops) + BigInt(in2Amount);
+        const payAmount = BigInt(p.amountStroops);
+        const change = total - payAmount;
+        if (change < 0n) throw new Error('Selected notes do not cover the amount.');
+
+        // Both outputs are built the same way, including the change note. The
+        // sender's own change gets an ephemeral point and an encrypted amount
+        // exactly like the payment, so a wallet restored on a clean device
+        // rediscovers it by the same scan.
+        const payOut = await deriveOutgoingNoteV3(
+          [BigInt(p.recipientPubX), BigInt(p.recipientPubY)], payAmount,
+        );
+        const changeOut = await deriveOutgoingNoteV3(
+          [BigInt(in1.pubX), BigInt(in1.pubY)], change,
+        );
+
+        const { proof, publicSignals } = await snarkjs.groth16.fullProve(
+          {
+            root: path1.root.toString(),
+            nullifier1: in1.nullifier,
+            nullifier2: in2.nullifier,
+            commitment_out1: payOut.commitment.toString(),
+            commitment_out2: changeOut.commitment.toString(),
+            eph1_x: payOut.ephemeralX.toString(), eph1_y: payOut.ephemeralY.toString(),
+            eph2_x: changeOut.ephemeralX.toString(), eph2_y: changeOut.ephemeralY.toString(),
+            amount_ct1: payOut.amountCipher.toString(),
+            amount_ct2: changeOut.amountCipher.toString(),
+            privKey: p.privKey,
+            in_amount1: p.in1.amountStroops,
+            in_blindness1: p.in1.blindness,
+            in_pathElements1: path1.pathElements.map(String),
+            in_pathIndices1: path1.pathIndices.map(String),
+            in_amount2: in2Amount,
+            in_blindness2: p.in2 ? p.in2.blindness : '0',
+            in_pathElements2: path2.pathElements.map(String),
+            in_pathIndices2: path2.pathIndices.map(String),
+            isDummy2,
+            out_amount1: payAmount.toString(),
+            out_pubX1: p.recipientPubX, out_pubY1: p.recipientPubY,
+            out_blindness1: payOut.blindness.toString(),
+            out_amount2: change.toString(),
+            out_pubX2: in1.pubX, out_pubY2: in1.pubY,
+            out_blindness2: changeOut.blindness.toString(),
+          },
+          '/circuits/v3/transfer_v3.wasm', '/circuits/v3/transfer_v3_final.zkey',
+        );
+
+        result = {
+          proof,
+          publicSignals,
+          root: path1.root.toString(),
+          nullifier1: in1.nullifier,
+          nullifier2: in2.nullifier,
+          commitment1: payOut.commitment.toString(),
+          commitment2: changeOut.commitment.toString(),
+          eph1X: payOut.ephemeralX.toString(), eph1Y: payOut.ephemeralY.toString(),
+          eph2X: changeOut.ephemeralX.toString(), eph2Y: changeOut.ephemeralY.toString(),
+          amountCt1: payOut.amountCipher.toString(),
+          amountCt2: changeOut.amountCipher.toString(),
+          // What the wallet must persist to keep spending its own change.
+          change: {
+            commitment: changeOut.commitment.toString(),
+            blindness: changeOut.blindness.toString(),
+            amountStroops: change.toString(),
+            pubX: in1.pubX,
+            pubY: in1.pubY,
+          },
+        };
+        break;
+      }
+
+      case 'SCAN_TRANSFERS_V3': {
+        const p = payload as V3ScanPayload;
+        result = {
+          notes: await scanForIncomingNotesV3(
+            BigInt(p.spendKey), BigInt(p.pubX), BigInt(p.pubY), p.transfers,
+          ),
+        };
         break;
       }
 

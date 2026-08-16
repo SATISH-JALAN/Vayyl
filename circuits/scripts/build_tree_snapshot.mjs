@@ -176,6 +176,7 @@ const snapshot = {
     tx_hash: l.txHash,
     ledger: l.ledger,
     ...(l.ephemeralX ? { ephemeral_x: l.ephemeralX, ephemeral_y: l.ephemeralY } : {}),
+    ...(l.amountCipher ? { amount_cipher: l.amountCipher } : {}),
   })),
   spent_nullifiers: (payload.nullifiers ?? []).slice().sort(),
 };

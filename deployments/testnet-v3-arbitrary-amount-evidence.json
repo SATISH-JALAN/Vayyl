@@ -1,0 +1,39 @@
+{
+  "$comment": "Arbitrary-amount private payment, proven on Stellar testnet. Shield 100 XLM, privately pay 37, recipient spends the 37, sender spends the 63 change. The 37/63 split never appears on the ledger: only the deposit and the two withdrawals move tokens.",
+  "network": "testnet",
+  "pool": "CB6XFHGN4DMVEQRESJHPOUNYLUCGMOZTAIKTWH3I7KT3NVW2XY4NIOLC",
+  "verifier": "CBRMDGEMQERFTG3MCBHYPHMZPKVMDYFGHJAMREQW23ZDKVAMAFDRJ2J5",
+  "ran_at": "2026-08-15T22:52:47.789Z",
+  "amounts_xlm": {
+    "shielded": 100,
+    "paid_privately": 37,
+    "change": 63
+  },
+  "transactions": [
+    {
+      "step": "asp insert_leaf",
+      "hash": "805336858c5a44e8626adfc9659b45ad8ad0813fc87f7b938cbd6d73f9a1d506",
+      "explorer": "https://stellar.expert/explorer/testnet/tx/805336858c5a44e8626adfc9659b45ad8ad0813fc87f7b938cbd6d73f9a1d506"
+    },
+    {
+      "step": "deposit_v3 (100 XLM)",
+      "hash": "baba91b257032897997bea9691409228c0f70833110b6d49ef982c15c56dca0a",
+      "explorer": "https://stellar.expert/explorer/testnet/tx/baba91b257032897997bea9691409228c0f70833110b6d49ef982c15c56dca0a"
+    },
+    {
+      "step": "transfer_v3 (37 XLM private)",
+      "hash": "eec15635508dd968331f6a3f72cfd67e042ff8103526f650ae5def1a60dba200",
+      "explorer": "https://stellar.expert/explorer/testnet/tx/eec15635508dd968331f6a3f72cfd67e042ff8103526f650ae5def1a60dba200"
+    },
+    {
+      "step": "withdraw_v3 recipient (37 XLM)",
+      "hash": "0e0cf4214448923dd41ffada917672a6e654f5119174fe590119ffa3257f7e18",
+      "explorer": "https://stellar.expert/explorer/testnet/tx/0e0cf4214448923dd41ffada917672a6e654f5119174fe590119ffa3257f7e18"
+    },
+    {
+      "step": "withdraw_v3 change (63 XLM)",
+      "hash": "5cf12e441820fadee7c91ff5e46be74a1b5d03a410189b3796597f87642b36e8",
+      "explorer": "https://stellar.expert/explorer/testnet/tx/5cf12e441820fadee7c91ff5e46be74a1b5d03a410189b3796597f87642b36e8"
+    }
+  ]
+}
