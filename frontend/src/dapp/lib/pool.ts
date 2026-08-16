@@ -24,10 +24,12 @@ import {
 } from '@stellar/stellar-sdk';
 import { signTransaction } from '@stellar/freighter-api';
 import { NETWORK_PASSPHRASE } from './network';
+import { parseRelayerSet, selectRelayer, type DelayPolicy } from './relayer-set';
 import {
   fetchCommitmentsFrom,
   fetchSpentNullifiersFrom,
   fetchTransfersFrom,
+  fetchDepositsFrom,
   type IndexedTransferRow,
 } from './tree-source';
 
@@ -40,6 +42,16 @@ export const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || 'https://soroban-testn
 // hosted services once they exist; see frontend/.env.testnet.
 export const INDEXER_URL = process.env.NEXT_PUBLIC_INDEXER_URL || 'http://localhost:3001';
 export const RELAYER_URL = process.env.NEXT_PUBLIC_RELAYER_URL || 'http://localhost:3002';
+// A SET, not a single endpoint. One relayer means every withdrawal shares a fee
+// payer, which clusters the whole user base without touching the cryptography.
+// Comma-separated; falls back to the single URL above when unset.
+export const RELAYER_SET = parseRelayerSet(process.env.NEXT_PUBLIC_RELAYER_SET, RELAYER_URL);
+// Withdrawal hold window. A fixed gap between deposit and withdrawal is the same
+// weakness as a shared fee payer on a second axis.
+export const WITHDRAW_DELAY: DelayPolicy = {
+  minMs: Number(process.env.NEXT_PUBLIC_WITHDRAW_DELAY_MIN_MS ?? 30_000),
+  maxMs: Number(process.env.NEXT_PUBLIC_WITHDRAW_DELAY_MAX_MS ?? 600_000),
+};
 export const HORIZON_URL = process.env.NEXT_PUBLIC_HORIZON_URL || 'https://horizon-testnet.stellar.org';
 export const V2_POOL_ID = process.env.NEXT_PUBLIC_POOL_XLM || 'CB6XFHGN4DMVEQRESJHPOUNYLUCGMOZTAIKTWH3I7KT3NVW2XY4NIOLC';
 export const V2_VERIFIER_ID = process.env.NEXT_PUBLIC_VERIFIER || 'CBRMDGEMQERFTG3MCBHYPHMZPKVMDYFGHJAMREQW23ZDKVAMAFDRJ2J5';
@@ -354,7 +366,7 @@ export interface TransferV3Args {
  * ledger. A wallet-signed transfer would defeat the feature entirely.
  */
 export async function submitTransferV3(a: TransferV3Args): Promise<string> {
-  const response = await fetch(`${RELAYER_URL}/v3/transfer`, {
+  const response = await fetch(`${selectRelayer(RELAYER_SET)}/v3/transfer`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ pool: V2_POOL_ID, ...a }),
@@ -376,7 +388,7 @@ export interface WithdrawV3Args {
 }
 
 export async function submitWithdrawV3(a: WithdrawV3Args): Promise<string> {
-  const response = await fetch(`${RELAYER_URL}/v3/withdraw`, {
+  const response = await fetch(`${selectRelayer(RELAYER_SET)}/v3/withdraw`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ pool: V2_POOL_ID, ...a }),
@@ -406,7 +418,7 @@ export interface RageQuitV2Args {
  * payout.
  */
 export async function submitRageQuitV2(a: RageQuitV2Args): Promise<string> {
-  const response = await fetch(`${RELAYER_URL}/v2/ragequit`, {
+  const response = await fetch(`${selectRelayer(RELAYER_SET)}/v2/ragequit`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ pool: V2_POOL_ID, ...a }),
@@ -474,6 +486,37 @@ async function simulateRead(contractId: string, method: string, args: xdr.ScVal[
   return scValToNative(result.result.retval);
 }
 
+export interface AnonymitySet {
+  /** Unspent notes in the pool: the crowd a spend actually hides in. */
+  unspent: number;
+  /** Minimum required to withdraw. Zero means withdrawals are not gated. */
+  floor: number;
+}
+
+/**
+ * Read the live anonymity set from the chain.
+ *
+ * Read from the pool rather than counted from the indexer on purpose: this is
+ * the number a user's privacy actually rests on, so it should come from the
+ * same place that enforces it, not from a service that could be stale or
+ * simply wrong. Cryptography gives unlinkability within a set and cannot
+ * manufacture the set, so a user deserves to see the crowd before committing
+ * funds rather than assuming a guarantee the size does not support.
+ */
+export async function fetchAnonymitySet(): Promise<AnonymitySet | null> {
+  try {
+    const [unspent, floor] = await Promise.all([
+      simulateRead(V2_POOL_ID, 'unspent_note_count', []),
+      simulateRead(V2_POOL_ID, 'anonymity_floor', []),
+    ]);
+    return { unspent: Number(unspent), floor: Number(floor) };
+  } catch {
+    // A pool that predates the floor has neither function. Reporting nothing is
+    // right: showing a fabricated number would be worse than showing none.
+    return null;
+  }
+}
+
 export async function fetchV2AspLeafIndex(leaf: string): Promise<number | null> {
   try {
     return Number(await simulateRead(V2_ASP_MEMBERSHIP_ID, 'get_leaf_index', [bytesN(leaf)]));
@@ -514,15 +557,20 @@ export async function assertV2ServicesReady(recipient: string): Promise<void> {
   if (!StrKey.isValidEd25519PublicKey(recipient)) {
     throw new Error('Enter a valid funded Stellar account address beginning with G.');
   }
-  const [account, relayer] = await Promise.all([
+  // Any healthy operator will do: requiring a specific one would reintroduce a
+  // single point of failure the set exists to remove.
+  const [account, ...healths] = await Promise.all([
     fetch(`${HORIZON_URL}/accounts/${recipient}`),
-    fetch(`${RELAYER_URL}/health`).then((response) => response.ok ? response.json() : null),
+    ...RELAYER_SET.map((url) =>
+      fetch(`${url}/health`).then((r) => (r.ok ? r.json() : null)).catch(() => null)),
   ]);
+  const relayer = healths.find(
+    (h) => h && h.status === 'ok' && Number(h.nativeBalance ?? 0) >= 1);
   if (!account.ok) {
     throw new Error('The destination account is not active on this network. Fund it before withdrawing.');
   }
-  if (!relayer || relayer.status !== 'ok' || Number(relayer.nativeBalance ?? 0) < 1) {
-    throw new Error('The settlement service is unavailable. Try again shortly.');
+  if (!relayer) {
+    throw new Error('No settlement service is available right now. Try again shortly.');
   }
 }
 
@@ -538,4 +586,11 @@ export async function fetchCommitments(): Promise<bigint[]> {
 
 export async function fetchSpentNullifiers(): Promise<Set<string>> {
   return fetchSpentNullifiersFrom(INDEXER_URL, V2_POOL_ID);
+}
+
+export type { IndexedDepositRow } from './tree-source';
+
+/** Deposits with public amounts, for rediscovering this wallet's own deposits. */
+export async function fetchDeposits() {
+  return fetchDepositsFrom(INDEXER_URL, V2_POOL_ID);
 }

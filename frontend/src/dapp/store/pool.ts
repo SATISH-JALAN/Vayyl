@@ -27,6 +27,10 @@ import {
   fetchV2AspLeaves,
   enrollV2AspLeaf,
   assertV2ServicesReady,
+  fetchAnonymitySet,
+  fetchDeposits,
+  WITHDRAW_DELAY,
+  type AnonymitySet,
   V2_DENOMINATION_STROOPS,
   V2_DENOMINATION_XLM,
   V2_POOL_ID,
@@ -44,6 +48,8 @@ import {
 } from '../lib/storage';
 import { decodeShieldedAddress } from '../lib/address';
 import { selectNotes } from '../lib/note-selection';
+import { deriveDepositBlindness } from '../lib/transfer';
+import { drawDelayMs, describeDelay } from '../lib/relayer-set';
 
 /** Stroops to a display string. Exact: bigint division, never float. */
 function stroopsToXlm(stroops: string): string {
@@ -64,6 +70,8 @@ interface PoolState {
   aspLeaf: string | null;
   aspEligible: boolean | null;
   aspLeafIndex: number | null;
+  /** Live crowd size read from the pool. Null when the chain cannot report it. */
+  anonymitySet: AnonymitySet | null;
   fetchState: () => Promise<void>;
   deposit: () => Promise<void>;
   withdraw: (destination: string) => Promise<void>;
@@ -108,14 +116,16 @@ export const usePoolStore = create<PoolState>((set, get) => ({
   aspLeaf: null,
   aspEligible: null,
   aspLeafIndex: null,
+  anonymitySet: null,
 
   fetchState: async () => {
     const keys = useWalletStore.getState().keys;
     if (!keys) return;
     try {
-      const [spent, identity] = await Promise.all([
+      const [spent, identity, anonymitySet] = await Promise.all([
         fetchSpentNullifiers().catch(() => new Set<string>()),
         runWorkerTask('PREPARE_V2_NOTE', { privKey: keys.spendKey.toString(), blindness: '0' }),
+        fetchAnonymitySet(),
       ]);
       const aspLeafIndex = await fetchV2AspLeafIndex(identity.aspLeaf);
 
@@ -128,8 +138,12 @@ export const usePoolStore = create<PoolState>((set, get) => ({
         console.error('incoming-note scan failed', e);
       }
 
+      // V2 and V3 notes coexist in one pool: V2 notes predate arbitrary amounts
+      // and must stay visible and spendable. Filtering to 'v2' alone would hide
+      // every note the wallet has created since.
+      const isCurrent = (p?: string) => p === 'v2' || p === 'v3';
       const notes = (await getNotes(keys.viewingKey)).filter(
-        (note) => note.protocol === 'v2' && note.pool === V2_POOL_ID,
+        (note) => isCurrent(note.protocol) && note.pool === V2_POOL_ID,
       );
       // Reconcile spent status against on-chain nullifiers.
       for (const n of notes) {
@@ -150,13 +164,13 @@ export const usePoolStore = create<PoolState>((set, get) => ({
         type: n.source === 'received' ? 'Transfer' : 'Deposit',
         amount: n.amount,
         asset: n.asset,
-        protocol: 'v2',
+        protocol: n.protocol ?? 'v2',
         pool: V2_POOL_ID,
         txHash: n.txHash,
         timestamp: n.createdAt,
       }));
       const logged = (await getActivity(keys.viewingKey)).filter(
-        (event) => event.protocol === 'v2' && event.pool === V2_POOL_ID,
+        (event) => isCurrent(event.protocol) && event.pool === V2_POOL_ID,
       );
       const activity = [...deposits, ...logged].sort((a, b) => b.timestamp - a.timestamp);
 
@@ -167,6 +181,7 @@ export const usePoolStore = create<PoolState>((set, get) => ({
         aspLeaf: identity.aspLeaf,
         aspEligible: aspLeafIndex !== null,
         aspLeafIndex,
+        anonymitySet,
       });
     } catch (e) {
       console.error('fetchState failed', e);
@@ -489,7 +504,14 @@ export const usePoolStore = create<PoolState>((set, get) => ({
       }
       set({ aspLeaf: identity.aspLeaf, aspEligible: true, aspLeafIndex });
 
-      const blindness = randomFieldElement().toString();
+      // Derived, not drawn. A random blindness held only in browser storage
+      // makes an unspent deposit unrecoverable on a clean device, which would
+      // make the whole recovery story false for anyone holding one.
+      const prior = (await getNotes(keys.viewingKey)).filter(
+        (n) => n.pool === V2_POOL_ID && n.source !== 'received' && n.depositIndex !== undefined,
+      );
+      const depositIndex = prior.reduce((max, n) => Math.max(max, n.depositIndex! + 1), 0);
+      const blindness = (await deriveDepositBlindness(keys.spendKey, depositIndex)).toString();
       set({ status: 'Generating deposit proof…' });
       const proveResult = await runWorkerTask('PROVE_DEPOSIT_V3', {
         privKey: keys.spendKey.toString(),
@@ -525,6 +547,7 @@ export const usePoolStore = create<PoolState>((set, get) => ({
         leafIndex: -1,
         isSpent: false,
         source: 'deposit',
+        depositIndex,
         createdAt: Date.now(),
         txHash,
       });
@@ -693,6 +716,16 @@ export const usePoolStore = create<PoolState>((set, get) => ({
         withdrawBinding,
       });
 
+      // Hold before submitting. A withdrawal that lands moments after its
+      // deposit is linkable by inspection whatever the proof says, so the delay
+      // is part of the privacy, not a UI nicety. The message says plainly when
+      // the pool is too quiet for it to help.
+      const delayMs = drawDelayMs(WITHDRAW_DELAY);
+      if (delayMs > 0) {
+        set({ status: describeDelay(delayMs, get().anonymitySet?.unspent ?? null) });
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+
       set({ status: 'Submitting withdrawal…' });
       const txHash = await submitWithdrawV3({
         proof: proveResult.proof,
@@ -735,8 +768,24 @@ export const usePoolStore = create<PoolState>((set, get) => ({
     // this every fetchState would rescan the entire history.
     const cursor = await getScanCursor(keys.viewingKey);
     const transfers = await fetchTransfers(cursor);
-    if (transfers.length === 0) return;
 
+    // Deliberately NOT an early return when there are no transfers. Deposit
+    // recovery runs below and is independent of them: a wallet that has only
+    // ever deposited has nothing in this feed, and returning here would leave
+    // exactly that user with an empty balance on a clean device.
+    if (transfers.length > 0) await scanTransferFeed(keys, transfers);
+    await recoverDeposits(keys);
+
+    const highestLedger = transfers.reduce((max, t) => Math.max(max, t.ledgerSequence ?? 0), cursor);
+    await setScanCursor(keys.viewingKey, highestLedger);
+  },
+}));
+
+/** Trial-decrypt the transfer feed for notes addressed to us (V2 and V3). */
+async function scanTransferFeed(
+  keys: { viewingKey: string; spendKey: bigint; pubX: bigint; pubY: bigint },
+  transfers: Awaited<ReturnType<typeof fetchTransfers>>,
+) {
     const { notes: discovered } = await runWorkerTask('SCAN_TRANSFERS_V2', {
       spendKey: keys.spendKey.toString(),
       pubX: keys.pubX.toString(),
@@ -805,7 +854,59 @@ export const usePoolStore = create<PoolState>((set, get) => ({
       }
     }
 
-    const highest = transfers.reduce((max, t) => Math.max(max, t.ledgerSequence ?? 0), cursor);
-    await setScanCursor(keys.viewingKey, highest);
-  },
-}));
+}
+
+/**
+ * Rediscover this wallet's OWN deposits.
+ *
+ * Receipts and change arrive through ECDH, but a deposit has no counterparty,
+ * so it is recoverable only because its blindness is derived from the spend key.
+ * Without this a clean device restores everything EXCEPT the user's own unspent
+ * deposits, which for most wallets is most of the balance.
+ */
+async function recoverDeposits(
+  keys: { viewingKey: string; spendKey: bigint; pubX: bigint; pubY: bigint },
+) {
+    try {
+      const known = new Set((await getNotes(keys.viewingKey)).map((n) => n.commitment));
+      const deposits = (await fetchDeposits()).filter(
+        (d) => !known.has(BigInt(`0x${d.commitment}`).toString()),
+      );
+      if (deposits.length > 0) {
+        const { deposits: mine } = await runWorkerTask('RECOVER_DEPOSITS', {
+          spendKey: keys.spendKey.toString(),
+          pubX: keys.pubX.toString(),
+          pubY: keys.pubY.toString(),
+          deposits,
+        });
+        for (const found of mine as Array<{
+          commitment: string; blindness: string; amountStroops: string;
+          leafIndex: number; depositIndex: number; txHash?: string;
+        }>) {
+          await addNote(keys.viewingKey, {
+            id: found.commitment,
+            amount: Number(stroopsToXlm(found.amountStroops)),
+            amountStroops: found.amountStroops,
+            asset: 'XLM',
+            protocol: 'v3',
+            pool: V2_POOL_ID,
+            commitment: found.commitment,
+            nullifier: (await poseidon2Hash2(BigInt(found.commitment), keys.spendKey)).toString(),
+            pubX: keys.pubX.toString(),
+            pubY: keys.pubY.toString(),
+            blindness: found.blindness,
+            leafIndex: found.leafIndex,
+            isSpent: false,
+            source: 'deposit',
+            depositIndex: found.depositIndex,
+            createdAt: Date.now(),
+            txHash: found.txHash,
+          });
+        }
+      }
+    } catch (e) {
+      // Never fatal: a failed deposit recovery must not stop the transfer scan
+      // from claiming payments the user has already received.
+      console.error('deposit recovery failed', e);
+    }
+}

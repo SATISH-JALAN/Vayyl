@@ -108,6 +108,105 @@ export class RelayerService {
     }
 
     /**
+     * Settle several withdrawals in ONE transaction.
+     *
+     * Soroban permits exactly one InvokeHostFunction per transaction, so the
+     * batching lives in the contract (`withdraw_v3_batch`) rather than in a
+     * multi-operation envelope. The point is shape: one transaction per
+     * withdrawal keeps a one-to-one correspondence an observer can count, which
+     * hands back at the network layer what the circuits hide.
+     *
+     * The batch is all-or-nothing on chain, so each request is simulated
+     * INDIVIDUALLY first and bad ones are dropped. Without that, one malformed
+     * proof from any caller reverts everyone else's withdrawal in the same
+     * batch — a cheap and effective way to grief the service.
+     */
+    async relayV3WithdrawBatch(requests: V3WithdrawRequest[]): Promise<{
+        hash: string | null;
+        settled: number;
+        rejected: number;
+    }> {
+        if (requests.length === 0) return { hash: null, settled: 0, rejected: 0 };
+        for (const r of requests) this.assertAllowedContract(r.pool);
+        const pool = requests[0].pool;
+        if (requests.some((r) => r.pool !== pool)) {
+            throw new Error('A batch cannot span multiple pools.');
+        }
+
+        const usable: V3WithdrawRequest[] = [];
+        for (const request of requests) {
+            if (await this.simulatesCleanly(request)) usable.push(request);
+        }
+        const rejected = requests.length - usable.length;
+        if (usable.length === 0) return { hash: null, settled: 0, rejected };
+
+        const source = await this.server.getAccount(this.relayerKeypair.publicKey());
+        const contract = new StellarSdk.Contract(pool);
+        const tx = new StellarSdk.TransactionBuilder(source, {
+            fee: StellarSdk.BASE_FEE,
+            networkPassphrase: this.networkPassphrase,
+        })
+            .addOperation(contract.call(
+                'withdraw_v3_batch',
+                StellarSdk.xdr.ScVal.scvVec(usable.map((r) => StellarSdk.xdr.ScVal.scvMap([
+                    // ScMap entries must be sorted by key, and the contracttype
+                    // field order is alphabetical: amount, nullifier, proof,
+                    // recipient, root. Out of order, the host rejects the value.
+                    new StellarSdk.xdr.ScMapEntry({
+                        key: StellarSdk.xdr.ScVal.scvSymbol('amount'),
+                        val: StellarSdk.nativeToScVal(BigInt(r.amountStroops), { type: 'i128' }),
+                    }),
+                    new StellarSdk.xdr.ScMapEntry({
+                        key: StellarSdk.xdr.ScVal.scvSymbol('nullifier'),
+                        val: this.fieldScVal(r.nullifier),
+                    }),
+                    new StellarSdk.xdr.ScMapEntry({
+                        key: StellarSdk.xdr.ScVal.scvSymbol('proof'),
+                        val: this.proofScVal(r.proof),
+                    }),
+                    new StellarSdk.xdr.ScMapEntry({
+                        key: StellarSdk.xdr.ScVal.scvSymbol('recipient'),
+                        val: new StellarSdk.Address(r.recipient).toScVal(),
+                    }),
+                    new StellarSdk.xdr.ScMapEntry({
+                        key: StellarSdk.xdr.ScVal.scvSymbol('root'),
+                        val: this.fieldScVal(r.root),
+                    }),
+                ]))),
+            ))
+            .setTimeout(60)
+            .build();
+
+        return { hash: await this.submitAndConfirm(tx), settled: usable.length, rejected };
+    }
+
+    /** Would this withdrawal succeed on its own? Used to keep bad entries out of a batch. */
+    private async simulatesCleanly(request: V3WithdrawRequest): Promise<boolean> {
+        try {
+            const source = await this.server.getAccount(this.relayerKeypair.publicKey());
+            const contract = new StellarSdk.Contract(request.pool);
+            const tx = new StellarSdk.TransactionBuilder(source, {
+                fee: StellarSdk.BASE_FEE,
+                networkPassphrase: this.networkPassphrase,
+            })
+                .addOperation(contract.call(
+                    'withdraw_v3',
+                    this.proofScVal(request.proof),
+                    this.fieldScVal(request.nullifier),
+                    new StellarSdk.Address(request.recipient).toScVal(),
+                    this.fieldScVal(request.root),
+                    StellarSdk.nativeToScVal(BigInt(request.amountStroops), { type: 'i128' }),
+                ))
+                .setTimeout(60)
+                .build();
+            const sim = await this.server.simulateTransaction(tx);
+            return !StellarSdk.rpc.Api.isSimulationError(sim);
+        } catch {
+            return false;
+        }
+    }
+
+    /**
      * V3 withdraw of an arbitrary amount.
      *
      * `amount` is both the payout and a public input to the proof — the pool

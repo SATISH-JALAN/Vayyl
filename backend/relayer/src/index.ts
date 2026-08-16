@@ -168,6 +168,11 @@ async function main() {
                 enrollment: enrollmentMode,
                 // What the ASP gate actually enforces, stated rather than implied.
                 enrollmentAccess: enrollment ? (ASP_ENROLL_MODE === 'token' ? 'token' : 'open') : 'disabled',
+                // Stated so a client can see what this operator actually does,
+                // rather than inferring privacy properties from a README.
+                batching: BATCH_WINDOW_MS > 0
+                    ? { enabled: true, windowMs: BATCH_WINDOW_MS, maxPerBatch: BATCH_MAX }
+                    : { enabled: false },
             });
         } catch {
             res.json({ status: 'ok', address: relayerPubkey, nativeBalance: null, enrollment: enrollmentMode });
@@ -234,6 +239,62 @@ async function main() {
         }
     });
 
+    // ---- batching queue ----------------------------------------------------
+    // Withdrawals wait briefly so several settle in one transaction. This is a
+    // privacy mechanism, not throughput: one transaction per withdrawal
+    // preserves a countable one-to-one shape, so an observer who cannot tell
+    // WHICH note was spent can still tell HOW MANY people spent, and when.
+    //
+    // The window is a genuine trade. Longer batches mix better and make users
+    // wait; shorter ones are responsive and mix less. It is configurable rather
+    // than chosen here because the right value depends on traffic the operator
+    // can see and this code cannot.
+    const BATCH_WINDOW_MS = Number(process.env.WITHDRAW_BATCH_WINDOW_MS ?? 0);
+    const BATCH_MAX = Math.min(Number(process.env.WITHDRAW_BATCH_MAX ?? 8), 8);
+
+    interface Pending {
+        request: V3WithdrawRequest;
+        resolve: (hash: string) => void;
+        reject: (err: Error) => void;
+    }
+    let queue: Pending[] = [];
+    let batchTimer: NodeJS.Timeout | null = null;
+
+    async function flushBatch() {
+        batchTimer = null;
+        const batch = queue;
+        queue = [];
+        if (batch.length === 0) return;
+        try {
+            const { hash, settled, rejected } = await relayer.relayV3WithdrawBatch(
+                batch.map((p) => p.request));
+            if (!hash) {
+                // Every entry failed simulation. Reject individually rather than
+                // reporting a batch failure the caller cannot act on.
+                for (const p of batch) p.reject(new Error('Withdrawal was rejected on simulation.'));
+                return;
+            }
+            console.log(`Batch settled ${settled} withdrawal(s), dropped ${rejected}, tx ${hash}`);
+            for (const p of batch) p.resolve(hash);
+        } catch (err: any) {
+            for (const p of batch) p.reject(err instanceof Error ? err : new Error(String(err)));
+        }
+    }
+
+    function enqueueWithdrawal(request: V3WithdrawRequest): Promise<string> {
+        return new Promise((resolve, reject) => {
+            queue.push({ request, resolve, reject });
+            // Flush immediately at capacity: holding a full batch only adds
+            // latency without improving the mix.
+            if (queue.length >= BATCH_MAX) {
+                if (batchTimer) clearTimeout(batchTimer);
+                void flushBatch();
+                return;
+            }
+            batchTimer ??= setTimeout(() => void flushBatch(), BATCH_WINDOW_MS);
+        });
+    }
+
     app.post('/v3/transfer', async (req, res) => {
         try {
             const hash = await relayer.relayV3Transfer(req.body as V3TransferRequest);
@@ -246,8 +307,15 @@ async function main() {
 
     app.post('/v3/withdraw', async (req, res) => {
         try {
-            const hash = await relayer.relayV3Withdraw(req.body as V3WithdrawRequest);
-            res.json({ success: true, hash });
+            // Batched when a window is configured, submitted straight through
+            // when it is not. A single-user testnet with batching on would just
+            // add latency for no mixing, so the default is off and the operator
+            // turns it on when there is traffic to mix with.
+            const request = req.body as V3WithdrawRequest;
+            const hash = BATCH_WINDOW_MS > 0
+                ? await enqueueWithdrawal(request)
+                : await relayer.relayV3Withdraw(request);
+            res.json({ success: true, hash, batched: BATCH_WINDOW_MS > 0 });
         } catch (err: any) {
             console.error('V3 withdraw relay error:', err);
             res.status(400).json({ success: false, error: err?.message ?? 'Withdrawal relay failed' });

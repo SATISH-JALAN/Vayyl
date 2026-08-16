@@ -79,6 +79,14 @@ services:
         value: "128"
       - key: PORT
         value: "3002"
+      # Batched withdrawal. OFF by default: batching a service that handles one
+      # user at a time adds latency and mixes nothing. Turn it on once there is
+      # traffic to mix with, and pick the window from that traffic. Contract cap
+      # is 8 per transaction (MAX_WITHDRAW_BATCH).
+      - key: WITHDRAW_BATCH_WINDOW_MS
+        value: "0"
+      - key: WITHDRAW_BATCH_MAX
+        value: "8"
       # Signing keys. Set in the dashboard, never here.
       #
       # ASP_ADMIN_SECRET should be a key whose ONLY authority is
