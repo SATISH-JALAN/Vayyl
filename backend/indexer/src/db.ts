@@ -68,7 +68,9 @@ export class Database {
             ephemeralY: string;
             /** V3 only: the output's amount under a one-time pad. */
             amountCipher?: string;
-        }
+        },
+        /** Deposits only: the public amount, needed for clean-device recovery. */
+        depositAmount?: bigint,
     ) {
         // A commitment with no real leaf index cannot be ordered, and an
         // unordered commitment corrupts every client's Merkle path. Refuse it
@@ -82,8 +84,8 @@ export class Database {
         await this.pool.query(
             `INSERT INTO commitments
                  (pool_address, commitment_hash, leaf_index, tx_hash, ledger_sequence,
-                  source, ephemeral_x, ephemeral_y, amount_cipher)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                  source, ephemeral_x, ephemeral_y, amount_cipher, deposit_amount)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
              ON CONFLICT DO NOTHING`,
             [
                 poolAddress, commitmentHash, leafIndex, txHash, ledgerSeq,
@@ -91,6 +93,7 @@ export class Database {
                 transfer?.ephemeralX ?? null,
                 transfer?.ephemeralY ?? null,
                 transfer?.amountCipher ?? null,
+                depositAmount !== undefined ? depositAmount.toString() : null,
             ]
         );
     }
@@ -159,6 +162,30 @@ export class Database {
              ON CONFLICT DO NOTHING`,
             [poolAddress, nullifierHash, txHash, ledgerSeq]
         );
+    }
+
+    /**
+     * Deposits with their public amounts, oldest first. A wallet restoring on a
+     * clean device re-derives each deposit's blindness from its spend key, but
+     * cannot rebuild the commitment without the amount, so this feed is what
+     * makes an unspent deposit recoverable at all.
+     */
+    async getDeposits(poolAddress: string): Promise<Array<{
+        commitment: string; leafIndex: number; amountStroops: string; txHash: string;
+    }>> {
+        const result = await this.pool.query(
+            `SELECT commitment_hash, leaf_index, deposit_amount, tx_hash
+             FROM commitments
+             WHERE pool_address = $1 AND source = 'deposit' AND deposit_amount IS NOT NULL
+             ORDER BY leaf_index ASC`,
+            [poolAddress]
+        );
+        return result.rows.map(r => ({
+            commitment: r.commitment_hash,
+            leafIndex: r.leaf_index,
+            amountStroops: String(r.deposit_amount),
+            txHash: r.tx_hash,
+        }));
     }
 
     async getCommitments(poolAddress: string): Promise<string[]> {

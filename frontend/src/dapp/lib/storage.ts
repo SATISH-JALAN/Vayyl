@@ -6,7 +6,8 @@
 // its leaf index for Merkle-path reconstruction. Persisted per viewing key in
 // IndexedDB. Field-element values are stored as decimal strings (bigint-safe).
 
-import { get, set } from 'idb-keyval';
+import { get, set, del } from 'idb-keyval';
+import { seal, open, isSealed, scopedStorageKey } from './note-crypto';
 import { V2_DENOMINATION_STROOPS, V2_DENOMINATION_XLM } from './denomination';
 
 export interface ShieldedNote {
@@ -33,6 +34,13 @@ export interface ShieldedNote {
   // back from your own spend, not a payment someone made to you, and folding
   // the two together would make the activity feed misreport what happened.
   source?: 'deposit' | 'received' | 'change';
+  /**
+   * Which deposit of this wallet this was. Deposit blindness is derived from
+   * (spendKey, depositIndex) rather than drawn at random, so a clean device can
+   * re-derive it; keeping the index makes the sequence explicit and lets the
+   * next deposit continue it without colliding.
+   */
+  depositIndex?: number;
   /** Sender's one-time point R, kept for provenance on received notes. */
   ephemeralX?: string;
   ephemeralY?: string;
@@ -40,7 +48,6 @@ export interface ShieldedNote {
   txHash?: string;
 }
 
-const key = (viewingKey: string) => `vayyl_notes_${viewingKey}`;
 
 // ---- activity log ----------------------------------------------------------
 // Deposits are recoverable from notes, but a spend only flips `isSpent` — the
@@ -64,8 +71,51 @@ export interface ActivityEvent {
   timestamp: number; // ms epoch
 }
 
-const activityKey = (viewingKey: string) => `vayyl_activity_${viewingKey}`;
-const scanCursorKey = (viewingKey: string) => `vayyl_scan_cursor_${viewingKey}`;
+// ---- at-rest encryption ----------------------------------------------------
+// Notes are bearer instruments: reading one is enough to spend it. Everything
+// below goes through `seal`/`open` (see note-crypto.ts), and the IndexedDB key
+// NAMES are hashed rather than carrying the viewing key in the clear.
+//
+// The legacy names are kept only so existing wallets can be migrated. Reading
+// one is a one-time event: the record is immediately re-written sealed under
+// the new name and the plaintext deleted. Dropping the fallback instead would
+// destroy the notes of anyone who had used the app before this change, which
+// for a bearer instrument means destroying their money.
+
+const legacyNotesKey = (viewingKey: string) => `vayyl_notes_${viewingKey}`;
+const legacyActivityKey = (viewingKey: string) => `vayyl_activity_${viewingKey}`;
+const legacyCursorKey = (viewingKey: string) => `vayyl_scan_cursor_${viewingKey}`;
+
+/**
+ * Read one record, transparently migrating a legacy plaintext entry.
+ *
+ * A failed `open` propagates rather than falling back to the default. GCM
+ * authenticates, so a failure means a wrong key or a tampered store, and
+ * reporting that as "no notes" would show an empty wallet to someone whose
+ * funds are still perfectly real.
+ */
+async function readSealed<T>(
+  viewingKey: string,
+  kind: string,
+  legacyKey: string,
+  fallback: T,
+): Promise<T> {
+  const name = await scopedStorageKey(viewingKey, kind);
+  const current = await get(name);
+  if (isSealed(current)) return open<T>(viewingKey, current);
+
+  const legacy = await get(legacyKey);
+  if (legacy === undefined) return fallback;
+
+  // Found plaintext from before this change: seal it, then remove the original.
+  await set(name, await seal(viewingKey, legacy));
+  await del(legacyKey);
+  return legacy as T;
+}
+
+async function writeSealed(viewingKey: string, kind: string, value: unknown): Promise<void> {
+  await set(await scopedStorageKey(viewingKey, kind), await seal(viewingKey, value));
+}
 
 /**
  * Highest ledger already examined for incoming payments. Scanning is a trial
@@ -73,33 +123,29 @@ const scanCursorKey = (viewingKey: string) => `vayyl_scan_cursor_${viewingKey}`;
  * whole history and get slower forever.
  */
 export const getScanCursor = async (viewingKey: string): Promise<number> => {
-  const cursor = await get(scanCursorKey(viewingKey));
+  const cursor = await readSealed<number>(viewingKey, 'cursor', legacyCursorKey(viewingKey), 0);
   return typeof cursor === 'number' ? cursor : 0;
 };
 
 export const setScanCursor = async (viewingKey: string, ledger: number): Promise<void> => {
-  await set(scanCursorKey(viewingKey), ledger);
+  await writeSealed(viewingKey, 'cursor', ledger);
 };
 
-export const getActivity = async (viewingKey: string): Promise<ActivityEvent[]> => {
-  const events = await get(activityKey(viewingKey));
-  return events || [];
-};
+export const getActivity = async (viewingKey: string): Promise<ActivityEvent[]> =>
+  readSealed<ActivityEvent[]>(viewingKey, 'activity', legacyActivityKey(viewingKey), []);
 
 export const addActivity = async (viewingKey: string, event: ActivityEvent) => {
   const events = await getActivity(viewingKey);
   events.push(event);
-  await set(activityKey(viewingKey), events);
+  await writeSealed(viewingKey, 'activity', events);
 };
 
 export const saveNotes = async (viewingKey: string, notes: ShieldedNote[]) => {
-  await set(key(viewingKey), notes);
+  await writeSealed(viewingKey, 'notes', notes);
 };
 
-export const getNotes = async (viewingKey: string): Promise<ShieldedNote[]> => {
-  const notes = await get(key(viewingKey));
-  return notes || [];
-};
+export const getNotes = async (viewingKey: string): Promise<ShieldedNote[]> =>
+  readSealed<ShieldedNote[]>(viewingKey, 'notes', legacyNotesKey(viewingKey), []);
 
 /** Append a note (dedup by commitment id). */
 export const addNote = async (viewingKey: string, note: ShieldedNote) => {
@@ -131,8 +177,10 @@ export const setNoteLeafIndex = async (viewingKey: string, id: string, leafIndex
 };
 
 export const clearV2Notes = async (viewingKey: string) => {
-  await set(key(viewingKey), (await getNotes(viewingKey)).filter((note) => note.protocol !== 'v2'));
-  await set(activityKey(viewingKey), (await getActivity(viewingKey)).filter((event) => event.protocol !== 'v2'));
+  await writeSealed(viewingKey, 'notes',
+    (await getNotes(viewingKey)).filter((note) => note.protocol !== 'v2'));
+  await writeSealed(viewingKey, 'activity',
+    (await getActivity(viewingKey)).filter((event) => event.protocol !== 'v2'));
 };
 
 const backupKey = async (viewingKey: string) => {
@@ -153,8 +201,10 @@ const fromBase64 = (value: string) => Uint8Array.from(atob(value), (char) => cha
 
 export async function exportV2Backup(viewingKey: string): Promise<string> {
   const payload = JSON.stringify({
-    notes: (await getNotes(viewingKey)).filter((note) => note.protocol === 'v2'),
-    activity: (await getActivity(viewingKey)).filter((event) => event.protocol === 'v2'),
+    notes: (await getNotes(viewingKey)).filter(
+      (note) => note.protocol === 'v2' || note.protocol === 'v3'),
+    activity: (await getActivity(viewingKey)).filter(
+      (event) => event.protocol === 'v2' || event.protocol === 'v3'),
   });
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const ciphertext = await crypto.subtle.encrypt(
@@ -179,17 +229,31 @@ export async function importV2Backup(viewingKey: string, backup: string): Promis
     notes?: ShieldedNote[];
     activity?: ActivityEvent[];
   };
-  // `amountStroops` is the value the contract actually moves; validating only
-  // the display `amount` left the load-bearing field unchecked. Both are pinned
-  // to the pool denomination rather than a literal, so a future denomination
-  // change cannot leave a stale constant behind here.
+  // `amountStroops` is the value the contract actually moves, so it is the field
+  // that must be checked; validating only the display `amount` would leave the
+  // load-bearing one unchecked.
+  //
+  // V2 notes are pinned to the pool denomination. V3 notes are not, and cannot
+  // be: arbitrary amounts are the entire point, so the check is that the value
+  // is a positive integer inside the 64-bit range the circuits enforce. A note
+  // outside that range is one no proof could ever open.
   const expectedStroops = V2_DENOMINATION_STROOPS.toString();
+  const amountValid = (note: ShieldedNote) => {
+    if (note.protocol === 'v2') {
+      return note.amount === V2_DENOMINATION_XLM &&
+        (note.amountStroops === undefined || note.amountStroops === expectedStroops);
+    }
+    if (typeof note.amountStroops !== 'string' || !/^\d+$/.test(note.amountStroops)) return false;
+    const stroops = BigInt(note.amountStroops);
+    return stroops >= 0n && stroops < 1n << 64n;
+  };
   if (!Array.isArray(payload.notes) || !payload.notes.every((note) =>
-    note?.protocol === 'v2' && note.asset === 'XLM' && note.amount === V2_DENOMINATION_XLM &&
-    (note.amountStroops === undefined || note.amountStroops === expectedStroops) &&
+    (note?.protocol === 'v2' || note?.protocol === 'v3') && note.asset === 'XLM' &&
+    amountValid(note) &&
     typeof note.id === 'string' && /^\d+$/.test(note.commitment) && /^\d+$/.test(note.nullifier) &&
     /^\d+$/.test(note.blindness) && typeof note.pool === 'string' && Number.isInteger(note.leafIndex) &&
-    (note.source === undefined || note.source === 'deposit' || note.source === 'received') &&
+    (note.source === undefined || note.source === 'deposit' ||
+      note.source === 'received' || note.source === 'change') &&
     (note.ephemeralX === undefined || /^\d+$/.test(note.ephemeralX)) &&
     (note.ephemeralY === undefined || /^\d+$/.test(note.ephemeralY))
   )) {
@@ -204,8 +268,10 @@ export async function importV2Backup(viewingKey: string, backup: string): Promis
   const existingActivity = await getActivity(viewingKey);
   const mergedActivity = new Map(existingActivity.map((event) => [event.id, event]));
   for (const event of payload.activity ?? []) {
-    if (event?.protocol === 'v2' && typeof event.id === 'string') mergedActivity.set(event.id, event);
+    if ((event?.protocol === 'v2' || event?.protocol === 'v3') && typeof event.id === 'string') {
+      mergedActivity.set(event.id, event);
+    }
   }
-  await set(activityKey(viewingKey), [...mergedActivity.values()]);
+  await writeSealed(viewingKey, 'activity', [...mergedActivity.values()]);
   return payload.notes.length;
 }

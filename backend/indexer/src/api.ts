@@ -74,6 +74,15 @@ export function createApi(db: Database, poolAddress: string, network: string): e
         }
     });
 
+    /** Deposits with public amounts — the clean-device recovery feed. */
+    app.get('/deposits', async (req, res) => {
+        try {
+            res.json({ deposits: await db.getDeposits(poolAddress) });
+        } catch (err: any) {
+            res.status(500).json({ error: err.message });
+        }
+    });
+
     app.get('/nullifiers', async (req, res) => {
         try {
             const nullifiers = await db.getNullifiers(poolAddress);

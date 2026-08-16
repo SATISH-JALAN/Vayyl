@@ -162,6 +162,94 @@ export async function deriveOutgoingNoteV3(
   };
 }
 
+// ============================================================
+// Deposits have to be re-derivable too
+// ============================================================
+// A received note and a change note are both recoverable on a clean device,
+// because the sender's ephemeral point is on-chain and the blindness comes out
+// of ECDH. A DEPOSIT is not: the depositor picks its blindness themselves, and
+// if that is a random value held only in browser storage then clearing the
+// profile destroys the note. "Recover your balance from your wallet alone" is
+// false the moment any of that balance sits in an unspent deposit.
+//
+// So deposit blindness is derived, not drawn:
+//
+//     blindness_i = Poseidon2(spendKey, TAG_DEPOSIT + i)
+//
+// for the wallet's i-th deposit. A rescan re-derives the sequence and matches it
+// against the deposits the indexer reports, whose amounts are public on-chain.
+// Nothing is weakened: the value is still unpredictable to anyone without the
+// spend key, and it is now reproducible by the one person who should be able to.
+//
+// The offset keeps this clear of TAG_ECDH_BLINDNESS (0), TAG_ECDH_AMOUNT (1)
+// and keys.ts's TAG_SPEND (1), which share the Poseidon2 namespace.
+const TAG_DEPOSIT = 1_000_000n;
+
+/** Blindness for the wallet's `index`-th deposit. Deterministic by design. */
+export async function deriveDepositBlindness(spendKey: bigint, index: number): Promise<bigint> {
+  if (!Number.isInteger(index) || index < 0) throw new Error('Deposit index must be a non-negative integer.');
+  return poseidon2Hash2(spendKey, TAG_DEPOSIT + BigInt(index));
+}
+
+/** A deposit leaf as the indexer reports it. The amount is public on-chain. */
+export interface IndexedDeposit {
+  commitment: string;
+  leafIndex: number;
+  /** Decimal stroops, from the Deposit event. */
+  amountStroops: string;
+  txHash?: string;
+}
+
+export interface RecoveredDeposit {
+  commitment: string;
+  blindness: string;
+  amountStroops: string;
+  leafIndex: number;
+  /** Which deposit of this wallet it was; needed to continue the sequence. */
+  depositIndex: number;
+  txHash?: string;
+}
+
+/**
+ * Rediscover this wallet's own deposits from public data plus the spend key.
+ *
+ * `maxIndex` bounds the search. It has to exist because the sequence is
+ * unbounded in principle, and it is generous rather than tight: stopping at the
+ * first miss would be wrong, since a wallet can deposit, spend, and deposit
+ * again, leaving gaps in which indices are still unspent.
+ */
+export async function recoverOwnDeposits(
+  spendKey: bigint,
+  pubX: bigint,
+  pubY: bigint,
+  deposits: IndexedDeposit[],
+  maxIndex = 64,
+): Promise<RecoveredDeposit[]> {
+  // Precompute the candidate blindnesses once, then match every deposit against
+  // them: the alternative rehashes the whole sequence per leaf.
+  const candidates: bigint[] = [];
+  for (let i = 0; i <= maxIndex; i++) candidates.push(await deriveDepositBlindness(spendKey, i));
+
+  const found: RecoveredDeposit[] = [];
+  for (const deposit of deposits) {
+    const target = BigInt(`0x${deposit.commitment.replace(/^0x/, '')}`);
+    const amount = BigInt(deposit.amountStroops);
+    for (let i = 0; i < candidates.length; i++) {
+      if ((await poseidon2Hash4(amount, pubX, pubY, candidates[i])) !== target) continue;
+      found.push({
+        commitment: target.toString(),
+        blindness: candidates[i].toString(),
+        amountStroops: deposit.amountStroops,
+        leafIndex: deposit.leafIndex,
+        depositIndex: i,
+        txHash: deposit.txHash,
+      });
+      break;
+    }
+  }
+  return found;
+}
+
 export interface IndexedTransferV3 {
   commitment: string;
   leafIndex: number;

@@ -17,7 +17,9 @@ import {
   deriveOutgoingNoteV3,
   scanForIncomingNotes,
   scanForIncomingNotesV3,
+  recoverOwnDeposits,
   randomScalar,
+  type IndexedDeposit,
   type IndexedTransfer,
   type IndexedTransferV3,
 } from './transfer';
@@ -162,6 +164,13 @@ interface V3TransferPayload {
   recipientPubY: string;
   /** What the recipient receives; the remainder returns as change. */
   amountStroops: string;
+}
+
+interface V3RecoverDepositsPayload {
+  spendKey: string;
+  pubX: string;
+  pubY: string;
+  deposits: IndexedDeposit[];
 }
 
 interface V3ScanPayload {
@@ -382,6 +391,19 @@ self.onmessage = async (e: MessageEvent) => {
             pubX: in1.pubX,
             pubY: in1.pubY,
           },
+        };
+        break;
+      }
+
+      // Rediscover this wallet's OWN deposits. Receipts and change come back
+      // through ECDH; a deposit has no sender but the depositor, so it is only
+      // recoverable because its blindness is derived from the spend key.
+      case 'RECOVER_DEPOSITS': {
+        const p = payload as V3RecoverDepositsPayload;
+        result = {
+          deposits: await recoverOwnDeposits(
+            BigInt(p.spendKey), BigInt(p.pubX), BigInt(p.pubY), p.deposits,
+          ),
         };
         break;
       }

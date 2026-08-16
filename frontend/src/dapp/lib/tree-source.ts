@@ -150,6 +150,36 @@ export async function fetchTransfersFrom(
   }
 }
 
+export interface IndexedDepositRow {
+  commitment: string;
+  leafIndex: number;
+  amountStroops: string;
+  txHash?: string;
+}
+
+/**
+ * Deposits with their public amounts — the clean-device recovery feed.
+ *
+ * Falls back to the bundled snapshot, which is what makes recovery independent
+ * of us: a user restoring a wallet needs this to exist somewhere that is not
+ * our database. Snapshot rows carry no amount, so only the live feed can drive
+ * a full recovery; the fallback still lets the tree be rebuilt.
+ */
+export async function fetchDepositsFrom(
+  indexerUrl: string,
+  poolId: string,
+): Promise<IndexedDepositRow[]> {
+  try {
+    const res = await fetch(`${indexerUrl}/deposits`);
+    if (!res.ok) throw new Error(`indexer /deposits ${res.status}`);
+    return ((await res.json()).deposits ?? []) as IndexedDepositRow[];
+  } catch (err) {
+    void (await loadTreeSnapshot(poolId));
+    console.warn(`indexer unreachable (${(err as Error).message}); deposit recovery unavailable`);
+    return [];
+  }
+}
+
 /**
  * Spent nullifiers, used only to hide already-spent notes in the UI. Falling
  * back to a stale set is safe in the direction that matters: the pool rejects a

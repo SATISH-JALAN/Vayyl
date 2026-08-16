@@ -197,6 +197,8 @@ export class Poller {
                         decoded.leafIndex,
                         txHash,
                         ledgerSeq,
+                        undefined,
+                        decoded.amount,
                     );
                     console.log(
                         `Deposit: commitment=${decoded.commitment.slice(0, 12)}… leaf=${decoded.leafIndex} amount=${decoded.amount}`,

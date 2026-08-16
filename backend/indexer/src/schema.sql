@@ -24,6 +24,13 @@ ALTER TABLE commitments ADD COLUMN IF NOT EXISTS ephemeral_y VARCHAR(64);
 -- rows, whose amount was a fixed constant everybody already knew.
 ALTER TABLE commitments ADD COLUMN IF NOT EXISTS amount_cipher VARCHAR(64);
 
+-- Deposit amounts are PUBLIC on-chain (the token transfer is visible either
+-- way), and a wallet restoring on a clean device needs them: it re-derives each
+-- deposit's blindness from its spend key, but cannot rebuild the commitment
+-- without also knowing the amount. Null for transfer outputs, whose amounts are
+-- private and travel encrypted in amount_cipher instead.
+ALTER TABLE commitments ADD COLUMN IF NOT EXISTS deposit_amount NUMERIC(39, 0);
+
 -- Repair, then make the bug unrepresentable. Rows with leaf_index = -1 (written
 -- by an older build for V1 transfer events, which carry no index) sort ahead of
 -- every deposit under `ORDER BY leaf_index ASC`, shifting every leaf index and

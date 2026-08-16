@@ -23,9 +23,12 @@ import { BASE8, mulPointEscalar } from './babyjub.ts';
 import {
   deriveOutgoingNoteV3,
   scanForIncomingNotesV3,
+  deriveDepositBlindness,
+  recoverOwnDeposits,
   randomScalar,
   type IndexedTransferV3,
 } from './transfer.ts';
+import { poseidon2Hash4 } from './poseidon.ts';
 
 const hex = (v: bigint) => v.toString(16).padStart(64, '0');
 
@@ -134,6 +137,83 @@ test('rejects a note whose recovered amount exceeds 64 bits', async () => {
   const tampered = asEvent(out);
   tampered.amountCipher = hex(BigInt(`0x${tampered.amountCipher}`) + (1n << 100n));
   assert.equal((await scanForIncomingNotesV3(sk, pk[0], pk[1], [tampered])).length, 0);
+});
+
+// ---- deposits must be recoverable too --------------------------------------
+// Receipts and change come back through ECDH because the sender's ephemeral
+// point is on-chain. A deposit has no sender but the depositor, so if its
+// blindness were a local random value, clearing the browser would destroy every
+// unspent deposit — and "recover your balance from your wallet alone" would be
+// false for anyone holding one.
+
+test('a wallet rediscovers its own deposits from the spend key alone', async () => {
+  const spendKey = randomScalar();
+  const pk = mulPointEscalar(BASE8, spendKey);
+
+  // Two deposits of different, non-denomination amounts.
+  const amounts = [1_000_000_000n, 370_000_000n];
+  const deposits = [];
+  for (const [i, amount] of amounts.entries()) {
+    const blindness = await deriveDepositBlindness(spendKey, i);
+    const commitment = await poseidon2Hash4(amount, pk[0], pk[1], blindness);
+    deposits.push({
+      commitment: commitment.toString(16).padStart(64, '0'),
+      leafIndex: i,
+      amountStroops: amount.toString(),
+    });
+  }
+
+  const recovered = await recoverOwnDeposits(spendKey, pk[0], pk[1], deposits);
+  assert.equal(recovered.length, 2);
+  assert.deepEqual(recovered.map((d) => d.amountStroops), ['1000000000', '370000000']);
+  assert.deepEqual(recovered.map((d) => d.depositIndex), [0, 1]);
+});
+
+test('deposit recovery finds a note at a non-contiguous index', async () => {
+  // A wallet can deposit, spend, and deposit again, so the surviving indices
+  // have gaps. Stopping the search at the first miss would lose the later note.
+  const spendKey = randomScalar();
+  const pk = mulPointEscalar(BASE8, spendKey);
+  const amount = 500_000_000n;
+  const blindness = await deriveDepositBlindness(spendKey, 7);
+  const commitment = await poseidon2Hash4(amount, pk[0], pk[1], blindness);
+
+  const recovered = await recoverOwnDeposits(spendKey, pk[0], pk[1], [{
+    commitment: commitment.toString(16).padStart(64, '0'),
+    leafIndex: 3,
+    amountStroops: amount.toString(),
+  }]);
+  assert.equal(recovered.length, 1);
+  assert.equal(recovered[0].depositIndex, 7);
+});
+
+test('another wallet cannot claim someone else\'s deposit', async () => {
+  const owner = randomScalar();
+  const ownerPk = mulPointEscalar(BASE8, owner);
+  const amount = 500_000_000n;
+  const commitment = await poseidon2Hash4(
+    amount, ownerPk[0], ownerPk[1], await deriveDepositBlindness(owner, 0),
+  );
+
+  const stranger = randomScalar();
+  const strangerPk = mulPointEscalar(BASE8, stranger);
+  const recovered = await recoverOwnDeposits(stranger, strangerPk[0], strangerPk[1], [{
+    commitment: commitment.toString(16).padStart(64, '0'),
+    leafIndex: 0,
+    amountStroops: amount.toString(),
+  }]);
+  assert.equal(recovered.length, 0);
+});
+
+test('deposit blindness is deterministic and distinct per index', async () => {
+  // Deterministic is the whole point: reproducible by the owner, unpredictable
+  // to everyone else. Repeating across indices would reuse a blindness and make
+  // two deposits of equal value share a commitment.
+  const spendKey = randomScalar();
+  const a = await deriveDepositBlindness(spendKey, 0);
+  assert.equal(a, await deriveDepositBlindness(spendKey, 0));
+  assert.notEqual(a, await deriveDepositBlindness(spendKey, 1));
+  assert.notEqual(a, await deriveDepositBlindness(randomScalar(), 0));
 });
 
 test('a malformed ephemeral point is skipped, not fatal', async () => {
