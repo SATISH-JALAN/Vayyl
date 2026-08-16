@@ -161,6 +161,23 @@ pub const V2_DENOMINATION: i128 = 10_000_000;
 pub const PERSISTENT_TTL_THRESHOLD: u32 = 1_000_000;
 pub const PERSISTENT_TTL_EXTEND: u32 = 3_000_000;
 
+/// Most withdrawals one transaction may settle. Each costs a Groth16
+/// verification plus a token transfer, and `tx_max_instructions` is 400M on the
+/// live network; the cap keeps a batch well inside that so it cannot fail after
+/// the relayer has already paid the fee. Raise only with a measured budget.
+pub const MAX_WITHDRAW_BATCH: u32 = 8;
+
+/// One withdrawal inside a batch. Mirrors the arguments of `withdraw_v3`.
+#[contracttype]
+#[derive(Clone)]
+pub struct WithdrawV3Request {
+    pub proof: Groth16Proof,
+    pub nullifier: BytesN<32>,
+    pub recipient: Address,
+    pub root: BytesN<32>,
+    pub amount: i128,
+}
+
 #[contracttype]
 #[derive(Clone)]
 pub enum DataKey {
@@ -189,6 +206,14 @@ pub enum DataKey {
     /// pool that is upgraded and never configured enforces by default; disabling
     /// is an explicit, visible admin decision. See `assert_nullifier_not_blocked`.
     BlocklistEnabled,
+    /// Running count of spent nullifiers. Needed because the anonymity set is
+    /// `leaves - spends`, and the pool otherwise has no way to know the second
+    /// term: nullifiers are stored under individual keys and Soroban cannot
+    /// enumerate them.
+    SpentCount,
+    /// Minimum unspent notes required before a withdrawal is allowed. Absent or
+    /// zero means no floor. See `assert_anonymity_floor`.
+    AnonymityFloor,
 }
 
 #[contracterror]
@@ -223,6 +248,18 @@ pub enum Error {
     /// it never performed. Note this never traps funds — `ragequit_v2` does not
     /// consult the blocklist and remains available.
     BlocklistUnavailable = 14,
+    /// The pool holds fewer unspent notes than the configured anonymity floor,
+    /// so a withdrawal now would be trivially linkable to its deposit. Not a
+    /// permanent refusal: it clears as soon as enough other notes exist, and
+    /// `ragequit_v2` is deliberately never gated on it.
+    AnonymitySetTooSmall = 15,
+    /// `withdraw_v3_batch` was called with no requests. Rejected rather than
+    /// treated as a no-op so a mis-assembled batch is visible to its caller.
+    EmptyBatch = 16,
+    /// Batch exceeds `MAX_WITHDRAW_BATCH`. Refused up front, because the
+    /// alternative is exhausting the instruction budget mid-transaction after
+    /// the relayer has paid.
+    BatchTooLarge = 17,
 }
 
 #[contract]
@@ -581,6 +618,68 @@ impl VayylPool {
             PERSISTENT_TTL_THRESHOLD,
             PERSISTENT_TTL_EXTEND,
         );
+        // Counted here rather than derived later: nullifiers live under
+        // individual storage keys and Soroban cannot enumerate them, so this is
+        // the only place the total can be maintained.
+        let spent: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::SpentCount)
+            .unwrap_or(0);
+        env.storage()
+            .instance()
+            .set(&DataKey::SpentCount, &spent.saturating_add(1));
+        Ok(())
+    }
+
+    /// Unspent notes currently in the pool: the real anonymity set.
+    ///
+    /// This is a LOWER BOUND, and deliberately so. A V3 transfer from a wallet
+    /// holding one note spends a dummy second input, which consumes a nullifier
+    /// without retiring a leaf, so the figure can understate the true count.
+    /// Understating is the safe direction: it makes the floor stricter, never
+    /// laxer. Correcting it would mean publishing whether an input was a dummy,
+    /// which reveals how many notes the sender held — a privacy regression in a
+    /// function whose whole purpose is protecting privacy.
+    fn unspent_notes(env: &Env) -> u32 {
+        let leaves: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::TreeNextIndex)
+            .unwrap_or(0);
+        let spent: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::SpentCount)
+            .unwrap_or(0);
+        leaves.saturating_sub(spent)
+    }
+
+    /// Refuse a withdrawal while the crowd is too small to hide in.
+    ///
+    /// Cryptography delivers unlinkability WITHIN a set; it cannot manufacture
+    /// the set. A withdrawal from a pool holding two unspent notes is linkable
+    /// to its deposit by inspection, no matter how sound the proof is. Most
+    /// shielded pools leave this implicit and let the user assume a guarantee
+    /// the set size does not support; here it is enforced where it cannot be
+    /// ignored.
+    ///
+    /// Only withdrawals are gated. Deposits grow the set. Transfers keep value
+    /// inside the pool and retire as many notes as they create. `ragequit_v2` is
+    /// never gated: it is the escape hatch, and blocking it on a floor would
+    /// rebuild exactly the trap that entrypoint exists to remove.
+    fn assert_anonymity_floor(env: &Env) -> Result<(), Error> {
+        let floor: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::AnonymityFloor)
+            .unwrap_or(0);
+        if floor == 0 {
+            return Ok(());
+        }
+        if Self::unspent_notes(env) < floor {
+            return Err(Error::AnonymitySetTooSmall);
+        }
         Ok(())
     }
 
@@ -798,6 +897,7 @@ impl VayylPool {
         if !Self::is_known_root(&env, &root) {
             return Err(Error::UnknownRoot);
         }
+        Self::assert_anonymity_floor(&env)?;
         assert_nullifier_not_blocked(&env, &nullifier)?;
         Self::mark_nullifier(&env, nullifier.clone())?;
 
@@ -1066,12 +1166,26 @@ impl VayylPool {
         amount: i128,
     ) -> Result<(), Error> {
         Self::assert_v2_mode(&env)?;
+        Self::withdraw_v3_one(&env, proof, nullifier, recipient, root, amount)
+    }
+
+    /// One withdrawal's worth of work, shared by the single and batch paths.
+    fn withdraw_v3_one(
+        env: &Env,
+        proof: Groth16Proof,
+        nullifier: BytesN<32>,
+        recipient: Address,
+        root: BytesN<32>,
+        amount: i128,
+    ) -> Result<(), Error> {
+        let env = env.clone();
         if amount <= 0 {
             return Err(Error::InvalidAmount);
         }
         if !Self::is_known_root(&env, &root) {
             return Err(Error::UnknownRoot);
         }
+        Self::assert_anonymity_floor(&env)?;
         assert_nullifier_not_blocked(&env, &nullifier)?;
         Self::mark_nullifier(&env, nullifier.clone())?;
 
@@ -1109,6 +1223,43 @@ impl VayylPool {
             amount,
         }
         .publish(&env);
+        Ok(())
+    }
+
+    /// Settle several withdrawals in ONE transaction.
+    ///
+    /// Not an optimisation — a privacy primitive. One transaction per withdrawal
+    /// preserves a one-to-one shape an observer can simply count, which
+    /// reintroduces at the network layer the linkability the circuits remove at
+    /// the protocol layer. Batching breaks that correspondence: a single ledger
+    /// entry settles N payouts and an observer cannot tell which recipient
+    /// belongs to which spend.
+    ///
+    /// It has to live in the contract because Soroban permits exactly ONE
+    /// InvokeHostFunction operation per transaction. Verified against the live
+    /// network, which rejects a two-operation transaction outright with
+    /// "Transaction contains more than one operation", so the usual approach of
+    /// bundling operations client-side is not available here.
+    ///
+    /// **All or nothing.** One bad proof reverts the whole batch, so a relayer
+    /// assembling requests from untrusted callers must simulate each before
+    /// including it, or a single malformed entry becomes a cheap way to grief
+    /// everyone else in the batch. The relayer does exactly that.
+    ///
+    /// Capped, because every entry costs a Groth16 verification and a token
+    /// transfer. Exceeding the instruction budget would fail the transaction
+    /// after the relayer had already paid its fee.
+    pub fn withdraw_v3_batch(env: Env, requests: Vec<WithdrawV3Request>) -> Result<(), Error> {
+        Self::assert_v2_mode(&env)?;
+        if requests.is_empty() {
+            return Err(Error::EmptyBatch);
+        }
+        if requests.len() > MAX_WITHDRAW_BATCH {
+            return Err(Error::BatchTooLarge);
+        }
+        for r in requests.iter() {
+            Self::withdraw_v3_one(&env, r.proof, r.nullifier, r.recipient, r.root, r.amount)?;
+        }
         Ok(())
     }
 
@@ -1283,6 +1434,59 @@ impl VayylPool {
         }
         .publish(&env);
 
+        Ok(())
+    }
+
+    /// Admin: set the minimum unspent notes required before a withdrawal.
+    ///
+    /// Zero disables the floor. There is no safe non-zero default: the right
+    /// number is a policy judgement about how much of a crowd is enough, and
+    /// silently imposing one on an upgraded pool would strand every holder.
+    pub fn set_anonymity_floor(env: Env, floor: u32) -> Result<(), Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+        env.storage()
+            .instance()
+            .set(&DataKey::AnonymityFloor, &floor);
+        Ok(())
+    }
+
+    /// The configured floor. Zero means withdrawals are never gated on set size.
+    pub fn anonymity_floor(env: Env) -> u32 {
+        env.storage()
+            .instance()
+            .get(&DataKey::AnonymityFloor)
+            .unwrap_or(0)
+    }
+
+    /// Unspent notes in the pool: the crowd a withdrawal actually hides in.
+    ///
+    /// Read this before committing funds. It is the number the privacy of a
+    /// spend rests on, and it is a lower bound — see `unspent_notes`.
+    pub fn unspent_note_count(env: Env) -> u32 {
+        Self::unspent_notes(&env)
+    }
+
+    /// Admin: set the spent-nullifier baseline when upgrading a pool that
+    /// already has spends.
+    ///
+    /// The counter is maintained from the upgrade forward, so on a pool with
+    /// prior history it starts at zero and `unspent_note_count` reads high —
+    /// the UNSAFE direction, since it would report a larger crowd than exists.
+    /// This exists to correct that once, from the spend count the operator can
+    /// read off the indexer. Setting it wrongly high is safe; wrongly low is not.
+    pub fn sync_spent_count(env: Env, spent: u32) -> Result<(), Error> {
+        let admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::NotInitialized)?;
+        admin.require_auth();
+        env.storage().instance().set(&DataKey::SpentCount, &spent);
         Ok(())
     }
 

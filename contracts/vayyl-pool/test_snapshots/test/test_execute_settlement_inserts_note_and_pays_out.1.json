@@ -540,6 +540,18 @@
                       "key": {
                         "vec": [
                           {
+                            "symbol": "SpentCount"
+                          }
+                        ]
+                      },
+                      "val": {
+                        "u32": 1
+                      }
+                    },
+                    {
+                      "key": {
+                        "vec": [
+                          {
                             "symbol": "TreeNextIndex"
                           }
                         ]

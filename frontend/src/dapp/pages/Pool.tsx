@@ -20,7 +20,7 @@ export default function Pool() {
   const [activeMode, setActiveMode] = useState<PoolMode>('deposit');
   const [copied, setCopied] = useState(false);
   const keys = useWalletStore((state) => state.keys);
-  const { fetchState } = usePoolStore();
+  const { fetchState, anonymitySet } = usePoolStore();
 
   useEffect(() => {
     if (keys) void fetchState();
@@ -49,9 +49,9 @@ export default function Pool() {
       <header className="dapp-page-header">
         <div>
           <h1 className="dapp-page-title">XLM Vault</h1>
-          <p className="dapp-page-subtitle">Shield, send privately, and unshield a 1 XLM note.</p>
+          <p className="dapp-page-subtitle">Shield any amount, send it privately, and unshield.</p>
         </div>
-        <span className="dapp-badge">1 XLM note</span>
+        <span className="dapp-badge">Any amount</span>
       </header>
 
       <div className="dapp-grid dapp-grid--pool">
@@ -75,6 +75,55 @@ export default function Pool() {
             : activeMode === 'transfer' ? <TransferForm />
               : <WithdrawForm />}
         </div>
+
+        {/*
+          The crowd, stated before the user commits funds rather than after.
+          Cryptography gives unlinkability WITHIN a set and cannot manufacture
+          the set, so a pool holding a handful of notes offers little practical
+          privacy however sound the proofs are. Most shielded pools leave this
+          implicit and let users assume a guarantee the size does not support.
+          Read live from the pool, which is also what enforces the floor.
+        */}
+        <Card>
+          <div className="dapp-card__header">
+            <div>
+              <h2 className="dapp-card__title">Anonymity set</h2>
+              <p className="dapp-card__description">
+                How many unspent notes a withdrawal hides among right now.
+              </p>
+            </div>
+            {anonymitySet ? (
+              <span
+                className={`dapp-badge ${
+                  anonymitySet.floor > 0 && anonymitySet.unspent < anonymitySet.floor
+                    ? 'dapp-badge--warning'
+                    : 'dapp-badge--success'
+                }`}
+              >
+                {anonymitySet.unspent} note{anonymitySet.unspent === 1 ? '' : 's'}
+              </span>
+            ) : null}
+          </div>
+
+          {anonymitySet ? (
+            <p className="dapp-helper">
+              {anonymitySet.floor === 0
+                ? `No minimum is enforced on this pool. At ${anonymitySet.unspent} unspent ` +
+                  `note${anonymitySet.unspent === 1 ? '' : 's'}, treat timing and amount ` +
+                  `correlation as the real risk rather than the cryptography.`
+                : anonymitySet.unspent < anonymitySet.floor
+                  ? `Withdrawals are paused until the pool holds ${anonymitySet.floor} unspent ` +
+                    `notes. Deposits and private sends still work, and the public exit is ` +
+                    `never blocked.`
+                  : `Above the enforced minimum of ${anonymitySet.floor}. Withdrawals are open.`}
+            </p>
+          ) : (
+            <p className="dapp-helper">
+              This pool does not report a set size, so the crowd you are hiding in
+              cannot be verified from here.
+            </p>
+          )}
+        </Card>
 
         <Card>
           <div className="dapp-card__header">

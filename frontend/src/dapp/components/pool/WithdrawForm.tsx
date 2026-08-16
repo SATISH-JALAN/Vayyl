@@ -10,10 +10,21 @@ export default function WithdrawForm() {
   const [destination, setDestination] = useState('');
   const [showExit, setShowExit] = useState(false);
   const [exitAcknowledged, setExitAcknowledged] = useState(false);
-  const { withdraw, ragequit, isProving, shieldedBalance, notes, activity, status } = usePoolStore();
+  const [selectedNoteId, setSelectedNoteId] = useState('');
+  const { withdrawV3, ragequit, isProving, notes, activity, status } = usePoolStore();
   const { address } = useWalletStore();
   const isError = !!status && /failed|error/i.test(status);
-  const activeNotes = notes.filter((note) => !note.isSpent);
+  // Withdraw spends ONE WHOLE note: there is no change circuit on this path.
+  // So the user picks a note rather than typing an amount, which makes the
+  // constraint obvious instead of surfacing it as a rejected amount.
+  const activeNotes = notes.filter((note) => !note.isSpent && note.amountStroops);
+  const fmt = (raw: string) => {
+    const v = BigInt(raw);
+    const whole = v / 10_000_000n;
+    const frac = (v % 10_000_000n).toString().padStart(7, '0').replace(/0+$/, '');
+    return frac ? `${whole}.${frac}` : whole.toString();
+  };
+  const selected = activeNotes.find((n) => n.id === selectedNoteId) ?? activeNotes[0];
   const confirmedHash =
     status?.match(/^Withdraw confirmed: ([a-f0-9]{64})$/i)?.[1] ??
     [...activity]
@@ -22,10 +33,10 @@ export default function WithdrawForm() {
 
   const handleWithdraw = async (e: FormEvent) => {
     e.preventDefault();
-    if (!destination) return;
+    if (!destination || !selected) return;
 
     try {
-      await withdraw(destination);
+      await withdrawV3(destination, selected.amountStroops!);
       setDestination('');
     } catch (error) {
       console.error(error);
@@ -64,10 +75,35 @@ export default function WithdrawForm() {
           onChange={(e) => setDestination(e.target.value)}
           disabled={isProving}
         />
-        <Input label="Amount" value="1 XLM" disabled readOnly helperText={`${shieldedBalance} XLM available across ${activeNotes.length} active fixed note${activeNotes.length === 1 ? '' : 's'}.`} />
+        <div className="dapp-form-group">
+          <label className="dapp-label" htmlFor="withdraw-note">Note to unshield</label>
+          <select
+            id="withdraw-note"
+            className="dapp-input"
+            value={selected?.id ?? ''}
+            onChange={(e) => setSelectedNoteId(e.target.value)}
+            disabled={isProving || activeNotes.length === 0}
+          >
+            {activeNotes.map((note) => (
+              <option key={note.id} value={note.id}>
+                {fmt(note.amountStroops!)} XLM
+              </option>
+            ))}
+          </select>
+          <p className="dapp-helper">
+            A withdrawal spends one whole note. To take out part of one, send
+            yourself the amount first, then unshield the note that comes back.
+          </p>
+        </div>
 
-        <Button type="submit" disabled={isProving || !destination || !address || activeNotes.length === 0}>
-          {!address ? 'Connect wallet first' : activeNotes.length === 0 ? 'No spendable note' : isProving ? 'Generating proof' : 'Unshield 1 XLM'}
+        <Button type="submit" disabled={isProving || !destination || !address || !selected}>
+          {!address
+            ? 'Connect wallet first'
+            : !selected
+              ? 'No spendable note'
+              : isProving
+                ? 'Generating proof'
+                : `Unshield ${fmt(selected.amountStroops!)} XLM`}
         </Button>
 
         {confirmedHash ? (
@@ -126,7 +162,7 @@ export default function WithdrawForm() {
               onClick={handleRageQuit}
               disabled={isProving || !destination || !address || !exitAcknowledged || activeNotes.length === 0}
             >
-              {!destination ? 'Enter a destination above' : isProving ? 'Generating proof' : 'Exit publicly (1 XLM)'}
+              {!destination ? 'Enter a destination above' : isProving ? 'Generating proof' : 'Exit publicly'}
             </Button>
           </div>
         ) : null}

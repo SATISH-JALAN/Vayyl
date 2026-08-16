@@ -6,14 +6,46 @@ import Input from '../common/Input';
 import { usePoolStore } from '../../store/pool';
 import { useWalletStore } from '../../store/wallet';
 import { decodeShieldedAddress } from '../../lib/address';
+import { xlmToStroops } from '../../lib/amount';
+import { maxSendableInOneTransfer, totalSpendable } from '../../lib/note-selection';
 
 export default function TransferForm() {
   const [recipient, setRecipient] = useState('');
-  const { transfer, isProving, shieldedBalance, notes, activity, status } = usePoolStore();
+  const [amount, setAmount] = useState('');
+  const { transferV3, isProving, notes, activity, status } = usePoolStore();
   const { address } = useWalletStore();
 
   const isError = !!status && /failed|error/i.test(status);
-  const activeNotes = notes.filter((note) => !note.isSpent);
+  const activeNotes = notes.filter((note) => !note.isSpent && note.amountStroops);
+  const selectable = activeNotes.map((n) => ({ id: n.id, amountStroops: n.amountStroops! }));
+
+  // Balance and per-transfer ceiling are DIFFERENT numbers, and showing only
+  // the balance is how a user hits a confusing failure after waiting out a
+  // proof: a transfer spends at most two notes, so a fragmented wallet can hold
+  // far more than it can send in one go.
+  const balance = totalSpendable(selectable);
+  const maxSendable = maxSendableInOneTransfer(selectable);
+  const fmt = (v: bigint) => {
+    const whole = v / 10_000_000n;
+    const frac = (v % 10_000_000n).toString().padStart(7, '0').replace(/0+$/, '');
+    return frac ? `${whole}.${frac}` : whole.toString();
+  };
+
+  let amountError: string | null = null;
+  let stroops: bigint | null = null;
+  if (amount.trim()) {
+    try {
+      stroops = xlmToStroops(amount);
+      if (stroops > maxSendable) {
+        amountError =
+          `One transfer spends at most two notes, which together hold ` +
+          `${fmt(maxSendable)} XLM. Send yourself a payment first to combine them.`;
+        stroops = null;
+      }
+    } catch (e) {
+      amountError = (e as Error).message;
+    }
+  }
 
   // Validate as the user types. A malformed address would otherwise surface
   // only after a ~10s proof, and one that is well-formed but wrong produces a
@@ -38,11 +70,12 @@ export default function TransferForm() {
 
   const handleTransfer = async (e: FormEvent) => {
     e.preventDefault();
-    if (!recipientValid) return;
+    if (!recipientValid || !stroops) return;
 
     try {
-      await transfer(recipient.trim());
+      await transferV3(recipient.trim(), stroops.toString());
       setRecipient('');
+      setAmount('');
     } catch (error) {
       console.error(error);
     }
@@ -54,11 +87,11 @@ export default function TransferForm() {
         <div>
           <h2 className="dapp-card__title">Send privately</h2>
           <p className="dapp-card__description">
-            Move one note to another Vayyl address. Nothing leaves the pool, and
-            neither party appears on the ledger.
+            Send any amount to another Vayyl address. Nothing leaves the pool,
+            the amount never touches the ledger, and neither party appears on it.
           </p>
         </div>
-        <span className="dapp-badge dapp-badge--warning">Whole note</span>
+        <span className="dapp-badge dapp-badge--success">Amount hidden</span>
       </div>
 
       <form className="dapp-form" onSubmit={handleTransfer}>
@@ -75,20 +108,31 @@ export default function TransferForm() {
         />
         <Input
           label="Amount"
-          value="1 XLM"
-          disabled
-          readOnly
-          helperText={`${shieldedBalance} XLM available across ${activeNotes.length} active fixed note${activeNotes.length === 1 ? '' : 's'}.`}
+          placeholder="0.0"
+          inputMode="decimal"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+          disabled={isProving}
+          helperText={
+            amountError ??
+            `${fmt(balance)} XLM across ${activeNotes.length} note${activeNotes.length === 1 ? '' : 's'}` +
+            (maxSendable < balance ? ` · up to ${fmt(maxSendable)} XLM in one send` : '')
+          }
         />
 
-        <Button type="submit" disabled={isProving || !recipientValid || !address || activeNotes.length === 0}>
+        <Button
+          type="submit"
+          disabled={isProving || !recipientValid || !stroops || !address || activeNotes.length === 0}
+        >
           {!address
             ? 'Connect wallet first'
             : activeNotes.length === 0
               ? 'No spendable note'
               : isProving
                 ? 'Generating proof'
-                : 'Send 1 XLM privately'}
+                : !stroops
+                  ? 'Enter an amount'
+                  : `Send ${amount} XLM privately`}
         </Button>
 
         {confirmedHash ? (

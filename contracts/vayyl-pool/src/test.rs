@@ -808,6 +808,266 @@ fn test_v3_entrypoints_are_disabled_on_a_v1_pool() {
     );
 }
 
+// ---- Anonymity-set floor --------------------------------------------------
+//
+// Cryptography gives unlinkability WITHIN a set; it cannot manufacture the set.
+// A withdrawal from a pool holding two unspent notes is linkable to its deposit
+// by inspection no matter how sound the proof is. These pin that the floor is
+// real, that it is not a one-way trapdoor, and that it never blocks the exit.
+
+#[test]
+fn test_withdraw_reverts_below_the_floor_and_succeeds_above_it() {
+    // The deliverable's acceptance test, in both directions.
+    let f = setup_v2();
+    seed_v3_note(&f, 0x11, 1_000_000_000);
+    seed_v3_note(&f, 0x12, 1_000_000_000);
+    assert_eq!(f.pool.unspent_note_count(), 2);
+
+    f.pool.set_anonymity_floor(&3);
+    assert_eq!(f.pool.anonymity_floor(), 3);
+
+    let recipient = Address::generate(&f.env);
+    assert_eq!(
+        f.pool.try_withdraw_v3(
+            &dummy_proof(&f.env), &commitment(&f.env, 0x13),
+            &recipient, &f.pool.get_root(), &1_000_000_000i128,
+        ),
+        Err(Ok(Error::AnonymitySetTooSmall)),
+        "two notes is not a crowd; the withdrawal must be refused"
+    );
+
+    // One more depositor joins and the same withdrawal goes through. The floor
+    // delays a spend, it does not confiscate it.
+    seed_v3_note(&f, 0x14, 1_000_000_000);
+    assert_eq!(f.pool.unspent_note_count(), 3);
+    f.pool.withdraw_v3(
+        &dummy_proof(&f.env), &commitment(&f.env, 0x13),
+        &recipient, &f.pool.get_root(), &1_000_000_000i128,
+    );
+    assert_eq!(balance(&f, &recipient), 1_000_000_000);
+}
+
+#[test]
+fn test_unspent_count_tracks_deposits_and_spends() {
+    let f = setup_v2();
+    assert_eq!(f.pool.unspent_note_count(), 0);
+    seed_v3_note(&f, 0x21, 500);
+    seed_v3_note(&f, 0x22, 500);
+    assert_eq!(f.pool.unspent_note_count(), 2);
+
+    // A withdrawal retires one note.
+    f.pool.withdraw_v3(
+        &dummy_proof(&f.env), &commitment(&f.env, 0x23),
+        &Address::generate(&f.env), &f.pool.get_root(), &500i128,
+    );
+    assert_eq!(f.pool.unspent_note_count(), 1);
+
+    // A transfer retires two and creates two, so the crowd is unchanged. This
+    // is why transfers are not gated: they cannot shrink the set.
+    seed_v3_note(&f, 0x24, 500);
+    let before = f.pool.unspent_note_count();
+    f.pool.transfer_v3(
+        &dummy_proof(&f.env), &f.pool.get_root(),
+        &commitment(&f.env, 0x25), &commitment(&f.env, 0x26),
+        &commitment(&f.env, 0x27), &commitment(&f.env, 0x28),
+        &commitment(&f.env, 0x29), &commitment(&f.env, 0x2A),
+        &commitment(&f.env, 0x2B), &commitment(&f.env, 0x2C),
+        &commitment(&f.env, 0xCC), &commitment(&f.env, 0xCD),
+    );
+    assert_eq!(f.pool.unspent_note_count(), before);
+}
+
+#[test]
+fn test_floor_is_off_by_default_and_reversible() {
+    // No safe non-zero default exists: imposing one on an upgraded pool would
+    // strand every existing holder. Off unless an admin chooses a number.
+    let f = setup_v2();
+    assert_eq!(f.pool.anonymity_floor(), 0);
+    seed_v3_note(&f, 0x31, 500);
+
+    f.pool.set_anonymity_floor(&10);
+    assert_eq!(
+        f.pool.try_withdraw_v3(
+            &dummy_proof(&f.env), &commitment(&f.env, 0x32),
+            &Address::generate(&f.env), &f.pool.get_root(), &500i128,
+        ),
+        Err(Ok(Error::AnonymitySetTooSmall))
+    );
+
+    // Lowering it must actually release the spend, or the floor is a trapdoor.
+    f.pool.set_anonymity_floor(&0);
+    f.pool.withdraw_v3(
+        &dummy_proof(&f.env), &commitment(&f.env, 0x32),
+        &Address::generate(&f.env), &f.pool.get_root(), &500i128,
+    );
+}
+
+#[test]
+fn test_ragequit_is_never_gated_on_the_floor() {
+    // The floor must not become a second way to trap funds. Rage-quit trades
+    // privacy for liquidity, so a privacy floor has no business blocking it.
+    let f = setup_v2();
+    let c = commitment(&f.env, 0x41);
+    let depositor = Address::generate(&f.env);
+    fund(&f, &depositor, V2_DENOMINATION);
+    f.pool.deposit_v2(&depositor, &dummy_proof(&f.env), &c, &f.asp_root());
+
+    f.pool.set_anonymity_floor(&100);
+    let recipient = Address::generate(&f.env);
+    f.pool
+        .ragequit_v2(&dummy_proof(&f.env), &c, &commitment(&f.env, 0x42), &recipient);
+    assert_eq!(balance(&f, &recipient), V2_DENOMINATION);
+}
+
+#[test]
+fn test_sync_spent_count_corrects_an_upgraded_pool() {
+    // The counter starts from the upgrade, so a pool with prior spends would
+    // report a larger crowd than it has — the unsafe direction. This is the
+    // one-time correction, and it must actually bite.
+    let f = setup_v2();
+    seed_v3_note(&f, 0x51, 500);
+    seed_v3_note(&f, 0x52, 500);
+    seed_v3_note(&f, 0x53, 500);
+    assert_eq!(f.pool.unspent_note_count(), 3);
+
+    f.pool.sync_spent_count(&2);
+    assert_eq!(f.pool.unspent_note_count(), 1, "three leaves minus two prior spends");
+
+    f.pool.set_anonymity_floor(&2);
+    assert_eq!(
+        f.pool.try_withdraw_v3(
+            &dummy_proof(&f.env), &commitment(&f.env, 0x54),
+            &Address::generate(&f.env), &f.pool.get_root(), &500i128,
+        ),
+        Err(Ok(Error::AnonymitySetTooSmall))
+    );
+}
+
+// ---- Batched withdrawal ----------------------------------------------------
+//
+// One transaction per withdrawal preserves a one-to-one shape an observer can
+// count, which reintroduces at the network layer the linkability the circuits
+// remove at the protocol layer. Batching has to happen inside the contract
+// because Soroban permits exactly one InvokeHostFunction per transaction; the
+// live network rejects a two-operation transaction with "Transaction contains
+// more than one operation".
+
+fn batch_request(
+    f: &Fixture,
+    nullifier: u8,
+    recipient: &Address,
+    amount: i128,
+) -> WithdrawV3Request {
+    WithdrawV3Request {
+        proof: dummy_proof(&f.env),
+        nullifier: commitment(&f.env, nullifier),
+        recipient: recipient.clone(),
+        root: f.pool.get_root(),
+        amount,
+    }
+}
+
+#[test]
+fn test_batch_settles_several_withdrawals_in_one_call() {
+    let f = setup_v2();
+    for tag in [0x61u8, 0x62, 0x63] {
+        seed_v3_note(&f, tag, 500);
+    }
+    let a = Address::generate(&f.env);
+    let b = Address::generate(&f.env);
+
+    f.pool.withdraw_v3_batch(&soroban_sdk::vec![
+        &f.env,
+        batch_request(&f, 0x64, &a, 500),
+        batch_request(&f, 0x65, &b, 300),
+    ]);
+
+    assert_eq!(balance(&f, &a), 500);
+    assert_eq!(balance(&f, &b), 300);
+    // Both notes retired, so the crowd shrinks by exactly two.
+    assert_eq!(f.pool.unspent_note_count(), 1);
+}
+
+#[test]
+fn test_batch_is_all_or_nothing() {
+    // One bad proof reverts everything, which is why a relayer assembling
+    // requests from untrusted callers must simulate each before including it:
+    // otherwise a single malformed entry is a cheap way to grief the batch.
+    let f = setup_v2();
+    seed_v3_note(&f, 0x71, 500);
+    seed_v3_note(&f, 0x72, 500);
+    let a = Address::generate(&f.env);
+
+    f.verifier.set_result(&false);
+    let result = f.pool.try_withdraw_v3_batch(&soroban_sdk::vec![
+        &f.env,
+        batch_request(&f, 0x73, &a, 500),
+        batch_request(&f, 0x74, &a, 500),
+    ]);
+    assert_eq!(result, Err(Ok(Error::InvalidProof)));
+    assert_eq!(balance(&f, &a), 0, "a reverted batch must move nothing");
+}
+
+#[test]
+fn test_batch_rejects_a_repeated_nullifier_within_itself() {
+    // The same note offered twice inside ONE batch. Without per-entry nullifier
+    // marking this would pay out twice from a single note.
+    let f = setup_v2();
+    seed_v3_note(&f, 0x81, 500);
+    let a = Address::generate(&f.env);
+    let same = 0x82u8;
+
+    assert_eq!(
+        f.pool.try_withdraw_v3_batch(&soroban_sdk::vec![
+            &f.env,
+            batch_request(&f, same, &a, 500),
+            batch_request(&f, same, &a, 500),
+        ]),
+        Err(Ok(Error::NullifierAlreadyUsed))
+    );
+    assert_eq!(balance(&f, &a), 0);
+}
+
+#[test]
+fn test_batch_bounds_are_enforced() {
+    let f = setup_v2();
+    seed_v3_note(&f, 0x91, 500);
+    let a = Address::generate(&f.env);
+
+    assert_eq!(
+        f.pool.try_withdraw_v3_batch(&soroban_sdk::vec![&f.env]),
+        Err(Ok(Error::EmptyBatch))
+    );
+
+    // Over the cap is refused UP FRONT, because the alternative is exhausting
+    // the instruction budget after the relayer has already paid the fee.
+    let mut too_many = soroban_sdk::vec![&f.env];
+    for i in 0..(MAX_WITHDRAW_BATCH + 1) {
+        too_many.push_back(batch_request(&f, 0xA0 + i as u8, &a, 500));
+    }
+    assert_eq!(
+        f.pool.try_withdraw_v3_batch(&too_many),
+        Err(Ok(Error::BatchTooLarge))
+    );
+}
+
+#[test]
+fn test_batch_respects_the_anonymity_floor() {
+    // Batching must not become a way around the floor.
+    let f = setup_v2();
+    seed_v3_note(&f, 0xB1, 500);
+    seed_v3_note(&f, 0xB2, 500);
+    f.pool.set_anonymity_floor(&5);
+
+    assert_eq!(
+        f.pool.try_withdraw_v3_batch(&soroban_sdk::vec![
+            &f.env,
+            batch_request(&f, 0xB3, &Address::generate(&f.env), 500),
+        ]),
+        Err(Ok(Error::AnonymitySetTooSmall))
+    );
+}
+
 #[test]
 fn test_transfer_v2_is_disabled_on_v1_pool() {
     let f = setup();
