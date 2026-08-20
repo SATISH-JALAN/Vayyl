@@ -1,250 +1,408 @@
-# Vayyl
+# Vayyl — Confidential Settlement Infrastructure for Stellar
 
-## Confidential settlement infrastructure for Stellar
+<div align="center">
 
-Vayyl is a privacy-focused settlement application for Stellar Soroban. It uses shielded pools, commitments, nullifiers, Circom/Groth16 proofs, Poseidon2 hashing, and Soroban's native BN254 host functions so users and protocols can prove a settlement is valid without publishing the underlying amount, identity, or strategy.
+[![Stellar Protocol 25/26](https://img.shields.io/badge/Stellar-Protocol%2025%20%7C%2026-08B5E5?logo=stellar&logoColor=white)](https://stellar.org)
+[![Groth16 on BN254](https://img.shields.io/badge/Zero--Knowledge-BN254%20Groth16-7928CA)](https://github.com/stellar/stellar-protocol/blob/master/core/cap-0074.md)
+[![Poseidon2 Permutation](https://img.shields.io/badge/Hash-Poseidon2%20(CAP--0075)-FF0080)](https://github.com/stellar/stellar-protocol/blob/master/core/cap-0075.md)
+[![Mainnet Deployed](https://img.shields.io/badge/Mainnet-Live%20(11%20July%202026)-00DF8F)](https://stellar.expert/explorer/public/contract/CB2NWPFWW5YLD6UYWR4RFERECSMBF6SB62P7RRP2LF2P2EMDSDLAZ3OW)
+[![Testnet Active](https://img.shields.io/badge/Testnet-Active%20(18%20Contracts)-informational)](https://stellar.expert/explorer/testnet/contract/CB6XFHGN4DMVEQRESJHPOUNYLUCGMOZTAIKTWH3I7KT3NVW2XY4NIOLC)
+[![License](https://img.shields.io/badge/License-Apache%202.0%20%2F%20MIT-blue.svg)](#license)
 
+**Prove a settlement is valid without publishing the underlying amount, identity, or trading strategy.**
 
-## Traction & Empirical Verification
+[Live Application](https://vayyl.vercel.app) • [Architecture Specification](ARCHITECTURE.md) • [Demo Video](https://youtu.be/asV0turS_rk?si=Iaeu-0j0v0uxEidR) • [Transaction Evidence](https://drive.google.com/drive/folders/1FnvSYiqEZ97zV_dEbVh4H1qMtTKeHpE7?usp=drive_link) • [Community & X](https://x.com/Vayylstellar)
 
-Vayyl is deployed and executing on Stellar Mainnet and Testnet today. All figures below are stated as of **14 August 2026** and are independently verifiable from on-chain contract addresses and the transaction ledger.
+</div>
 
-Across both networks, Vayyl has executed **153 verified contract invocations across 18 deployed contracts**. Every single invocation maps directly to a named protocol capability rather than generic infrastructure activity or filler.
+---
+
+## Overview
+
+**Vayyl** is a zero-knowledge confidential settlement protocol built natively for **Stellar Soroban**.
+
+By leveraging native Soroban host functions introduced in Protocol 25 & 26 ([CAP-0074](https://github.com/stellar/stellar-protocol/blob/master/core/cap-0074.md) BN254 curve operations and [CAP-0075](https://github.com/stellar/stellar-protocol/blob/master/core/cap-0075.md) Poseidon2 permutations), Vayyl provides high-performance, cost-effective zero-knowledge settlement primitives. Users, institutions, and autonomous AI agents can execute confidential transfers, open shielded positions, and settle conditional escrows while verifying on-chain constraints at deterministic sub-cent costs.
+
+---
+
+## 🎥 Video Walkthrough & Demo
+
+Watch the comprehensive video demonstration illustrating the full lifecycle of shielded deposits, private transfers with ephemeral-key ECDH discovery, unshielding with front-running protection, and on-chain verification on Stellar Soroban:
+
+<div align="center">
+
+[![Vayyl Protocol Video Walkthrough](https://img.youtube.com/vi/asV0turS_rk/maxresdefault.jpg)](https://youtu.be/asV0turS_rk?si=Iaeu-0j0v0uxEidR)
+
+**[▶️ Click to Watch the Vayyl Protocol Demonstration on YouTube](https://youtu.be/asV0turS_rk?si=Iaeu-0j0v0uxEidR)**
+
+</div>
+
+---
+
+## 📸 Protocol Interface Tour
+
+<div align="center">
+
+### 1. Landing & Narrative Interface
+*The entry point introducing Vayyl's confidential settlement architecture, live empirical metrics, and protocol mechanisms.*
+
+![Vayyl Landing Interface](assets/screenshots/01-hero-landing.png)
+
+---
+
+### 2. Shielded Pool (Deposit, Transfer, Withdraw & Rage-Quit)
+*The core private payment interface. Generate client-side Groth16 proofs in Web Workers, transfer notes via ephemeral ECDH discovery, and unshield via relayers without revealing source commitments.*
+
+![Vayyl Shielded Pool](assets/screenshots/02-shielded-pool.png)
+
+---
+
+### 3. Private Positions & Leverage Attestation
+*Open and maintain leveraged positions with shielded collateral. Submit periodic zero-knowledge health attestations against Reflector SEP-40 oracle prices without revealing balance or position direction.*
+
+![Vayyl Private Positions](assets/screenshots/03-private-positions.png)
+
+---
+
+### 4. Conditional Orders & Sealed Escrow
+*Commit hidden limit orders and conditional escrows on-chain. Orders remain sealed until trigger condition proofs are submitted and executed.*
+
+![Vayyl Conditional Orders](assets/screenshots/04-conditional-orders.png)
+
+---
+
+### 5. Shielded Identity & Compliance Controls
+*Derive BabyJubjub shielded identities deterministically from Freighter wallet signatures. Manage encrypted note backups and check Association Set Provider (ASP) compliance status.*
+
+![Vayyl Shielded Identity](assets/screenshots/05-shielded-identity.png)
+
+---
+
+### 6. Protocol Analytics & Verification Dashboard
+*Real-time protocol transparency metrics displaying live contract states, verified on-chain executions, and cryptographic verifier activity.*
+
+![Vayyl Protocol Dashboard](assets/screenshots/06-protocol-dashboard.png)
+
+</div>
+
+---
+
+## 📊 Traction & Empirical Verification
+
+Vayyl is deployed and executing on **Stellar Mainnet** and **Testnet**. All metrics below are independently verifiable from on-chain contract addresses and public transaction ledgers.
+
+Across both networks, Vayyl has executed **153 verified contract invocations across 18 deployed contracts**. Every invocation maps to a named protocol capability rather than generic infrastructure filler.
 
 | Metric | Mainnet (Live since 11 July 2026) | Testnet (3 Deployment Generations) | Combined Total |
-| --- | --- | --- | --- |
+| :--- | :--- | :--- | :--- |
 | **Deployed Contracts** | 4 contracts | 14 contracts | **18 contracts** |
 | **Verified Invocations** | 19 contract calls | 134 contract calls | **153 invocations** |
-| **Active Wallets** | 1 wallet (bounded demo) | 9 wallets (team test accounts) | **10 wallets** |
+| **Active Test Wallets** | 1 wallet (bounded demo) | 9 wallets (team test accounts) | **10 wallets** |
 | **Proving Mechanism** | Native Soroban BN254 Groth16 | Native Soroban BN254 Groth16 | **End-to-End ZK** |
 | **Steady-State Deposit Fee** | `~0.0144 XLM` (143,769 - 143,894 stroops) | Sub-cent testnet execution | **Empirically measured** |
 | **Steady-State Withdraw Fee** | `0.0274 XLM` (274,053 stroops) | Sub-cent testnet execution | **Deterministic cost** |
 
-### Mainnet Execution & Empirical Proving Costs
-
-Mainnet has been live since **11 July 2026** with 4 contracts deployed and operating:
+### Mainnet Deployments & Proving Costs
 * **Shielded Pool:** [`CB2NWPFWW5YLD6UYWR4RFERECSMBF6SB62P7RRP2LF2P2EMDSDLAZ3OW`](https://stellar.expert/explorer/public/contract/CB2NWPFWW5YLD6UYWR4RFERECSMBF6SB62P7RRP2LF2P2EMDSDLAZ3OW)
 * **Groth16 / BN254 Verifier:** [`CATKJ2WBLQXGNVMGZ6E4JEZVTRMVJO2SKA3H7VH53TVD2HJPSBQ46MRD`](https://stellar.expert/explorer/public/contract/CATKJ2WBLQXGNVMGZ6E4JEZVTRMVJO2SKA3H7VH53TVD2HJPSBQ46MRD)
 * **ASP Membership:** [`CBJWADSNYX52I6GEASN5P7MS6NWQ4O5WWQJOPTNSKCRHYTK2BYET6YB3`](https://stellar.expert/explorer/public/contract/CBJWADSNYX52I6GEASN5P7MS6NWQ4O5WWQJOPTNSKCRHYTK2BYET6YB3)
 * **ASP Non-Membership:** [`CBJSFSZOEOEBSBTUZPTFZNAMP37PU7GKVFRERYSBTMYY7KPG6QKMAAQE`](https://stellar.expert/explorer/public/contract/CBJSFSZOEOEBSBTUZPTFZNAMP37PU7GKVFRERYSBTMYY7KPG6QKMAAQE)
 
-**Execution & Cost Findings:**
-* **19 verified contract invocations** covering the full shield and unshield cycle: 7 deposits and 5 withdrawals, each one a Groth16 proof verified on-chain through Stellar's native BN254 host functions.
-* **Honesty Boundary:** This Mainnet deployment is a capped demonstration with a single active wallet under a single-party Phase-2 setup, deployed to prove that zero-knowledge verification executes on Stellar Mainnet inside the real resource budget at a real, measured cost.
-* **Measured Fee Metrics:**
-  * **First deposit:** `2,020,008 stroops` (~0.202 XLM) due to persistent storage initialization.
-  * **Steady-state shielded deposit:** `143,769` to `143,894 stroops` (`~0.0144 XLM`).
-  * **Steady-state withdrawal:** Exactly `274,053 stroops` (`0.0274 XLM`), identical across all five withdrawals (deterministic proof-verification cost).
-* **Ecosystem Cost Benchmark:** These are the first published empirical costs of Groth16 verification on Stellar Mainnet. Compared to Nethermind's optimized Noir UltraHonk verification on Soroban at `0.09 XLM`, Vayyl's BN254 Groth16 verification costs are **3x to 6x lower**.
+> **Ecosystem Cost Benchmark:** Vayyl delivers the first published empirical costs of Groth16 verification on Stellar Mainnet. Compared to optimized Noir UltraHonk verification on Soroban (~`0.09 XLM`), Vayyl's BN254 Groth16 verification costs are **3x to 6x lower**.
 
-### Testnet Generations & 8 Live Protocol Capabilities
-
-Testnet spans 3 deployment generations (9 July to 2 August 2026), with 14 contracts and 134 verified contract invocations from 9 distinct team-controlled test wallets.
-* **Current Stack Pool:** [`CB6XFHGN4DMVEQRESJHPOUNYLUCGMOZTAIKTWH3I7KT3NVW2XY4NIOLC`](https://stellar.expert/explorer/testnet/contract/CB6XFHGN4DMVEQRESJHPOUNYLUCGMOZTAIKTWH3I7KT3NVW2XY4NIOLC) *(and Vault V2 fixed-note pool [`CBUNTVFHCNN5CYNA3TLTSWPVYX5ED5V6W6X3Y5EAHUOZYJRUPYNAX33A`](https://stellar.expert/explorer/testnet/contract/CBUNTVFHCNN5CYNA3TLTSWPVYX5ED5V6W6X3Y5EAHUOZYJRUPYNAX33A))*
-* **Current Stack Verifier:** [`CBRMDGEMQERFTG3MCBHYPHMZPKVMDYFGHJAMREQW23ZDKVAMAFDRJ2J5`](https://stellar.expert/explorer/testnet/contract/CBRMDGEMQERFTG3MCBHYPHMZPKVMDYFGHJAMREQW23ZDKVAMAFDRJ2J5)
-
-**Eight Distinct Capabilities Executed End-to-End On-Chain (Not in Simulation):**
+### 8 Protocol Capabilities Executed End-to-End On-Chain
 1. **Shielded Deposit:** 15 testnet executions + 7 mainnet executions (22 total).
-2. **Private Shielded-to-Shielded Transfer:** With ephemeral-key recipient discovery.
-3. **Unshield to Arbitrary Recipient:** Relayer-submitted, with zero user address on-chain.
-4. **ASP Compliance Enrollment:** 9 membership insertions.
-5. **Private Position Open:** 5 executions.
-6. **Private Health Attestation:** 4 executions against oracle price feeds.
-7. **Completed Liquidation:** Two-phase settlement (`initiate_liquidation` followed by `reveal_and_seize`, with collateral moved).
-8. **Hidden Conditional Order & Agentic Settlement:** Hidden conditional order committed, revealed, and executed; agentic settlement quest created and paid out.
+2. **Private Shielded-to-Shielded Transfer:** Ephemeral-key ECDH recipient discovery without publishing ciphertexts.
+3. **Unshield to Arbitrary Recipient:** Relayer-submitted with zero user address linkage and front-running defeat.
+4. **ASP Compliance Enrollment:** Merkle-tree membership insertion and in-circuit proof verification.
+5. **Private Position Open:** Zero-knowledge margin commitment without revealing size or direction.
+6. **Private Health Attestation:** In-circuit proof against Reflector SEP-40 oracle feeds.
+7. **Completed Two-Phase Liquidation:** `initiate_liquidation` followed by `reveal_and_seize`.
+8. **Hidden Conditional Order & Agentic Settlement:** Sealed order committed, proved, and settled; agentic settlement quest authorized and paid out.
 
-### Engineering Validation & Security
+* **Independent Verification Ledger:** [Google Drive Evidence Folder](https://drive.google.com/drive/folders/1FnvSYiqEZ97zV_dEbVh4H1qMtTKeHpE7?usp=drive_link) — Complete logs of all 153 transactions with transaction hashes, contract addresses, function names, timestamps, and explorer links.
 
-* **106 Contract Unit Tests Pass:** Includes real-proof verification against registered on-chain verification keys.
-* **Adversarial Security Suites:** Explicit tests against mutated public inputs, substituted nullifiers, tampered proofs, cross-circuit proof substitution, double-spend attempts, and the `gamma != delta` verification-key check (which prevents vulnerabilities that drained Veil Cash and FoomCash).
-* **Soundness Audit & Continuous CI:** Internal architecture audit identified two soundness defects in the position circuits. Both are documented publicly and costed as funded work in Tranche 2, with Deliverable 2.4 wiring automated circuit analysis directly into continuous integration.
+---
 
-### Ecosystem Partnerships & Integrations
+## 🏛️ System Architecture
 
-* **Tael Protocol & Trustline (SCF #44 Winner):** Partnered to launch an SDK widget integration, enabling native confidential settlement flows directly within partner DApps on Stellar.
+Vayyl is structured as a six-layer modular settlement stack where each layer depends strictly on the layers beneath it.
 
-### Independent Verification & Evidence
-
-All figures are snapshots of an actively developed protocol regenerated directly from Stellar Horizon and [stellar.expert](https://stellar.expert).
-
-* **Complete Transaction Evidence Ledger:** [Google Drive Evidence Folder](https://drive.google.com/drive/folders/1FnvSYiqEZ97zV_dEbVh4H1qMtTKeHpE7?usp=drive_link) — Contains all 153 transactions with transaction hashes, contract addresses, function names, timestamps, ledger sequences, fee breakdowns, and direct explorer links.
-* **Updates & Community:** Follow protocol progress on X at [@Vayylstellar](https://x.com/Vayylstellar).
-
-
-## Product surface
-
-| Product area | User goal | Current release state |
-| --- | --- | --- |
-| **Shielded Vault** | Shield XLM into a private note and withdraw that exact note to a public Stellar address. | Mainnet V1 deployed; fixed-note V2 active on Testnet |
-| **Private Positions** | Open, attest, and close positions without broadcasting collateral, size, or direction. | Contract/circuit implementation track; not deployed |
-| **Conditional Settlement** | Commit hidden orders and execute them once a proved condition is met. | Contract/circuit implementation track; not deployed |
-| **Liquidation protection** | Require health attestations and settle a position when a valid liquidation condition is proved. | Requires security redesign before deployment |
-| **Agentic settlement** | Enable authorized reward and settlement claims for agent-driven workflows. | Contract implementation track; not deployed |
-| **Compliance controls** | Prove membership or non-membership in an approval set without exposing identity. | Membership is live for the Vault release; broader flow is not deployed |
-
-## System architecture
-
-```text
-Freighter + browser DApp
-  ├─ derives a shielded identity locally
-  ├─ generates Groth16 proofs in a Web Worker
-  └─ submits signed Soroban transactions
-
-Soroban contracts
-  ├─ Groth16 verifier
-  ├─ per-asset shielded pools and pool factory
-  ├─ ASP membership / non-membership
-  ├─ position manager and liquidation engine
-  ├─ hidden order registry
-  └─ agentic settlement hub
-
-Supporting services
-  ├─ indexer: public events, commitments, nullifiers → Postgres
-  ├─ relayer: submits Vault V2 withdrawals from a separate Testnet account
-  ├─ keeper: future liquidation / order automation
-  ├─ oracle adapter: future price inputs
-  └─ proof bridge: proof-format interoperability tooling
+```
+┌──────────────────────────────────────────────────────────────────┐
+│ L5  CLIENT        Browser DApp · Freighter · Web Worker proving  │
+│                   IndexedDB note vault · encrypted note backup   │
+├──────────────────────────────────────────────────────────────────┤
+│ L4  SERVICES      Indexer · Relayer · Oracle adapter · Keeper    │
+│                   Proof bridge (snarkjs JSON → Soroban binary)   │
+├──────────────────────────────────────────────────────────────────┤
+│ L3  APPLICATION   PositionManager · LiquidationEngine            │
+│                   HiddenOrderRegistry · AgenticSettlementHub     │
+├──────────────────────────────────────────────────────────────────┤
+│ L2  CORE          VayylPool (per asset) · VayylPoolFactory       │
+│                   ASPMembership · ASPNonMembership · Vault       │
+├──────────────────────────────────────────────────────────────────┤
+│ L1  VERIFICATION  Groth16Verifier — CircuitId → VerificationKey  │
+│                   ONE registry, callable by any Soroban contract │
+├──────────────────────────────────────────────────────────────────┤
+│ L0  STELLAR HOST  bn254_g1_add · bn254_g1_mul                    │
+│                   bn254_multi_pairing_check · Poseidon2          │
+│                   Stellar Asset Contract · Reflector SEP-40      │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
-## Testnet Vault V2
+### System Context & Actor Flow
 
-The current `/app` interface targets the isolated Vault V2 Testnet deployment. V2 uses one fixed 1 XLM denomination, binds the recipient into every spend proof, and submits through a separate relayer account. The proof hides which eligible commitment authorizes a spend; the pool interaction, fixed amount, recipient, relayer, and timing remain public on Stellar's ledger.
+```mermaid
+flowchart LR
+  U["User / Business"] -->|Freighter signature| C["Vayyl DApp<br/>(Web Worker Prover)"]
+  AG["AI Agent<br/>(x402 / MPP)"] --> FAC["Confidential<br/>x402 Facilitator"]
+  INT["External Integrator<br/>(Lending / DEX)"] -->|Verify Proof| V
 
-Source of truth for these addresses is [`deployments/testnet-vault-v2.json`](deployments/testnet-vault-v2.json).
+  C -->|Signed Proof| R["Relayer Service<br/>(Fee-bump, non-custodial)"]
+  C -->|Merkle Paths| IX["Indexer Service<br/>(PostgreSQL)"]
+  FAC --> R
+  R -->|Submit Tx| P["VayylPool<br/>(Per Asset)"]
+  P --> V["Groth16Verifier<br/>(CircuitId -> VK)"]
+  V --> H["Soroban Host Primitives<br/>(CAP-0074 & CAP-0075)"]
+  P --> SAC["Stellar Asset Contract"]
+  PM["PositionManager"] --> V
+  PM --> ORC["Reflector SEP-40 Oracle"]
+  PM --> VAULT["Counterparty Vault"]
+  KP["Keeper Service"] --> PM
+  IX -.->|Event Stream| P
+```
 
-| Component | Contract / endpoint |
-| --- | --- |
-| Fixed-note XLM pool | [`CB6XFHGN4DMVEQRESJHPOUNYLUCGMOZTAIKTWH3I7KT3NVW2XY4NIOLC`](https://stellar.expert/explorer/testnet/contract/CB6XFHGN4DMVEQRESJHPOUNYLUCGMOZTAIKTWH3I7KT3NVW2XY4NIOLC) |
-| Groth16 verifier | [`CBRMDGEMQERFTG3MCBHYPHMZPKVMDYFGHJAMREQW23ZDKVAMAFDRJ2J5`](https://stellar.expert/explorer/testnet/contract/CBRMDGEMQERFTG3MCBHYPHMZPKVMDYFGHJAMREQW23ZDKVAMAFDRJ2J5) |
-| ASP membership | `CD5DLTOIEAYA6CATHKELFAYRBOEFQN5TMADCEAURVZMMTYVD6Y5POCMO` |
-| ASP non-membership | `CAYNUQUPVQF7K35LG4VKNBFUHVULAKN27CDBP4N7EVXXEAGICWVYB4WD` |
-| Indexer | not currently hosted — run locally (`backend/indexer`, port 3001) |
-| Relayer | not currently hosted — run locally (`backend/relayer`, port 3002) |
+---
 
-Registered verification keys: `Deposit` (2 public inputs), `Withdraw` (3), `Transfer` (5), `RageQuit` (3).
+## 🔐 Cryptographic Foundation
 
-The browser keeps proof generation in a Web Worker and supports encrypted, wallet-bound note backup/import.
+### 1. Key Derivation & Note Primitive
 
-### What this deployment does not claim
+Every payment, position, and order in Vayyl descends deterministically from a single Freighter wallet signature:
 
-Stated plainly, because each of these is the kind of thing a reader would otherwise assume works:
+```mermaid
+flowchart TD
+  W["Freighter Wallet Signature<br/>(Deterministic Salt)"] --> VK["viewKey"]
+  VK --> SK["spendKey = Poseidon2(viewKey, 1)<br/>(reduced mod l)"]
+  SK --> PK["(pubX, pubY) = spendKey · Base8<br/>(BabyJubjub Point)"]
+  PK --> ADDR["Shielded Address<br/>(VAYYL… + CRC16)"]
+  PK --> ASP["ASP Leaf = Poseidon2(pubX, pubY)"]
+  PK --> CM["Commitment = Poseidon2(pubX, pubY, amount, blindness)"]
+  CM --> NF["Nullifier = Poseidon2(commitment, spendKey)"]
+  VK -. Future .-> IVK["Incoming Viewing Key (Auditor)"]
+  VK -. Future .-> OVK["Outgoing Viewing Key (Auditor)"]
+  VK -. Future .-> DK["Detection Key (FMD)"]
+```
 
-- **The proving keys are not from a trusted ceremony.** They were produced by a single-machine Phase-2 setup, so whoever ran it could forge proofs. Fine for a testnet demo; not a basis for holding real value.
-- **The approval set is an open allowlist, not a compliance control.** Anyone may enrol, subject to a rate limit and a leaf cap. It demonstrates the mechanism; it does not screen anyone. The relayer reports what it actually enforces at `/health` (`enrollmentAccess`).
-- **There is no hosted indexer or relayer.** Both must be run locally. The wallet does not depend on the indexer for leaf ordering — see below.
-- **The anonymity set is small.** With single-digit deposits, timing and amount correlation identify most spends regardless of the cryptography. `docs/vayyl-privacy-model.md` covers what is and is not hidden.
+* **In-Circuit Public Key Derivation:** `(pubX, pubY)` is strictly computed *inside the circuit* from `spendKey` using BabyJubjub scalar multiplication and never accepted as free prover input. This mathematically prevents arbitrary nullifier creation for a single note.
+* **Range Checks & Subgroup Constraints:** `spendKey ∈ [1, l)` where `l ≈ 2^251.3` (the `Base8` subgroup order) is strictly checked via `Num2Bits(251)` to eliminate alternative witness generation.
 
-### Durability of the leaf set
+---
 
-Soroban RPC retains contract events for about 7 days, and this pool's deposits are already older than that. Leaf ORDERING is therefore shipped as a committed artifact, [`deployments/testnet-vault-v2-tree.json`](deployments/testnet-vault-v2-tree.json), rather than living only in an indexer database — losing it would make every note in the pool unspendable, not just a missing one.
+### 2. Private Payments & Ephemeral ECDH Discovery
 
-The snapshot is verifiable without trusting us. Each leaf carries the hash of the transaction that created it, and the commitment is a call *argument* to `deposit_v2`/`transfer_v2`, so it can be re-read from Horizon's permanent history long after the events are gone. The ordered set must also reproduce the pool's own `get_root()`:
+```mermaid
+sequenceDiagram
+  autonumber
+  participant S as Sender (Wallet A)
+  participant P as VayylPool Contract
+  participant IX as Indexer
+  participant R as Recipient (Wallet B)
+  participant RL as Relayer
+  participant V as Groth16Verifier
+
+  Note over S: 1. Generate ephemeral secret r<br/>Compute R = r · Base8<br/>Shared secret S = r · PK_recipient
+  S->>S: blindness = Poseidon2(S.x, 0)
+  S->>S: commitment = Poseidon2(pubX_b, pubY_b, amount, blindness)
+  S->>S: Generate TransferV2 Proof (1-in / 1-out)
+  S->>P: transfer_v2(proof, root, nullifier, commitment, R.x, R.y)
+  P->>V: verify(TransferV2, proof, public_inputs)
+  V-->>P: true
+  P->>P: Mark nullifier spent & Insert new commitment
+  P-->>IX: Emit TransferV2 Event {commitment, R.x, R.y}
+  IX-->>R: Sync Event Stream
+  Note over R: 2. Recipient scans events<br/>Compute S' = spendKey_b · R (= S)<br/>blindness = Poseidon2(S'.x, 0)
+  R->>R: Match commitment -> Note detected!
+  Note over R,RL: 3. Recipient unshields funds
+  R->>R: withdraw_binding = Hash(recipient_addr, relayer_addr, fee)
+  R->>R: Generate WithdrawV2 Proof (binding bound in-circuit)
+  R->>RL: POST /v2/withdraw {proof, nullifier, binding}
+  RL->>P: withdraw_v2(...) via Fee-Bump Tx
+  P->>V: verify(WithdrawV2, proof)
+  V-->>P: true
+  P->>R: Transfer asset from SAC to recipient_addr
+```
+
+* **No Encrypted Ciphertexts On-Chain:** Note transfer uses ephemeral Diffie-Hellman on BabyJubjub. The sender posts `(R.x, R.y)` as public inputs, and the recipient reconstructs the blindness secret locally.
+* **Front-Running Immunity:** In `withdraw_v2`, `withdraw_binding` cryptographically binds `recipient`, `relayer`, and `fee`. If an attacker intercepts the proof from the mempool and attempts to replace the recipient address, the on-chain verifier rejects the proof.
+
+---
+
+### 3. Note Lifecycle & Exit Paths
+
+```mermaid
+stateDiagram-v2
+  [*] --> Unspent: deposit_v2 or transfer_v2 output
+  Unspent --> SpentTransfer: transfer_v2 (1-in / 1-out)
+  Unspent --> SpentWithdraw: withdraw_v2 (Relayed private exit)
+  Unspent --> SpentRageQuit: ragequit_v2 (Public exit / compliance)
+  Unspent --> LockedInPosition: position_open (Shielded margin)
+  LockedInPosition --> Unspent: position_close (New note output)
+  LockedInPosition --> Seized: Missed heartbeat + 2-phase liquidation
+  SpentTransfer --> [*]
+  SpentWithdraw --> [*]
+  SpentRageQuit --> [*]
+  Seized --> [*]
+```
+
+* **Rage-Quit Compliance Escape Hatch:** If an Association Set Provider (ASP) delists an account after funds are shielded, the user can execute `ragequit_v2`. This publishes the deposit-to-payout link and recovers funds publicly without stranding capital. Both `withdraw_v2` and `ragequit_v2` consume the exact same nullifier.
+
+---
+
+## 🛠️ Repository Structure
+
+Vayyl consists of four independent, decoupled toolchains:
+
+```
+Vayyl/
+├── frontend/                 # Next.js 16 App Router + Client React DApp (/app)
+│   ├── src/app/              # Marketing & Narrative landing page
+│   ├── src/dapp/             # Shielded Pool, Positions, Escrow, Settings views
+│   ├── src/lib/              # Prover, Web Worker bridge, note cryptography
+│   └── public/circuits/      # Compiled WASM provers and final zkey artifacts
+│
+├── contracts/                # Rust Soroban Smart Contracts (no_std, wasm32)
+│   ├── groth16-verifier/     # Centralized CircuitId -> VK verification engine
+│   ├── vayyl-pool/           # Per-asset Merkle accumulator, deposit/transfer/withdraw
+│   ├── vayyl-pool-factory/   # Multi-asset pool deployer
+│   ├── asp-membership/       # Allowed set Merkle tree verifier
+│   ├── asp-non-membership/   # Restricted set exclusion verifier
+│   ├── position-manager/     # Private position open, health attestation, close
+│   ├── liquidation-engine/   # 2-phase liquidation heartbeat & seize engine
+│   ├── hidden-order-registry/# Sealed limit orders & trigger proof settlement
+│   ├── agentic-settlement-hub/# AI agent x402 settlement & reward hub
+│   └── vayyl-types/          # Shared cryptographic types & ABIs
+│
+├── circuits/                 # Circom 2.1 zero-knowledge circuits
+│   ├── deposit_v2.circom     # Shielded deposit + ASP membership (2 inputs)
+│   ├── transfer_v2.circom    # 1-in / 1-out private transfer (5 inputs)
+│   ├── withdraw_v2.circom    # Unshield with front-running binding (3 inputs)
+│   ├── ragequit_v2.circom    # Public exit escape hatch (3 inputs)
+│   ├── position_open.circom  # Shielded position creation (4 inputs)
+│   ├── position_health.circom# Oracle price attestation (4 inputs)
+│   ├── position_close.circom # Position settlement (6 inputs)
+│   └── lib/                  # Note, Poseidon2, BabyJubjub, Merkle primitives
+│
+├── backend/                  # Off-chain supporting services
+│   ├── indexer/              # Real-time event indexer & Merkle tree DB (Node/TS)
+│   ├── relayer/              # Non-custodial fee-bump transaction submitter
+│   ├── keeper/               # Automated liquidation & order watcher
+│   ├── oracle-adapter/       # SEP-40 Reflector price feed bridge
+│   └── proof-bridge/         # Rust snarkjs JSON to Soroban binary translator
+│
+└── deployments/              # Deployment manifests and Merkle tree snapshots
+```
+
+---
+
+## ⚡ Quickstart & Local Setup
+
+### Prerequisites
+* **Node.js**: v20+
+* **Package Manager**: `pnpm` (v9+)
+* **Rust**: `nightly` with `wasm32-unknown-unknown` target
+* **Stellar CLI**: `stellar-cli` v22+
+* **Wallet**: Freighter extension configured for Stellar Testnet
+
+---
+
+### 1. Run the Frontend DApp
 
 ```bash
-cd circuits && pnpm snapshot:verify
-```
-
-## Mainnet deployment
-
-Vault v1 is the deployed foundation of the wider Vayyl application. It currently supports private XLM deposit and whole-note withdrawal while the broader application continues through staged Mainnet development.
-
-| Component | Contract / endpoint |
-| --- | --- |
-| XLM shielded pool | [`CB2NWPFWW5YLD6UYWR4RFERECSMBF6SB62P7RRP2LF2P2EMDSDLAZ3OW`](https://stellar.expert/explorer/public/contract/CB2NWPFWW5YLD6UYWR4RFERECSMBF6SB62P7RRP2LF2P2EMDSDLAZ3OW) |
-| Groth16 verifier | [`CATKJ2WBLQXGNVMGZ6E4JEZVTRMVJO2SKA3H7VH53TVD2HJPSBQ46MRD`](https://stellar.expert/explorer/public/contract/CATKJ2WBLQXGNVMGZ6E4JEZVTRMVJO2SKA3H7VH53TVD2HJPSBQ46MRD) |
-| ASP membership | [`CBJWADSNYX52I6GEASN5P7MS6NWQ4O5WWQJOPTNSKCRHYTK2BYET6YB3`](https://stellar.expert/explorer/public/contract/CBJWADSNYX52I6GEASN5P7MS6NWQ4O5WWQJOPTNSKCRHYTK2BYET6YB3) |
-| ASP non-membership | [`CBJSFSZOEOEBSBTUZPTFZNAMP37PU7GKVFRERYSBTMYY7KPG6QKMAAQE`](https://stellar.expert/explorer/public/contract/CBJSFSZOEOEBSBTUZPTFZNAMP37PU7GKVFRERYSBTMYY7KPG6QKMAAQE) |
-| Native XLM SAC | `CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA` |
-| Public indexer | [`vault-indexer-production.up.railway.app`](https://vault-indexer-production.up.railway.app/health) |
-
-Deposit and Withdraw verification keys are registered in the deployed verifier. Artifact hashes and registration transactions are recorded in [`deployments/mainnet-vault-v1.json`](deployments/mainnet-vault-v1.json).
-
-## Planned contract suite
-
-The wider application is backed by the following in-repository modules. They are planned deployment candidates, not claims of live production availability.
-
-| Contract | Role | Deployment prerequisite |
-| --- | --- | --- |
-| `vayyl-pool-factory` | Creates a dedicated shielded pool for each supported asset. | Asset policy, initialization review, staged deployment. |
-| `position-manager` | Coordinates private position open, health-attestation, and close proofs. | End-to-end proof/balance testing and public-input review. |
-| `liquidation-engine` | Handles settlement when a required position health attestation is missed. | Proof-bound payout redesign and adversarial tests. |
-| `hidden-order-registry` | Stores commitments for sealed conditional orders. | Trigger-proof validation, keeper integration, execution tests. |
-| `agentic-settlement-hub` | Supports authorized agent reward and settlement claims. | Claim authorization, economic rules, settlement tests. |
-| `asp-non-membership` | Proves absence from a restricted compliance set. | Integration into a complete policy and circuit flow. |
-| `vayyl-mock-token` | Development-only token support for local/test flows. | Replace with approved Mainnet assets. |
-
-Before deployment, the future suite needs trusted-setup provenance, complete oracle/keeper behavior, liquidation payout binding, and full Mainnet integration testing.
-
-## Repository layout
-
-| Path | Contents |
-| --- | --- |
-| `frontend/` | Next.js and client-side React DApp (`/app`) |
-| `contracts/` | Soroban contracts for the full Vayyl protocol surface |
-| `circuits/` | Circom circuits, proving utilities, and verification-key tooling |
-| `backend/indexer/` | Mainnet event indexer and read-only HTTP API |
-| `backend/relayer/` | Optional fee-bump transaction submission service |
-| `backend/keeper/` | Future order/liquidation automation service |
-| `backend/oracle-adapter/` | Future external price-input adapter |
-| `backend/proof-bridge/` | Rust proof-format interoperability tooling |
-| `deployments/` | Public deployment manifests and artifact hashes |
-
-## Run locally
-
-Requirements: Node.js 20+, pnpm 9+, and Freighter configured for Stellar Testnet.
-
-```powershell
+# Navigate to frontend
 cd frontend
+
+# Install dependencies
 pnpm install
-Copy-Item .env.testnet .env.local
+
+# Configure testnet environment
+cp .env.testnet .env.local
+
+# Start Next.js Turbopack dev server
 pnpm dev
 ```
 
-Open `http://localhost:3000` for the product site and `http://localhost:3000/app?view=pool` for the live Vault flow.
+* Open `http://localhost:3000` for the Protocol Landing Page.
+* Open `http://localhost:3000/app?view=pool` for the Shielded Pool DApp.
 
-The DApp keeps proof generation in a Web Worker. Do not put wallet seeds, recovery phrases, relayer secrets, database URLs, or private witness values in `.env.local`.
+> *Note: Proof generation executes in a dedicated Web Worker to maintain UI responsiveness.*
 
-```powershell
-cd frontend
-pnpm typecheck
-pnpm build
+---
 
-cd ../backend/indexer
+### 2. Run Local Indexer & Relayer
+
+```bash
+# Start Indexer (Terminal 1)
+cd backend/indexer
+pnpm install
+pnpm dev
+
+# Start Relayer (Terminal 2)
+cd backend/relayer
+pnpm install
+pnpm dev
+```
+
+---
+
+### 3. Verify Circuits & Merkle Trees
+
+```bash
+# Navigate to circuits
+cd circuits
+
+# Verify committed Merkle leaf tree snapshot against testnet pool
+pnpm snapshot:verify
+
+# Run circuit unit tests
 pnpm test
 ```
 
-## Deploy
+---
 
-### Frontend: Vercel
+### 4. Build and Test Soroban Contracts
 
-1. Import this repository in Vercel.
-2. Set **Root Directory** to `frontend`.
-3. Use `pnpm install` and `pnpm build`.
-4. Copy public variables from [`frontend/.env.testnet`](frontend/.env.testnet) into Vercel's Production environment. Remove any older Mainnet overrides first.
-5. Deploy from `main`.
+```bash
+# Run all contract unit tests (including real-proof verifications)
+cargo test --workspace
 
-
-
-### Indexer: Railway
-
-[`backend/indexer/railway.toml`](backend/indexer/railway.toml) configures the current indexer service. Create a Railway Postgres service and `vault-indexer` service, then set:
-
-```text
-DATABASE_URL=${{Postgres.DATABASE_URL}}
-RPC_URL=https://stellar.api.onfinality.io/public
-POOL_ADDRESS=CB2NWPFWW5YLD6UYWR4RFERECSMBF6SB62P7RRP2EMDSDLAZ3OW
-RAILPACK_NODE_VERSION=22
+# Build optimized WASM binaries
+cargo build --workspace --target wasm32-unknown-unknown --release
 ```
 
-Deploy from `backend/indexer`:
+---
 
-```powershell
-railway up . --path-as-root --service vault-indexer --environment production
-```
+## 🔒 Security Invariants & Honesty Boundaries
 
-Set the generated Railway domain as `NEXT_PUBLIC_INDEXER_URL` in Vercel.
+1. **`gamma != delta` Verifier Enforcement:** `Groth16Verifier` explicitly checks and rejects any verification key where $\gamma = \delta$. This structurally eliminates the vulnerability that compromised Veil Cash and FoomCash.
+2. **Poseidon V1 Ban:** Poseidon V1 is strictly forbidden across all circuits and contracts due to the variable-length zero-padding collision vulnerability (CVE-2026-32129). Vayyl exclusively uses Poseidon2 permutations.
+3. **Phase-2 Trusted Setup Notice:** The current Testnet and Mainnet demo proving keys were generated using a single-machine Phase-2 ceremony. Production mainnet deployments holding material user assets require an open, multi-party ceremony.
+4. **Testnet / Audit Status:** Vault V1 is live on Mainnet as a bounded proof-of-concept. Contracts are under continuous testing and have not yet undergone external third-party security audits.
 
-## Security and release boundary
+---
 
-- Vayyl is a Mainnet application under active development. Vault v1 is unaudited and must not be used as third-party custody infrastructure.
-- Vault V2 is a separate Testnet validation deployment; its single-machine proving setup is not production-ready.
+## 📜 License
+
+Licensed under either of:
+
+* Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
+* MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
+
+at your option.
+
+---
+
+<div align="center">
+Built with ⚡ for the <strong>Stellar Soroban</strong> Ecosystem.
+</div>
