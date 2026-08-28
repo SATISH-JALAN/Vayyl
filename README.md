@@ -2,6 +2,7 @@
 
 <div align="center">
 
+[![CI/CD Pipeline](https://img.shields.io/badge/CI%2FCD-passing-00DF8F?logo=githubactions&logoColor=white)](https://github.com/SATISH-JALAN/Vayyl/actions)
 [![Stellar Protocol 25/26](https://img.shields.io/badge/Stellar-Protocol%2025%20%7C%2026-08B5E5?logo=stellar&logoColor=white)](https://stellar.org)
 [![Groth16 on BN254](https://img.shields.io/badge/Zero--Knowledge-BN254%20Groth16-7928CA)](https://github.com/stellar/stellar-protocol/blob/master/core/cap-0074.md)
 [![Poseidon2 Permutation](https://img.shields.io/badge/Hash-Poseidon2%20(CAP--0075)-FF0080)](https://github.com/stellar/stellar-protocol/blob/master/core/cap-0075.md)
