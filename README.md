@@ -12,7 +12,7 @@
 
 **Prove a settlement is valid without publishing the underlying amount, identity, or trading strategy.**
 
-[Live Application](https://vayyl.vercel.app) • [Architecture Specification](ARCHITECTURE.md) • [Demo Video](https://youtu.be/asV0turS_rk?si=Iaeu-0j0v0uxEidR) • [Transaction Evidence](https://drive.google.com/drive/folders/1FnvSYiqEZ97zV_dEbVh4H1qMtTKeHpE7?usp=drive_link) • [Community & X](https://x.com/Vayylstellar)
+[Live Application](https://vayyl.vercel.app) • [Architecture Specification](ARCHITECTURE.md) • [Demo Video](https://youtu.be/asV0turS_rk?si=Iaeu-0j0v0uxEidR) • [Transaction Evidence](https://drive.google.com/drive/folders/1FnvSYiqEZ97zV_dEbVh4H1qMtTKeHpE7?usp=drive_link) • [Community & X](https://x.com/Vayylstellar) • [Feedback Form](https://forms.gle/G1x1uquM6KKc51CB8)
 
 </div>
 
@@ -390,6 +390,17 @@ cargo build --workspace --target wasm32-unknown-unknown --release
 2. **Poseidon V1 Ban:** Poseidon V1 is strictly forbidden across all circuits and contracts due to the variable-length zero-padding collision vulnerability (CVE-2026-32129). Vayyl exclusively uses Poseidon2 permutations.
 3. **Phase-2 Trusted Setup Notice:** The current Testnet and Mainnet demo proving keys were generated using a single-machine Phase-2 ceremony. Production mainnet deployments holding material user assets require an open, multi-party ceremony.
 4. **Testnet / Audit Status:** Vault V1 is live on Mainnet as a bounded proof-of-concept. Contracts are under continuous testing and have not yet undergone external third-party security audits.
+
+---
+
+## Feedback
+
+We are collecting structured feedback from testers, integrators, and reviewers on the shielded pool, private positions, conditional orders, and the proving pipeline.
+
+* **Submit feedback:** [Vayyl Feedback Form](https://forms.gle/G1x1uquM6KKc51CB8)
+* **Live responses:** [Feedback Response Sheet](https://docs.google.com/spreadsheets/d/1IHlqlgqYrtARiz_vqGSe8fTGI0aQq-IzmXD-AABmtQk/edit?usp=sharing)
+
+Responses feed directly into the issue backlog. If you hit a proving failure, a stuck deposit, or an archived-note restore path, the form is the fastest route to getting it triaged.
 
 ---
 
