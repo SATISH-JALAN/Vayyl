@@ -12,7 +12,7 @@
 
 **Prove a settlement is valid without publishing the underlying amount, identity, or trading strategy.**
 
-[Live Application](https://vayyl.vercel.app) • [Architecture Specification](ARCHITECTURE.md) • [Demo Video](https://youtu.be/asV0turS_rk?si=Iaeu-0j0v0uxEidR) • [Transaction Evidence](https://drive.google.com/drive/folders/1FnvSYiqEZ97zV_dEbVh4H1qMtTKeHpE7?usp=drive_link) • [Community & X](https://x.com/Vayylstellar) • [Feedback Form](https://forms.gle/G1x1uquM6KKc51CB8)
+[Live Application](https://vayyl.vercel.app) • Architecture Specification • [Demo Video](https://youtu.be/asV0turS_rk?si=Iaeu-0j0v0uxEidR) • [Transaction Evidence](https://drive.google.com/drive/folders/1FnvSYiqEZ97zV_dEbVh4H1qMtTKeHpE7?usp=drive_link) • [Community & X](https://x.com/Vayylstellar) • [Feedback Form](https://forms.gle/G1x1uquM6KKc51CB8)
 
 </div>
 

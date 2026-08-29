@@ -152,3 +152,12 @@ yarn.lock
 # Not secret (leaves are public on-chain), but it must never be shared between
 # stacks - a mirror from another deployment breaks every deposit.
 backend/relayer/asp-leaves.json
+
+# GitBook. The whole documentation chain is kept out of the repo: ARCHITECTURE.md
+# is the source of truth, scripts/build_gitbook.js splits it into gitbook/, and
+# .gitbook.yaml points GitBook's Git Sync at that directory. None of it is needed
+# to build or run the protocol.
+/gitbook/
+/.gitbook.yaml
+/ARCHITECTURE.md
+/scripts/build_gitbook.js
