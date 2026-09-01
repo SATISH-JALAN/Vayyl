@@ -672,4 +672,43 @@ mod test {
             Err(Ok(Error::PublicInputMismatch)),
         );
     }
+
+    // ── PoC (audit): non-canonical public inputs alias mod r ──────────────
+    //
+    // `Bn254Fr::from_bytes` REDUCES its 32 bytes mod the BN254 scalar modulus r
+    // (soroban-sdk 26.0.1 asserts this in its own `test_fr_from_bytes_reduces`).
+    // `verify` therefore treats `n` and `n + k·r` as the SAME scalar, so one
+    // proof verifies under 6 distinct 32-byte encodings of every public input.
+    //
+    // Callers key their nullifier sets on the RAW bytes, so each alias is a
+    // fresh, unspent nullifier as far as the pool is concerned. This test is
+    // written as the assertion we WANT to hold; it fails today, which is the
+    // finding. After the fix (reject any input >= r) it becomes the regression.
+    #[test]
+    fn non_canonical_public_input_must_be_rejected() {
+        let env = Env::default();
+        let client = verifier_with_real_vk(&env);
+
+        // Sanity: the canonical statement verifies.
+        assert!(client.verify(&CircuitId::Withdraw, &real_proof(&env), &real_public_inputs(&env)));
+
+        // nullifier + 1·r, still under 2^256 — a different 32-byte value that
+        // reduces to the same field element.
+        let aliased = BytesN::from_array(
+            &env,
+            &hex_bytes::<32>("36266872072d74d59e7a9776ee027ff8880f217b30bd6129fc858b1cf814a363"),
+        );
+        let canonical = real_public_inputs(&env).get(1).unwrap();
+        assert_ne!(aliased, canonical, "alias must be a different byte string");
+
+        let mut inputs = real_public_inputs(&env);
+        inputs.set(1, aliased);
+
+        // The same unmodified proof must NOT verify against a non-canonical
+        // encoding of its public input.
+        assert!(
+            !client.verify(&CircuitId::Withdraw, &real_proof(&env), &inputs),
+            "SECURITY: proof verified under a non-canonical (aliased) public input;              the pool would treat this as an unspent nullifier and pay out again",
+        );
+    }
 }
