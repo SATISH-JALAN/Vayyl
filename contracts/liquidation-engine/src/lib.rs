@@ -1,24 +1,97 @@
 #![no_std]
 
-use vayyl_types::{CircuitId, Groth16Proof, PositionState};
+//! Liquidation of positions whose owner stopped attesting.
+//!
+//! # The heartbeat model
+//!
+//! A position stays alive only while its owner can prove, in zero knowledge,
+//! that it is solvent with maintenance margin (`PositionManager::attest_health`).
+//! When they can no longer produce that proof — because the position has fallen
+//! below the margin — the heartbeat goes stale and any keeper may seize it.
+//! Nobody has to detect insolvency: it announces itself by silence.
+//!
+//! # Why there is no ZK proof on this path any more
+//!
+//! `reveal_and_seize` used to require a `LiquidationHeartbeat` proof that opened
+//! the position commitment. That circuit was unsatisfiable by the only party
+//! that ever calls this function.
+//!
+//! `PositionCommitment` binds `position_blindness`, which is the OWNER's secret.
+//! A keeper does not have it and cannot obtain it, so no keeper could ever have
+//! produced a valid proof. Every existing test passed because they used a mock
+//! verifier that returns `true` unconditionally; the path had never been run
+//! against a real one. A liquidation engine that cannot liquidate is worse than
+//! none, because the positions look protected.
+//!
+//! Removing the proof loses nothing, because with tiered positions there is
+//! nothing left for it to prove. The collateral at stake is `TIER_MARGIN[tier]`,
+//! a public constant, and the tier is in `PositionState`. The proof's only other
+//! job — binding the keeper to a secret they must later reveal — is a Poseidon2
+//! preimage check, which this contract now performs itself against the same
+//! host function the circuits use.
+//!
+//! # What the keeper commitment is for
+//!
+//! It stops a second keeper from watching the mempool, copying a pending
+//! `reveal_and_seize`, and front-running the bounty. The keeper commits to
+//! `Poseidon2(secret, 0)` when they initiate, and can only collect by revealing
+//! `secret` — which nobody else knows until the transaction that spends it.
+
+use soroban_poseidon::poseidon2_hash;
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype,
-    Address, BytesN, Env, Vec,
+    contract, contracterror, contractevent, contractimpl, contracttype, Address, BytesN, Env, Vec,
 };
+use vayyl_types::{is_canonical_fr, tier_margin, PositionState};
 
 #[contracttype]
 #[derive(Clone)]
 pub enum DataKey {
-    /// Admin authorized to `upgrade()` this contract in place.
     Admin,
     PositionManager,
     Verifier,
-    /// D3: the VayylPool custody contract seizure is paid out from.
+    /// The VayylPool custody contract a seizure is paid out of.
     Pool,
+    /// The counterparty vault that receives the seized collateral, net of the
+    /// keeper's bounty.
+    Vault,
     GracePeriod,
     Heartbeat(BytesN<32>),
     KeeperEscrow(BytesN<32>),
     Liquidated(BytesN<32>),
+}
+
+/// Who initiated a liquidation, and what they committed to.
+///
+/// The keeper's ADDRESS is stored alongside the commitment (H4). Previously only
+/// the commitment was kept and `initiate_liquidation` was unauthenticated, so
+/// anyone could overwrite a pending keeper's escrow with their own and take the
+/// bounty for work someone else had already started.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct KeeperEscrow {
+    pub keeper: Address,
+    pub commitment: BytesN<32>,
+    pub initiated_at: u64,
+}
+
+#[contractevent]
+pub struct LiquidationInitiated {
+    #[topic]
+    pub position_id: BytesN<32>,
+    #[topic]
+    pub keeper: Address,
+    pub initiated_at: u64,
+}
+
+#[contractevent]
+pub struct PositionSeized {
+    #[topic]
+    pub position_id: BytesN<32>,
+    #[topic]
+    pub keeper: Address,
+    pub collateral: i128,
+    pub bounty: i128,
+    pub to_vault: i128,
 }
 
 #[contracterror]
@@ -32,21 +105,51 @@ pub enum Error {
     KeeperMismatch = 6,
     AlreadyLiquidated = 7,
     EscrowNotFound = 8,
+    /// H4: another keeper already holds this position's escrow and it has not
+    /// expired.
+    EscrowHeld = 9,
+    /// The revealed secret does not hash to the committed value.
+    BadSecret = 10,
+    /// A field element at or above the BN254 scalar modulus.
+    NonCanonicalFieldElement = 11,
+    /// The position's tier is not in the tier table, so there is no collateral
+    /// figure to seize.
+    UnknownTier = 12,
+    /// The position no longer exists in the manager.
+    PositionNotFound = 13,
 }
 
-#[soroban_sdk::contractclient(name = "Groth16VerifierClient")]
-pub trait Groth16VerifierInterface {
-    fn verify(env: Env, circuit_id: CircuitId, proof: Groth16Proof, public_inputs: Vec<BytesN<32>>) -> Result<bool, soroban_sdk::Error>;
-}
+const TTL_THRESHOLD: u32 = 500_000;
+const TTL_EXTEND: u32 = 1_000_000;
+
+/// The keeper's share of seized collateral, in basis points.
+///
+/// It has to be enough to cover gas and make watching worthwhile, and small
+/// enough that liquidating is not more profitable than being the counterparty.
+/// The remainder goes to the vault, i.e. to the LPs who were on the other side
+/// of the trade and have just absorbed its outcome.
+pub const KEEPER_BOUNTY_BPS: i128 = 500; // 5%
+
+/// How long one keeper holds an exclusive claim after initiating.
+///
+/// Without an expiry, a keeper who initiates and then never reveals — because
+/// they ran out of funds, or on purpose — would block that position from ever
+/// being liquidated by anyone else.
+pub const ESCROW_TTL: u64 = 900; // 15 minutes
 
 #[soroban_sdk::contractclient(name = "PositionManagerClient")]
 pub trait PositionManagerInterface {
-    fn get_position_state(env: Env, position_id: BytesN<32>) -> Result<PositionState, soroban_sdk::Error>;
+    fn get_position_state(
+        env: Env,
+        position_id: BytesN<32>,
+    ) -> Result<PositionState, soroban_sdk::Error>;
     fn mark_position_seized(env: Env, position_id: BytesN<32>) -> Result<(), soroban_sdk::Error>;
+    fn release_seized_reservation(
+        env: Env,
+        position_id: BytesN<32>,
+    ) -> Result<(), soroban_sdk::Error>;
 }
 
-/// D3: decoupled client for the pool's settlement primitive. A seizure pays the
-/// collateral out of the pool to the keeper via `execute_settlement`.
 #[soroban_sdk::contractclient(name = "VayylPoolClient")]
 pub trait VayylPoolInterface {
     fn execute_settlement(
@@ -59,39 +162,71 @@ pub trait VayylPoolInterface {
     ) -> Result<(), soroban_sdk::Error>;
 }
 
+/// Poseidon2 over two field elements, byte-identical to the circuits' and the
+/// pool's version.
+///
+/// Reduces into the field first: `poseidon2_hash` panics on any input at or
+/// above the modulus, and roughly one in eight arbitrary 32-byte values is. The
+/// reduction is what Circom does to the same signal, so the two agree.
+fn hash2(env: &Env, left: &BytesN<32>, right: &BytesN<32>) -> BytesN<32> {
+    let to_fr = |b: &BytesN<32>| {
+        soroban_sdk::crypto::bn254::Bn254Fr::from_u256(soroban_sdk::U256::from_be_bytes(
+            env,
+            &soroban_sdk::Bytes::from(b.clone()),
+        ))
+        .to_u256()
+    };
+    let mut inputs = Vec::new(env);
+    inputs.push_back(to_fr(left));
+    inputs.push_back(to_fr(right));
+
+    let result = poseidon2_hash::<3, soroban_sdk::crypto::bn254::Bn254Fr>(env, &inputs);
+    let bytes = result.to_be_bytes();
+    let mut array = [0u8; 32];
+    let copy_len = (array.len() as u32).min(bytes.len());
+    bytes
+        .slice(0..copy_len)
+        .copy_into_slice(&mut array[(32 - copy_len) as usize..]);
+    BytesN::from_array(env, &array)
+}
+
 #[contract]
 pub struct LiquidationEngineContract;
 
 #[contractimpl]
 impl LiquidationEngineContract {
-    /// Initialize the Liquidation Engine with references to PositionManager and Groth16Verifier
     pub fn initialize(
         env: Env,
         admin: Address,
         position_manager: Address,
         verifier: Address,
         pool: Address,
+        vault: Address,
         grace_period: u64,
     ) -> Result<(), Error> {
         if env.storage().instance().has(&DataKey::PositionManager) {
             return Err(Error::AlreadyInitialized);
         }
         env.storage().instance().set(&DataKey::Admin, &admin);
-        env.storage().instance().set(&DataKey::PositionManager, &position_manager);
+        env.storage()
+            .instance()
+            .set(&DataKey::PositionManager, &position_manager);
         env.storage().instance().set(&DataKey::Verifier, &verifier);
         env.storage().instance().set(&DataKey::Pool, &pool);
-        env.storage().instance().set(&DataKey::GracePeriod, &grace_period);
+        env.storage().instance().set(&DataKey::Vault, &vault);
+        env.storage()
+            .instance()
+            .set(&DataKey::GracePeriod, &grace_period);
+        env.storage().instance().extend_ttl(TTL_THRESHOLD, TTL_EXTEND);
         Ok(())
     }
 
-    /// Register a heartbeat for a position.
-    /// Called by PositionManager after a successful attest_health().
+    /// Record a heartbeat. Callable only by the wired PositionManager.
     ///
-    /// H5: gated on the PositionManager's authorization. Previously anyone could
-    /// call this and reset any position's heartbeat, indefinitely blocking
-    /// legitimate liquidations (a griefing / DoS hole). A contract automatically
-    /// authorizes the direct sub-calls it makes, so PositionManager's invocation
-    /// passes this check while any other caller is rejected.
+    /// H5: gating this on the manager's authorization is what stops anyone from
+    /// resetting an arbitrary position's clock and blocking legitimate
+    /// liquidations indefinitely. A contract automatically authorizes its own
+    /// direct sub-calls, so the manager passes while nobody else does.
     pub fn register_heartbeat(
         env: Env,
         position_id: BytesN<32>,
@@ -103,169 +238,281 @@ impl LiquidationEngineContract {
             .get(&DataKey::PositionManager)
             .ok_or(Error::Unauthorized)?;
         pm.require_auth();
-        env.storage().persistent().set(&DataKey::Heartbeat(position_id), &timestamp);
+        let key = DataKey::Heartbeat(position_id);
+        env.storage().persistent().set(&key, &timestamp);
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, TTL_THRESHOLD, TTL_EXTEND);
         Ok(())
     }
 
-    /// Initiate liquidation for a stale position.
-    /// The keeper commits to a secret via keeper_commitment. They must reveal
-    /// this secret later in reveal_and_seize() to claim the collateral.
+    /// Claim the right to liquidate a stale position.
+    ///
+    /// H4: authenticated, and it will not displace a live claim. The keeper
+    /// commits to `Poseidon2(secret, 0)` and must reveal `secret` to collect, so
+    /// a watcher who copies this transaction learns nothing they can use.
     pub fn initiate_liquidation(
         env: Env,
+        keeper: Address,
         position_id: BytesN<32>,
         keeper_commitment: BytesN<32>,
     ) -> Result<(), Error> {
-        // Check position hasn't already been liquidated
-        if env.storage().persistent().has(&DataKey::Liquidated(position_id.clone())) {
-            return Err(Error::AlreadyLiquidated);
+        keeper.require_auth();
+        if !is_canonical_fr(&keeper_commitment) {
+            return Err(Error::NonCanonicalFieldElement);
         }
-
-        let grace: u64 = env.storage().instance().get(&DataKey::GracePeriod).unwrap();
-        let last_heartbeat: u64 = env
+        if env
             .storage()
             .persistent()
-            .get(&DataKey::Heartbeat(position_id.clone()))
-            .ok_or(Error::HeartbeatNotFound)?;
-
-        // Saturating add: a heartbeat near u64::MAX plus grace would otherwise
-        // overflow and trap (overflow-checks are on in release), turning a normal
-        // "not stale yet" path into an aborted transaction.
-        if env.ledger().timestamp() < last_heartbeat.saturating_add(grace) {
+            .has(&DataKey::Liquidated(position_id.clone()))
+        {
+            return Err(Error::AlreadyLiquidated);
+        }
+        if !Self::is_stale(env.clone(), position_id.clone()) {
             return Err(Error::PositionNotStale);
         }
 
-        env.storage().persistent().set(
-            &DataKey::KeeperEscrow(position_id),
-            &keeper_commitment,
-        );
+        let now = env.ledger().timestamp();
+        let escrow_key = DataKey::KeeperEscrow(position_id.clone());
+        if let Some(existing) = env
+            .storage()
+            .persistent()
+            .get::<DataKey, KeeperEscrow>(&escrow_key)
+        {
+            // Another keeper's claim stands until it expires. Letting a newcomer
+            // overwrite it was the front-running hole; letting it stand forever
+            // would be a permanent block, so it times out instead.
+            if existing.keeper != keeper && now < existing.initiated_at.saturating_add(ESCROW_TTL) {
+                return Err(Error::EscrowHeld);
+            }
+        }
+
+        let escrow = KeeperEscrow {
+            keeper: keeper.clone(),
+            commitment: keeper_commitment,
+            initiated_at: now,
+        };
+        env.storage().persistent().set(&escrow_key, &escrow);
+        env.storage()
+            .persistent()
+            .extend_ttl(&escrow_key, TTL_THRESHOLD, TTL_EXTEND);
+
+        LiquidationInitiated { position_id, keeper, initiated_at: now }.publish(&env);
         Ok(())
     }
 
-    /// Reveal keeper secret and seize a stale position's collateral.
+    /// Reveal the keeper secret and seize a stale position's collateral.
     ///
-    /// Flow:
-    /// 1. Verify the LiquidationHeartbeat ZK proof — proves the keeper knows
-    ///    the position's private parameters and is bound to keeper_secret.
-    /// 2. Verify that Poseidon2(keeper_secret, 0) matches the stored keeper_commitment.
-    ///    This is done inside the circuit — the public input keeper_public_commitment
-    ///    must match what was stored in initiate_liquidation().
-    /// 3. Mark the position as liquidated.
+    /// The order of checks is the substance of this function:
+    ///
+    /// 1. Not already liquidated.
+    /// 2. The caller is the keeper who initiated, and their secret matches.
+    /// 3. **The position is STILL stale.** H5: staleness was only checked at
+    ///    `initiate_liquidation`, so an owner who cured their position in the
+    ///    gap — by attesting health, which is exactly what they are supposed to
+    ///    do — was liquidated anyway. Re-checking here is the difference between
+    ///    a liquidation engine and a race.
+    /// 4. The collateral comes from the position's TIER, not from the caller
+    ///    (C4/P8). A keeper used to name `seize_amount` themselves, so anyone
+    ///    who could stale-liquidate one position could name the whole pool.
     pub fn reveal_and_seize(
         env: Env,
+        keeper: Address,
         position_id: BytesN<32>,
-        proof: Groth16Proof,
-        position_commitment: BytesN<32>,
-        keeper_public_commitment: BytesN<32>,
-        timestamp: BytesN<32>,
-        receiver: Address,
-        seize_amount: i128,
-    ) -> Result<(), Error> {
-        // 1. Check position hasn't already been liquidated
-        if env.storage().persistent().has(&DataKey::Liquidated(position_id.clone())) {
+        keeper_secret: BytesN<32>,
+    ) -> Result<i128, Error> {
+        keeper.require_auth();
+        env.storage().instance().extend_ttl(TTL_THRESHOLD, TTL_EXTEND);
+
+        if env
+            .storage()
+            .persistent()
+            .has(&DataKey::Liquidated(position_id.clone()))
+        {
             return Err(Error::AlreadyLiquidated);
         }
 
-        // 2. Verify the keeper_public_commitment matches what was escrowed
-        let stored_commitment: BytesN<32> = env
+        let escrow_key = DataKey::KeeperEscrow(position_id.clone());
+        let escrow: KeeperEscrow = env
             .storage()
             .persistent()
-            .get(&DataKey::KeeperEscrow(position_id.clone()))
+            .get(&escrow_key)
             .ok_or(Error::EscrowNotFound)?;
-
-        if stored_commitment != keeper_public_commitment {
+        if escrow.keeper != keeper {
             return Err(Error::KeeperMismatch);
         }
 
-        // 3. Fetch position state from PositionManager to get the on-chain commitment
-        let pm_addr: Address = env.storage().instance().get(&DataKey::PositionManager).unwrap();
-        let pm_client = PositionManagerClient::new(&env, &pm_addr);
-        let pos_state: PositionState = pm_client.get_position_state(&position_id);
-
-        // 4. Verify the position_commitment matches what's on-chain
-        if pos_state.commitment != position_commitment {
-            return Err(Error::KeeperMismatch);
+        // The preimage check the circuit used to perform, done here against the
+        // same host function the circuit compiles down to.
+        let zero = BytesN::from_array(&env, &[0u8; 32]);
+        if hash2(&env, &keeper_secret, &zero) != escrow.commitment {
+            return Err(Error::BadSecret);
         }
 
-        // 5. Verify ZK Proof for LiquidationHeartbeat
-        let verifier_addr: Address = env.storage().instance().get(&DataKey::Verifier).unwrap();
-        let verifier_client = Groth16VerifierClient::new(&env, &verifier_addr);
+        // H5. The owner may have cured the position since the claim was staked.
+        if !Self::is_stale(env.clone(), position_id.clone()) {
+            return Err(Error::PositionNotStale);
+        }
 
-        // Public inputs: [position_commitment, keeper_public_commitment, timestamp]
-        let mut public_inputs = Vec::new(&env);
-        public_inputs.push_back(position_commitment);
-        public_inputs.push_back(keeper_public_commitment);
-        public_inputs.push_back(timestamp);
+        let pm_addr: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::PositionManager)
+            .ok_or(Error::Unauthorized)?;
+        let pm = PositionManagerClient::new(&env, &pm_addr);
+        let state: PositionState = pm.get_position_state(&position_id);
 
-        let is_valid = verifier_client.verify(
-            &CircuitId::LiquidationHeartbeat,
-            &proof,
-            &public_inputs,
+        // C4: the seizable amount is the tier's margin. Not a parameter.
+        let collateral = tier_margin(state.tier_id).ok_or(Error::UnknownTier)?;
+        let bounty = collateral * KEEPER_BOUNTY_BPS / 10_000;
+        let to_vault = collateral - bounty;
+
+        // Marked before any external call: a re-entered call aborts at step 1,
+        // so the same collateral cannot be seized twice.
+        env.storage()
+            .persistent()
+            .set(&DataKey::Liquidated(position_id.clone()), &true);
+        env.storage().persistent().extend_ttl(
+            &DataKey::Liquidated(position_id.clone()),
+            TTL_THRESHOLD,
+            TTL_EXTEND,
         );
-        if !is_valid {
-            return Err(Error::InvalidProof);
-        }
+        env.storage().persistent().remove(&escrow_key);
 
-        // 6. Mark position as liquidated (before the external payout — reentrancy /
-        //    double-seize guard: a re-entered call sees Liquidated and aborts at step 1).
-        env.storage().persistent().set(&DataKey::Liquidated(position_id.clone()), &true);
+        let pool_addr: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Pool)
+            .ok_or(Error::Unauthorized)?;
+        let vault_addr: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Vault)
+            .ok_or(Error::Unauthorized)?;
+        let pool = VayylPoolClient::new(&env, &pool_addr);
+        let none: Vec<BytesN<32>> = Vec::new(&env);
 
-        // 7. Clean up escrow
-        env.storage().persistent().remove(&DataKey::KeeperEscrow(position_id.clone()));
-
-        // 8. Real seizure (D3): pay the collateral out of the pool to the keeper via
-        //    `execute_settlement`. The liquidation-engine must be an allowlisted
-        //    settlement authority on the pool; its own sub-call auto-authorizes.
-        //
-        //    V2: `seize_amount` is keeper-asserted until a LiquidationSeize circuit
-        //    exposes collateral in the public inputs. The pool SAC balance is the
-        //    hard cap (transfer fails if the pool can't cover it).
-        if seize_amount > 0 {
-            let pool_addr: Address = env
-                .storage()
-                .instance()
-                .get(&DataKey::Pool)
-                .ok_or(Error::EscrowNotFound)?;
-            let pool_client = VayylPoolClient::new(&env, &pool_addr);
-            let no_nullifiers: Vec<BytesN<32>> = Vec::new(&env);
-            let no_commitments: Vec<BytesN<32>> = Vec::new(&env);
-            pool_client.execute_settlement(
+        // The collateral leaves the pool in two pieces, to two recipients, so it
+        // takes two settlements: `execute_settlement` pays one address per call.
+        if bounty > 0 {
+            pool.execute_settlement(
                 &env.current_contract_address(),
-                &no_nullifiers,
-                &no_commitments,
-                &Some(receiver),
-                &seize_amount,
+                &none,
+                &none,
+                &Some(keeper.clone()),
+                &bounty,
+            );
+        }
+        if to_vault > 0 {
+            pool.execute_settlement(
+                &env.current_contract_address(),
+                &none,
+                &none,
+                &Some(vault_addr),
+                &to_vault,
             );
         }
 
-        // 9. Remove the position record from PositionManager.
-        let _ = pm_client.mark_position_seized(&position_id);
+        // M2: neither of these is swallowed. A dropped `mark_position_seized`
+        // leaves a ghost position the owner can still try to close; a dropped
+        // `release_seized_reservation` strands vault capital permanently, which
+        // would break the solvency invariant in the direction nobody checks.
+        pm.release_seized_reservation(&position_id);
+        pm.mark_position_seized(&position_id);
 
-        Ok(())
+        PositionSeized {
+            position_id,
+            keeper,
+            collateral,
+            bounty,
+            to_vault,
+        }
+        .publish(&env);
+
+        Ok(collateral)
     }
 
-    /// Check if a position is stale (past grace period without heartbeat)
+    /// True when the position has missed its grace window.
+    ///
+    /// A position with no heartbeat at all reads as stale. That is correct in
+    /// the only way it can occur: `open_position` registers a heartbeat in the
+    /// same transaction, so a missing one means the position does not exist.
     pub fn is_stale(env: Env, position_id: BytesN<32>) -> bool {
-        let grace: u64 = env.storage().instance().get(&DataKey::GracePeriod).unwrap_or(0);
+        let grace: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::GracePeriod)
+            .unwrap_or(0);
         let last_heartbeat: u64 = env
             .storage()
             .persistent()
             .get(&DataKey::Heartbeat(position_id))
             .unwrap_or(0);
+        // Saturating: a heartbeat near u64::MAX plus grace would otherwise
+        // overflow and trap, turning "not stale yet" into an aborted call.
         env.ledger().timestamp() > last_heartbeat.saturating_add(grace)
     }
 
-    /// Check if a position has been liquidated
+    /// Seconds until this position becomes liquidatable; 0 if it already is.
+    /// Read by the keeper so it can schedule rather than poll.
+    pub fn seconds_until_stale(env: Env, position_id: BytesN<32>) -> u64 {
+        let grace: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::GracePeriod)
+            .unwrap_or(0);
+        let last: u64 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Heartbeat(position_id))
+            .unwrap_or(0);
+        let deadline = last.saturating_add(grace);
+        let now = env.ledger().timestamp();
+        if now >= deadline {
+            0
+        } else {
+            deadline - now
+        }
+    }
+
     pub fn is_liquidated(env: Env, position_id: BytesN<32>) -> bool {
-        env.storage().persistent().has(&DataKey::Liquidated(position_id))
+        env.storage()
+            .persistent()
+            .has(&DataKey::Liquidated(position_id))
     }
 
-    /// Get the admin authorized to upgrade this contract.
+    pub fn escrow_of(env: Env, position_id: BytesN<32>) -> Option<KeeperEscrow> {
+        env.storage()
+            .persistent()
+            .get(&DataKey::KeeperEscrow(position_id))
+    }
+
+    pub fn grace_period(env: Env) -> u64 {
+        env.storage()
+            .instance()
+            .get(&DataKey::GracePeriod)
+            .unwrap_or(0)
+    }
+
+    pub fn keeper_bounty_bps(_env: Env) -> i128 {
+        KEEPER_BOUNTY_BPS
+    }
+
+    /// The commitment a keeper must publish for `secret`. Exposed so a keeper
+    /// derives it from the same implementation the contract verifies against,
+    /// rather than a second one that can disagree.
+    pub fn keeper_commitment_for(env: Env, secret: BytesN<32>) -> BytesN<32> {
+        let zero = BytesN::from_array(&env, &[0u8; 32]);
+        hash2(&env, &secret, &zero)
+    }
+
     pub fn admin(env: Env) -> Result<Address, Error> {
-        env.storage().instance().get(&DataKey::Admin).ok_or(Error::Unauthorized)
+        env.storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(Error::Unauthorized)
     }
 
-    /// Upgrade the contract's WASM code in place (admin-gated).
-    /// Keeps heartbeats, escrows, and liquidation flags intact.
     pub fn upgrade(env: Env, new_wasm_hash: BytesN<32>) -> Result<(), Error> {
         let admin: Address = env
             .storage()
@@ -279,327 +526,4 @@ impl LiquidationEngineContract {
 }
 
 #[cfg(test)]
-mod test {
-    use super::*;
-    use soroban_sdk::testutils::{Address as _, Ledger as _};
-
-    fn setup(env: &Env) -> (LiquidationEngineContractClient<'static>, Address, Address) {
-        let contract_id = env.register(LiquidationEngineContract, ());
-        let client = LiquidationEngineContractClient::new(env, &contract_id);
-        let admin = Address::generate(env);
-        let pm = Address::generate(env);
-        let verifier = Address::generate(env);
-        let pool = Address::generate(env);
-        client.initialize(&admin, &pm, &verifier, &pool, &3600u64);
-        (client, admin, pm)
-    }
-
-    #[test]
-    fn test_initialize_and_admin() {
-        let env = Env::default();
-        let (client, admin, _pm) = setup(&env);
-        assert_eq!(client.admin(), admin);
-    }
-
-    #[test]
-    fn test_double_init_fails() {
-        let env = Env::default();
-        let (client, admin, pm) = setup(&env);
-        let verifier = Address::generate(&env);
-        let pool = Address::generate(&env);
-        let result = client.try_initialize(&admin, &pm, &verifier, &pool, &3600u64);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_register_heartbeat_with_auth() {
-        let env = Env::default();
-        env.mock_all_auths(); // stands in for the PositionManager authorizing the sub-call
-        let (client, _admin, _pm) = setup(&env);
-
-        let position_id = BytesN::from_array(&env, &[1u8; 32]);
-        client.register_heartbeat(&position_id, &1000u64);
-        assert!(!client.is_stale(&position_id));
-    }
-
-    // H5: without the PositionManager's authorization, register_heartbeat is
-    // rejected — this is the DoS fix (nobody can reset another position's clock).
-    #[test]
-    fn test_register_heartbeat_requires_auth() {
-        let env = Env::default();
-        let (client, _admin, _pm) = setup(&env);
-        let position_id = BytesN::from_array(&env, &[1u8; 32]);
-        let result = client.try_register_heartbeat(&position_id, &1000u64);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_is_stale_without_heartbeat() {
-        let env = Env::default();
-        let (client, _admin, _pm) = setup(&env);
-
-        env.ledger().with_mut(|li| {
-            li.timestamp = 7200; // well past a 3600s grace for a heartbeat at t=0
-        });
-
-        let position_id = BytesN::from_array(&env, &[2u8; 32]);
-        assert!(client.is_stale(&position_id));
-    }
-
-    #[test]
-    fn test_initiate_liquidation_not_stale_fails() {
-        let env = Env::default();
-        env.mock_all_auths();
-        let (client, _admin, _pm) = setup(&env);
-
-        let position_id = BytesN::from_array(&env, &[3u8; 32]);
-        let now = env.ledger().timestamp();
-        client.register_heartbeat(&position_id, &now);
-
-        let keeper_commitment = BytesN::from_array(&env, &[99u8; 32]);
-        let result = client.try_initiate_liquidation(&position_id, &keeper_commitment);
-        assert!(result.is_err());
-    }
-
-    // Saturating staleness math: a heartbeat near u64::MAX must not overflow-trap
-    // when grace is added. `is_stale` should simply return false, not panic.
-    #[test]
-    fn test_is_stale_saturates_near_u64_max() {
-        let env = Env::default();
-        env.mock_all_auths();
-        let (client, _admin, _pm) = setup(&env);
-
-        let position_id = BytesN::from_array(&env, &[5u8; 32]);
-        client.register_heartbeat(&position_id, &u64::MAX);
-        // last_heartbeat + grace would overflow; saturating_add clamps to u64::MAX,
-        // and now (small) < MAX, so the position is not stale — and no trap.
-        assert!(!client.is_stale(&position_id));
-    }
-
-    #[test]
-    fn test_is_liquidated_default_false() {
-        let env = Env::default();
-        let (client, _admin, _pm) = setup(&env);
-        let position_id = BytesN::from_array(&env, &[4u8; 32]);
-        assert!(!client.is_liquidated(&position_id));
-    }
-
-    // ---- D3/D4: real seizure moves collateral end-to-end -----------------
-
-    use soroban_sdk::{contract as sdk_contract, contractimpl as sdk_contractimpl, token};
-
-    /// Stand-in verifier that always accepts (real proofs need registered VKs).
-    #[sdk_contract]
-    pub struct MockVerifier;
-    #[sdk_contractimpl]
-    impl MockVerifier {
-        pub fn verify(
-            _env: Env,
-            _circuit_id: CircuitId,
-            _proof: Groth16Proof,
-            _public_inputs: Vec<BytesN<32>>,
-        ) -> Result<bool, soroban_sdk::Error> {
-            Ok(true)
-        }
-    }
-
-    #[contracttype]
-    enum PmKey {
-        Owner,
-        Commit,
-    }
-
-    /// Stand-in PositionManager exposing exactly the getter the engine calls.
-    #[sdk_contract]
-    pub struct MockPM;
-    #[sdk_contractimpl]
-    impl MockPM {
-        pub fn init(env: Env, owner: Address, commitment: BytesN<32>) {
-            env.storage().instance().set(&PmKey::Owner, &owner);
-            env.storage().instance().set(&PmKey::Commit, &commitment);
-        }
-        pub fn get_position_state(env: Env, _position_id: BytesN<32>) -> PositionState {
-            PositionState {
-                owner: env.storage().instance().get(&PmKey::Owner).unwrap(),
-                commitment: env.storage().instance().get(&PmKey::Commit).unwrap(),
-                last_health_timestamp: 0,
-            }
-        }
-        pub fn mark_position_seized(_env: Env, _position_id: BytesN<32>) -> Result<(), soroban_sdk::Error> {
-            Ok(())
-        }
-    }
-
-    fn dummy_proof(env: &Env) -> Groth16Proof {
-        Groth16Proof {
-            a: BytesN::from_array(env, &[0u8; 64]),
-            b: BytesN::from_array(env, &[0u8; 128]),
-            c: BytesN::from_array(env, &[0u8; 64]),
-        }
-    }
-
-    #[test]
-    fn test_reveal_and_seize_moves_collateral_e2e() {
-        use vayyl_pool::{VayylPool, VayylPoolClient};
-
-        let env = Env::default();
-        env.mock_all_auths();
-
-        // SAC asset; the pool will custody the collateral.
-        let sac_admin = Address::generate(&env);
-        let sac = env.register_stellar_asset_contract_v2(sac_admin);
-        let asset = sac.address();
-
-        // Mock verifier (accepts) + mock PM returning a known position commitment.
-        let verifier_id = env.register(MockVerifier, ());
-        let position_commitment = BytesN::from_array(&env, &[0xC1; 32]);
-        let owner = Address::generate(&env);
-        let pm_id = env.register(MockPM, ());
-        MockPMClient::new(&env, &pm_id).init(&owner, &position_commitment);
-
-        // Real pool, funded with collateral liquidity.
-        let admin = Address::generate(&env);
-        let dummy = Address::generate(&env);
-        let pool_id = env.register(VayylPool, ());
-        let pool = VayylPoolClient::new(&env, &pool_id);
-        pool.initialize(&admin, &asset, &verifier_id, &dummy, &dummy);
-        token::StellarAssetClient::new(&env, &asset).mint(&pool_id, &10_000);
-
-        // Real liquidation engine wired to pool + mock PM + mock verifier.
-        let le_id = env.register(LiquidationEngineContract, ());
-        let le = LiquidationEngineContractClient::new(&env, &le_id);
-        le.initialize(&admin, &pm_id, &verifier_id, &pool_id, &3600u64);
-
-        // The engine must be an allowlisted settlement authority to move funds.
-        pool.add_settlement_authority(&le_id);
-
-        let position_id = BytesN::from_array(&env, &[0x01; 32]);
-        let keeper_commitment = BytesN::from_array(&env, &[0x0C; 32]);
-
-        // Heartbeat at t=0, then jump past the 3600s grace so the position is stale.
-        le.register_heartbeat(&position_id, &0u64);
-        env.ledger().with_mut(|li| li.timestamp = 7200);
-        le.initiate_liquidation(&position_id, &keeper_commitment);
-
-        // Reveal + seize 600 collateral to the keeper.
-        let keeper = Address::generate(&env);
-        let ts_bytes = BytesN::from_array(&env, &[0u8; 32]);
-        le.reveal_and_seize(
-            &position_id,
-            &dummy_proof(&env),
-            &position_commitment,
-            &keeper_commitment,
-            &ts_bytes,
-            &keeper,
-            &600i128,
-        );
-
-        // The seizure genuinely moved SAC: keeper credited, pool debited, flagged.
-        assert!(le.is_liquidated(&position_id));
-        assert_eq!(token::Client::new(&env, &asset).balance(&keeper), 600);
-        assert_eq!(token::Client::new(&env, &asset).balance(&pool_id), 9_400);
-    }
-
-    // A seizure by a non-allowlisted engine must fail at the pool boundary — the
-    // pool never pays out to an authority the admin didn't approve.
-    #[test]
-    fn test_seize_without_pool_allowlist_fails() {
-        use vayyl_pool::{VayylPool, VayylPoolClient};
-
-        let env = Env::default();
-        env.mock_all_auths();
-
-        let sac_admin = Address::generate(&env);
-        let sac = env.register_stellar_asset_contract_v2(sac_admin);
-        let asset = sac.address();
-        let verifier_id = env.register(MockVerifier, ());
-        let position_commitment = BytesN::from_array(&env, &[0xC1; 32]);
-        let owner = Address::generate(&env);
-        let pm_id = env.register(MockPM, ());
-        MockPMClient::new(&env, &pm_id).init(&owner, &position_commitment);
-
-        let admin = Address::generate(&env);
-        let dummy = Address::generate(&env);
-        let pool_id = env.register(VayylPool, ());
-        let pool = VayylPoolClient::new(&env, &pool_id);
-        pool.initialize(&admin, &asset, &verifier_id, &dummy, &dummy);
-        token::StellarAssetClient::new(&env, &asset).mint(&pool_id, &10_000);
-
-        let le_id = env.register(LiquidationEngineContract, ());
-        let le = LiquidationEngineContractClient::new(&env, &le_id);
-        le.initialize(&admin, &pm_id, &verifier_id, &pool_id, &3600u64);
-        // NOTE: deliberately NOT allowlisted on the pool.
-
-        let position_id = BytesN::from_array(&env, &[0x01; 32]);
-        let keeper_commitment = BytesN::from_array(&env, &[0x0C; 32]);
-        le.register_heartbeat(&position_id, &0u64);
-        env.ledger().with_mut(|li| li.timestamp = 7200);
-        le.initiate_liquidation(&position_id, &keeper_commitment);
-
-        let keeper = Address::generate(&env);
-        let ts_bytes = BytesN::from_array(&env, &[0u8; 32]);
-        let res = le.try_reveal_and_seize(
-            &position_id,
-            &dummy_proof(&env),
-            &position_commitment,
-            &keeper_commitment,
-            &ts_bytes,
-            &keeper,
-            &600i128,
-        );
-        assert!(res.is_err(), "seizure without pool allowlist must fail");
-        assert_eq!(token::Client::new(&env, &asset).balance(&keeper), 0);
-    }
-
-    #[sdk_contract]
-    pub struct MockVerifierFails;
-    #[sdk_contractimpl]
-    impl MockVerifierFails {
-        pub fn verify(
-            _env: Env,
-            _circuit_id: CircuitId,
-            _proof: Groth16Proof,
-            _public_inputs: Vec<BytesN<32>>,
-        ) -> Result<bool, soroban_sdk::Error> {
-            Ok(false)
-        }
-    }
-
-    #[test]
-    fn test_reveal_and_seize_fails_if_proof_invalid() {
-        let env = Env::default();
-        env.mock_all_auths();
-
-        let verifier_fails = env.register(MockVerifierFails, ());
-        let position_commitment = BytesN::from_array(&env, &[0xC1; 32]);
-        let owner = Address::generate(&env);
-        let pm_id = env.register(MockPM, ());
-        MockPMClient::new(&env, &pm_id).init(&owner, &position_commitment);
-
-        let admin = Address::generate(&env);
-        let pool = Address::generate(&env);
-        let le_id = env.register(LiquidationEngineContract, ());
-        let le = LiquidationEngineContractClient::new(&env, &le_id);
-        le.initialize(&admin, &pm_id, &verifier_fails, &pool, &3600u64);
-
-        let position_id = BytesN::from_array(&env, &[0x01; 32]);
-        let keeper_commitment = BytesN::from_array(&env, &[0x0C; 32]);
-        le.register_heartbeat(&position_id, &0u64);
-        env.ledger().with_mut(|li| li.timestamp = 7200);
-        le.initiate_liquidation(&position_id, &keeper_commitment);
-
-        let keeper = Address::generate(&env);
-        let ts_bytes = BytesN::from_array(&env, &[0u8; 32]);
-        let result = le.try_reveal_and_seize(
-            &position_id,
-            &dummy_proof(&env),
-            &position_commitment,
-            &keeper_commitment,
-            &ts_bytes,
-            &keeper,
-            &600i128,
-        );
-        assert_eq!(result, Err(Ok(Error::InvalidProof)));
-        assert!(!le.is_liquidated(&position_id));
-    }
-}
+mod test;

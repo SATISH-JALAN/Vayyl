@@ -10,8 +10,9 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 soroban-sdk = { workspace = true }
 vayyl-types = { path = "../vayyl-types" }
+# The keeper-secret preimage check moved out of a circuit and into this
+# contract, so it needs the same Poseidon2 the circuits compile down to.
+soroban-poseidon = { git = "https://github.com/stellar/rs-soroban-poseidon.git", rev = "b4bf706b7d0d602f9389280d259c0fb9f19983bf" }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
-# Real VayylPool to prove reveal_and_seize moves collateral end-to-end.
-vayyl-pool = { path = "../vayyl-pool" }
