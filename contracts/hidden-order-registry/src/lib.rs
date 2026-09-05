@@ -196,12 +196,29 @@ impl HiddenOrderRegistryContract {
     ///
     /// The order is marked inactive BEFORE the payout (reentrancy / double-execute
     /// guard: a re-entered call sees `!active` and aborts).
+    /// Bind an execution to its recipient and payout amount.
+    ///
+    /// Byte-for-byte the same construction as
+    /// `VayylPool::compute_withdraw_binding`: XDR of the address, then the
+    /// amount big-endian, SHA-256, top 3 bits cleared so the digest is a valid
+    /// BN254 scalar. Kept identical on purpose -- two different bindings in one
+    /// protocol is how one of them ends up subtly wrong.
+    fn compute_execution_binding(env: &Env, recipient: &Address, amount: i128) -> BytesN<32> {
+        use soroban_sdk::xdr::ToXdr;
+        let mut bytes = soroban_sdk::Bytes::new(env);
+        bytes.append(&recipient.to_xdr(env));
+        bytes.append(&soroban_sdk::Bytes::from_array(env, &amount.to_be_bytes()));
+
+        let mut hash_bytes = env.crypto().sha256(&bytes).to_array();
+        hash_bytes[0] &= 0x1F;
+        BytesN::from_array(env, &hash_bytes)
+    }
+
     pub fn reveal_and_execute(
         env: Env,
         order_id: BytesN<32>,
         proof: Groth16Proof,
         oracle_price: i128,
-        meta_hash: BytesN<32>,
         recipient: Address,
     ) -> Result<(), Error> {
         let verifier: Address = env
@@ -219,6 +236,24 @@ impl HiddenOrderRegistryContract {
         if !state.active {
             return Err(Error::OrderInactive);
         }
+
+        // H2: derive `meta_hash` on-chain from (recipient, escrow) instead of
+        // accepting it.
+        //
+        // It used to be a caller parameter sitting NEXT TO `recipient`, with
+        // nothing tying the two together -- the circuit only does
+        // `meta_hash * meta_hash`. So a keeper watching the mempool could copy a
+        // valid (proof, oracle_price, meta_hash) triple, substitute their own
+        // `recipient`, and take the payout: every public input was unchanged, so
+        // the proof still verified. The documented front-running defence did not
+        // exist.
+        //
+        // Deriving it here restores the binding without a circuit change: the
+        // proof commits to `meta_hash` as a public input, and `meta_hash` now
+        // depends on the recipient, so changing the recipient changes the public
+        // input and the proof fails. `VayylPool::compute_withdraw_binding` does
+        // exactly this for withdrawals; this mirrors it.
+        let meta_hash = Self::compute_execution_binding(&env, &recipient, state.escrow_amount);
 
         // 1. Verify the HiddenOrderTrigger proof.
         //    Public inputs: [order_commitment, oracle_price, meta_hash].
@@ -363,12 +398,10 @@ mod test {
         client.commit_order(&order_id, &commitment, &0i128, &pool, &depositor);
 
         let recipient = Address::generate(&env);
-        let meta_hash = BytesN::from_array(&env, &[0x0F; 32]);
         let result = client.try_reveal_and_execute(
             &order_id,
             &dummy_proof(&env),
             &1500i128,
-            &meta_hash,
             &recipient,
         );
         assert_eq!(result, Err(Ok(Error::ProofFailed)));
@@ -418,8 +451,7 @@ mod test {
 
         // Fire the order: escrow paid out to the recipient.
         let recipient = Address::generate(&env);
-        let meta_hash = BytesN::from_array(&env, &[0x0F; 32]);
-        reg.reveal_and_execute(&order_id, &dummy_proof(&env), &1500i128, &meta_hash, &recipient);
+        reg.reveal_and_execute(&order_id, &dummy_proof(&env), &1500i128, &recipient);
 
         // Real fund movement: recipient credited 700; pool keeps its original liquidity.
         assert_eq!(token::Client::new(&env, &asset).balance(&recipient), 700);
@@ -427,7 +459,7 @@ mod test {
         // Order is now inactive — a second execution is rejected (double-execute guard).
         assert!(!reg.get_order(&order_id).active);
         assert!(reg
-            .try_reveal_and_execute(&order_id, &dummy_proof(&env), &1500i128, &meta_hash, &recipient)
+            .try_reveal_and_execute(&order_id, &dummy_proof(&env), &1500i128, &recipient)
             .is_err());
     }
 
@@ -468,12 +500,10 @@ mod test {
         pool.remove_settlement_authority(&reg_id);
 
         let recipient = Address::generate(&env);
-        let meta_hash = BytesN::from_array(&env, &[0x0F; 32]);
         let res = reg.try_reveal_and_execute(
             &order_id,
             &dummy_proof(&env),
             &1500i128,
-            &meta_hash,
             &recipient,
         );
         assert!(res.is_err(), "fire without pool allowlist must fail");
@@ -516,5 +546,45 @@ mod test {
         assert_eq!(token::Client::new(&env, &asset).balance(&depositor), 5_000);
         assert_eq!(token::Client::new(&env, &asset).balance(&pool_id), 0);
         assert!(!reg.get_order(&order_id).active);
+    }
+
+    /// H2: a keeper must not be able to re-point a copied proof at themselves.
+    ///
+    /// `meta_hash` used to be a caller parameter sitting next to `recipient`,
+    /// with nothing relating them. Copying (proof, oracle_price, meta_hash) from
+    /// the mempool and swapping `recipient` left every public input unchanged,
+    /// so the proof still verified and the payout went to the copier.
+    ///
+    /// It is now derived on-chain from the recipient, so the substitution moves
+    /// a public input and the proof no longer verifies. The mock verifier here
+    /// checks the public inputs it was given, which is exactly the binding.
+    #[test]
+    fn test_execution_binding_changes_with_the_recipient() {
+        let env = Env::default();
+        let honest = Address::generate(&env);
+        let keeper = Address::generate(&env);
+
+        let for_honest = HiddenOrderRegistryContract::compute_execution_binding(&env, &honest, 700i128);
+        let for_keeper = HiddenOrderRegistryContract::compute_execution_binding(&env, &keeper, 700i128);
+        assert_ne!(
+            for_honest, for_keeper,
+            "substituting the recipient must change the bound public input",
+        );
+
+        // The amount is bound too, so a partial-payout substitution also moves it.
+        let other_amount = HiddenOrderRegistryContract::compute_execution_binding(&env, &honest, 701i128);
+        assert_ne!(for_honest, other_amount);
+
+        // And it is deterministic, or an honest prover could never match it.
+        assert_eq!(
+            for_honest,
+            HiddenOrderRegistryContract::compute_execution_binding(&env, &honest, 700i128),
+        );
+
+        // Must be a canonical BN254 scalar: the verifier now rejects anything
+        // at or above the modulus, so a binding with its top bits set would make
+        // honest executions unprovable.
+        assert!(vayyl_types::is_canonical_fr(&for_honest));
+        assert!(vayyl_types::is_canonical_fr(&for_keeper));
     }
 }

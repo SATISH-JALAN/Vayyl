@@ -2,10 +2,10 @@
 
 use soroban_poseidon::poseidon2_hash;
 use soroban_sdk::{
-    contract, contracterror, contractevent, contractimpl, contracttype, log, token, Address,
-    BytesN, Env, Vec,
+    contract, contracterror, contractevent, contractimpl, contracttype, log, token,
+    Address, BytesN, Env, Executable, Symbol, Vec,
 };
-use vayyl_types::{CircuitId, Groth16Proof};
+use vayyl_types::{is_canonical_fr, CircuitId, Groth16Proof};
 
 /// C4: deposit event — topic `deposit` + the commitment; data carries the
 /// leaf index (for Merkle-path reconstruction) and the public amount.
@@ -260,6 +260,52 @@ pub enum Error {
     /// alternative is exhausting the instruction budget mid-transaction after
     /// the relayer has paid.
     BatchTooLarge = 17,
+    /// C1: a caller-supplied field element (nullifier, commitment or root) is
+    /// >= the BN254 scalar modulus, so it is a non-canonical encoding of some
+    /// other value. The verifier rejects these too, but this pool keys storage
+    /// on the RAW bytes and `execute_settlement` marks nullifiers with no proof
+    /// at all — so the guard has to exist here independently, not only behind
+    /// the verifier. See `vayyl_types::is_canonical_fr`.
+    NonCanonicalFieldElement = 18,
+    /// H3: a settlement authority must be a deployed Wasm contract.
+    ///
+    /// `execute_settlement` moves funds with NO proof, on the strength of this
+    /// allowlist alone. Allowing a plain account on it turns two admin
+    /// transactions into a full drain of the pool: allowlist yourself, then pay
+    /// yourself. A contract at least has auditable, fixed logic.
+    SettlementAuthorityNotContract = 19,
+}
+
+/// C1 defence in depth: reject a caller-supplied field element that is not the
+/// canonical encoding of its value.
+///
+/// The verifier applies the same rule now, but this pool must not *depend* on
+/// that: `execute_settlement` marks a nullifier with NO proof, so it never
+/// passes through the verifier at all. And every storage key here is the RAW
+/// bytes (`DataKey::Nullifier`, `DataKey::Commitment`) while `hash2` reduces
+/// mod r before hashing -- so `n` and `n + r` are one Merkle leaf but two
+/// distinct keys. Reject at the door instead.
+fn assert_canonical(value: &BytesN<32>) -> Result<(), Error> {
+    if is_canonical_fr(value) {
+        Ok(())
+    } else {
+        Err(Error::NonCanonicalFieldElement)
+    }
+}
+
+/// H8: keep the contract's INSTANCE entry alive.
+///
+/// Admin, wiring addresses, `TreeRoot`, `TreeNextIndex`, `SpentCount`, the
+/// denomination and the anonymity floor all live in instance storage. Persistent
+/// entries were extended diligently on every touch; instance entries were not
+/// extended anywhere. When the instance archives the contract stops working
+/// entirely -- not one note, the whole pool -- until someone submits a
+/// RestoreFootprint. Extending costs a few stroops on a write that is already
+/// paying for storage.
+fn extend_instance_ttl(env: &Env) {
+    env.storage()
+        .instance()
+        .extend_ttl(PERSISTENT_TTL_THRESHOLD, PERSISTENT_TTL_EXTEND);
 }
 
 #[contract]
@@ -381,6 +427,7 @@ impl VayylPool {
         membership: Address,
         non_membership: Address,
     ) -> Result<(), Error> {
+        extend_instance_ttl(&env);
         Self::initialize_state(
             &env,
             admin,
@@ -401,6 +448,7 @@ impl VayylPool {
         membership: Address,
         non_membership: Address,
     ) -> Result<(), Error> {
+        extend_instance_ttl(&env);
         Self::initialize_state(
             &env,
             admin,
@@ -732,7 +780,10 @@ impl VayylPool {
         commitment: BytesN<32>,
         asp_root: BytesN<32>,
     ) -> Result<(), Error> {
+        extend_instance_ttl(&env);
         let denomination = Self::v2_denomination(&env)?;
+        assert_canonical(&commitment)?;
+        assert_canonical(&asp_root)?;
         depositor.require_auth();
 
         let commitment_key = DataKey::Commitment(commitment.clone());
@@ -817,7 +868,13 @@ impl VayylPool {
         ephemeral_y: BytesN<32>,
         root: BytesN<32>,
     ) -> Result<(), Error> {
+        extend_instance_ttl(&env);
         let denomination = Self::v2_denomination(&env)?;
+        assert_canonical(&nullifier)?;
+        assert_canonical(&commitment)?;
+        assert_canonical(&ephemeral_x)?;
+        assert_canonical(&ephemeral_y)?;
+        assert_canonical(&root)?;
 
         if !Self::is_known_root(&env, &root) {
             return Err(Error::UnknownRoot);
@@ -893,7 +950,10 @@ impl VayylPool {
         recipient: Address,
         root: BytesN<32>,
     ) -> Result<(), Error> {
+        extend_instance_ttl(&env);
         let denomination = Self::v2_denomination(&env)?;
+        assert_canonical(&nullifier)?;
+        assert_canonical(&root)?;
         if !Self::is_known_root(&env, &root) {
             return Err(Error::UnknownRoot);
         }
@@ -961,8 +1021,11 @@ impl VayylPool {
         asp_root: BytesN<32>,
         amount: i128,
     ) -> Result<(), Error> {
+        extend_instance_ttl(&env);
         Self::assert_v2_mode(&env)?;
         depositor.require_auth();
+        assert_canonical(&commitment)?;
+        assert_canonical(&asp_root)?;
         if amount <= 0 {
             return Err(Error::InvalidAmount);
         }
@@ -1057,7 +1120,19 @@ impl VayylPool {
         amount_ct1: BytesN<32>,
         amount_ct2: BytesN<32>,
     ) -> Result<(), Error> {
+        extend_instance_ttl(&env);
         Self::assert_v2_mode(&env)?;
+        assert_canonical(&root)?;
+        assert_canonical(&nullifier1)?;
+        assert_canonical(&nullifier2)?;
+        assert_canonical(&commitment1)?;
+        assert_canonical(&commitment2)?;
+        assert_canonical(&eph1_x)?;
+        assert_canonical(&eph1_y)?;
+        assert_canonical(&eph2_x)?;
+        assert_canonical(&eph2_y)?;
+        assert_canonical(&amount_ct1)?;
+        assert_canonical(&amount_ct2)?;
         if !Self::is_known_root(&env, &root) {
             return Err(Error::UnknownRoot);
         }
@@ -1165,6 +1240,7 @@ impl VayylPool {
         root: BytesN<32>,
         amount: i128,
     ) -> Result<(), Error> {
+        extend_instance_ttl(&env);
         Self::assert_v2_mode(&env)?;
         Self::withdraw_v3_one(&env, proof, nullifier, recipient, root, amount)
     }
@@ -1182,6 +1258,8 @@ impl VayylPool {
         if amount <= 0 {
             return Err(Error::InvalidAmount);
         }
+        assert_canonical(&nullifier)?;
+        assert_canonical(&root)?;
         if !Self::is_known_root(&env, &root) {
             return Err(Error::UnknownRoot);
         }
@@ -1250,6 +1328,7 @@ impl VayylPool {
     /// transfer. Exceeding the instruction budget would fail the transaction
     /// after the relayer had already paid its fee.
     pub fn withdraw_v3_batch(env: Env, requests: Vec<WithdrawV3Request>) -> Result<(), Error> {
+        extend_instance_ttl(&env);
         Self::assert_v2_mode(&env)?;
         if requests.is_empty() {
             return Err(Error::EmptyBatch);
@@ -1299,7 +1378,10 @@ impl VayylPool {
         nullifier: BytesN<32>,
         recipient: Address,
     ) -> Result<(), Error> {
+        extend_instance_ttl(&env);
         let denomination = Self::v2_denomination(&env)?;
+        assert_canonical(&commitment)?;
+        assert_canonical(&nullifier)?;
 
         // Inclusion by lookup: this pool must actually hold the commitment.
         // Without it, a valid proof over a commitment from some *other* pool
@@ -1382,8 +1464,24 @@ impl VayylPool {
         payout_recipient: Option<Address>,
         payout_amount: i128,
     ) -> Result<(), Error> {
-        Self::assert_v1(&env)?;
-        // The authority contract authorizes its own sub-call into the pool.
+        extend_instance_ttl(&env);
+        // M3: deliberately NOT gated on pool mode.
+        //
+        // This used to require V1 (`assert_v1`), while every withdraw entrypoint
+        // requires V2 and the factory only ever deploys V2. A position closing
+        // into a V1 pool therefore produced a note that was provably owned and
+        // permanently unspendable -- the positions vertical could not complete a
+        // round trip on any deployable configuration, and no test caught it
+        // because no test spanned both verticals.
+        //
+        // Pool mode was never the security control here: the allowlist below is,
+        // together with `require_auth`. Settling into the SAME pool users
+        // withdraw from is also better for privacy, because a position close
+        // then shares the payments anonymity set instead of hiding only among
+        // other position closes.
+        //
+        // The allowlist is correspondingly narrowed in `add_settlement_authority`
+        // to deployed contracts only.
         authority.require_auth();
 
         // Only admin-approved settlement contracts may move funds this way.
@@ -1393,6 +1491,16 @@ impl VayylPool {
             .has(&DataKey::SettlementAuthority(authority.clone()))
         {
             return Err(Error::NotSettlementAuthority);
+        }
+
+        // No proof is verified on this path at all, so the verifier's C1 guard
+        // never runs. Check both vectors here or an authority could mark `n`
+        // spent while the real note remains spendable as `n + r`.
+        for n in spent_nullifiers.iter() {
+            assert_canonical(&n)?;
+        }
+        for c in output_commitments.iter() {
+            assert_canonical(&c)?;
         }
 
         // A negative payout is nonsensical (and would mis-encode); reject up front.
@@ -1443,6 +1551,7 @@ impl VayylPool {
     /// number is a policy judgement about how much of a crowd is enough, and
     /// silently imposing one on an upgraded pool would strand every holder.
     pub fn set_anonymity_floor(env: Env, floor: u32) -> Result<(), Error> {
+        extend_instance_ttl(&env);
         let admin: Address = env
             .storage()
             .instance()
@@ -1480,6 +1589,7 @@ impl VayylPool {
     /// This exists to correct that once, from the spend count the operator can
     /// read off the indexer. Setting it wrongly high is safe; wrongly low is not.
     pub fn sync_spent_count(env: Env, spent: u32) -> Result<(), Error> {
+        extend_instance_ttl(&env);
         let admin: Address = env
             .storage()
             .instance()
@@ -1498,6 +1608,7 @@ impl VayylPool {
     /// wired yet — but it should be visible on the ledger and in
     /// `blocklist_enabled()`, not implied by an address comparison.
     pub fn set_blocklist_enabled(env: Env, enabled: bool) -> Result<(), Error> {
+        extend_instance_ttl(&env);
         let admin: Address = env
             .storage()
             .instance()
@@ -1518,20 +1629,43 @@ impl VayylPool {
 
     /// Admin: add a contract to the settlement-authority allowlist.
     pub fn add_settlement_authority(env: Env, authority: Address) -> Result<(), Error> {
+        extend_instance_ttl(&env);
         let admin: Address = env
             .storage()
             .instance()
             .get(&DataKey::Admin)
             .ok_or(Error::NotInitialized)?;
         admin.require_auth();
+
+        // H3: a settlement authority must be a deployed Wasm contract.
+        //
+        // `execute_settlement` pays out with no proof of anything, so this
+        // allowlist is the whole control. Accepting a plain `Address` meant an
+        // admin could allowlist their own account and then pay themselves the
+        // pool's balance in one further transaction. Requiring a Wasm executable
+        // does not make the admin trustless, but it forces the payout logic to
+        // live in auditable on-chain code rather than in a signature.
+        //
+        // `StellarAsset` and `Account` are both rejected; `None` means nothing is
+        // deployed at that address yet, which is also not something to trust.
+        match authority.executable() {
+            Some(Executable::Wasm(_)) => {}
+            _ => return Err(Error::SettlementAuthorityNotContract),
+        }
+
         env.storage()
             .instance()
-            .set(&DataKey::SettlementAuthority(authority), &true);
+            .set(&DataKey::SettlementAuthority(authority.clone()), &true);
+        env.events().publish(
+            (Symbol::new(&env, "settlement_authority_added"),),
+            authority,
+        );
         Ok(())
     }
 
     /// Admin: remove a contract from the settlement-authority allowlist.
     pub fn remove_settlement_authority(env: Env, authority: Address) -> Result<(), Error> {
+        extend_instance_ttl(&env);
         let admin: Address = env
             .storage()
             .instance()
@@ -1560,6 +1694,7 @@ impl VayylPool {
         depositor: Address,
         amount: i128,
     ) -> Result<(), Error> {
+        extend_instance_ttl(&env);
         Self::assert_v1(&env)?;
         authority.require_auth();
         if !env
@@ -1585,6 +1720,19 @@ impl VayylPool {
     }
 
     /// Get the current Merkle root
+    /// C2: is `root` the current root, or still inside the historical window?
+    ///
+    /// Public because a settlement authority must be able to bind a
+    /// caller-supplied root to one this pool actually produced. `open_position`
+    /// took `root` as a parameter and fed it straight into the proof's public
+    /// inputs, so an attacker could build a private tree holding one note of any
+    /// amount, prove membership against their OWN root, and open a position with
+    /// forged collateral. The private `is_known_root` already existed; there was
+    /// simply no way to call it from another contract.
+    pub fn is_known_root_public(env: Env, root: BytesN<32>) -> bool {
+        Self::is_known_root(&env, &root)
+    }
+
     pub fn get_root(env: Env) -> BytesN<32> {
         env.storage()
             .instance()
@@ -1621,6 +1769,7 @@ impl VayylPool {
     /// survive and every user note stays valid. Without it, a fix means a new
     /// address with empty state and stranded funds.
     pub fn upgrade(env: Env, new_wasm_hash: BytesN<32>) -> Result<(), Error> {
+        extend_instance_ttl(&env);
         let admin: Address = env
             .storage()
             .instance()

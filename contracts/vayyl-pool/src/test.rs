@@ -28,6 +28,23 @@ enum MockKey {
     PublicInputs,
 }
 
+/// A stand-in settlement authority.
+///
+/// H3 restricts the allowlist to DEPLOYED Wasm contracts, so these tests can no
+/// longer use `Address::generate` — that yields a contract-shaped address with
+/// nothing behind it, whose `executable()` is `None`. Registering a real
+/// contract is also closer to production, where the authority is
+/// `position-manager` or `liquidation-engine`.
+#[sdk_contract]
+pub struct MockAuthority;
+
+#[sdk_contractimpl]
+impl MockAuthority {
+    pub fn ping(_env: Env) -> bool {
+        true
+    }
+}
+
 /// A stand-in for `Groth16Verifier`. Its `verify` returns whatever boolean was
 /// set via `set_result` (default: true). Signature must match the pool's
 /// `Groth16VerifierInterface::verify`.
@@ -90,8 +107,26 @@ fn dummy_proof(env: &Env) -> Groth16Proof {
     }
 }
 
+/// A fixture commitment / nullifier / leaf built from a one-byte tag.
+///
+/// The leading byte is masked to the low nibble so the result is always BELOW
+/// the BN254 scalar modulus r (whose leading byte is 0x30). A plain `[tag; 32]`
+/// fill with any tag >= 0x30 -- which most of this file's readable tags are
+/// (0x51, 0xA1, 0xF3 ...) -- exceeds r, and every entrypoint now rejects
+/// non-canonical field elements. Such a value is not one a real commitment or
+/// nullifier could ever take: they are Poseidon2 outputs and therefore already
+/// reduced.
+///
+/// Masking only byte 0 keeps every tag distinct, because bytes 1..32 still
+/// carry the full tag.
+fn field_element(env: &Env, tag: u8) -> BytesN<32> {
+    let mut bytes = [tag; 32];
+    bytes[0] = tag & 0x0F;
+    BytesN::from_array(env, &bytes)
+}
+
 fn commitment(env: &Env, seed: u8) -> BytesN<32> {
-    BytesN::from_array(env, &[seed; 32])
+    field_element(env, seed)
 }
 
 fn setup() -> Fixture {
@@ -124,7 +159,7 @@ fn setup_mode(v2: bool) -> Fixture {
     let asp = AspMembershipContractClient::new(&env, &asp_id);
     asp.initialize(&admin);
     // Seed one approved member so the tree (and its root) is non-trivial.
-    asp.insert_leaf(&BytesN::from_array(&env, &[0xA1; 32]));
+    asp.insert_leaf(&field_element(&env, 0xA1));
 
     // A real, initialized (but empty) blocklist — matching the live deployment.
     //
@@ -510,7 +545,7 @@ fn setup_v2_with_missing_blocklist() -> Fixture {
     let asp_id = env.register(AspMembershipContract, ());
     let asp = AspMembershipContractClient::new(&env, &asp_id);
     asp.initialize(&admin);
-    asp.insert_leaf(&BytesN::from_array(&env, &[0xA1; 32]));
+    asp.insert_leaf(&field_element(&env, 0xA1));
 
     pool.initialize_v2(&admin, &asset, &verifier_id, &asp_id, &Address::generate(&env));
 
@@ -1181,7 +1216,7 @@ fn setup_with_blocklist_mode(v2: bool) -> (Fixture, AspNonMembershipContractClie
     let asp_id = env.register(AspMembershipContract, ());
     let asp = AspMembershipContractClient::new(&env, &asp_id);
     asp.initialize(&admin);
-    asp.insert_leaf(&BytesN::from_array(&env, &[0xA1; 32]));
+    asp.insert_leaf(&field_element(&env, 0xA1));
 
     let nm_id = env.register(AspNonMembershipContract, ());
     let nm = AspNonMembershipContractClient::new(&env, &nm_id);
@@ -1248,7 +1283,7 @@ fn test_execute_settlement_inserts_note_and_pays_out() {
     // Pool holds liquidity to pay a seizure/payout from.
     fund(&f, &f.pool.address, 10_000);
 
-    let authority = Address::generate(&f.env);
+    let authority = f.env.register(MockAuthority, ());
     f.pool.add_settlement_authority(&authority);
     assert!(f.pool.is_settlement_authority(&authority));
 
@@ -1273,7 +1308,7 @@ fn test_execute_settlement_reshield_moves_no_tokens() {
     let f = setup();
     fund(&f, &f.pool.address, 1_000);
 
-    let authority = Address::generate(&f.env);
+    let authority = f.env.register(MockAuthority, ());
     f.pool.add_settlement_authority(&authority);
 
     let mut outs: Vec<BytesN<32>> = Vec::new(&f.env);
@@ -1302,7 +1337,7 @@ fn test_execute_settlement_rejects_non_authority() {
 #[test]
 fn test_execute_settlement_rejects_double_spend_nullifier() {
     let f = setup();
-    let authority = Address::generate(&f.env);
+    let authority = f.env.register(MockAuthority, ());
     f.pool.add_settlement_authority(&authority);
 
     let empty: Vec<BytesN<32>> = Vec::new(&f.env);
@@ -1321,7 +1356,7 @@ fn test_execute_settlement_rejects_double_spend_nullifier() {
 #[test]
 fn test_execute_settlement_rejects_negative_payout() {
     let f = setup();
-    let authority = Address::generate(&f.env);
+    let authority = f.env.register(MockAuthority, ());
     f.pool.add_settlement_authority(&authority);
     let recipient = Address::generate(&f.env);
     let empty: Vec<BytesN<32>> = Vec::new(&f.env);
@@ -1334,7 +1369,7 @@ fn test_execute_settlement_rejects_negative_payout() {
 #[test]
 fn test_remove_settlement_authority_revokes_access() {
     let f = setup();
-    let authority = Address::generate(&f.env);
+    let authority = f.env.register(MockAuthority, ());
     f.pool.add_settlement_authority(&authority);
     assert!(f.pool.is_settlement_authority(&authority));
 
@@ -1351,7 +1386,7 @@ fn test_remove_settlement_authority_revokes_access() {
 #[test]
 fn test_pull_public_deposit_moves_tokens_from_depositor() {
     let f = setup();
-    let authority = Address::generate(&f.env);
+    let authority = f.env.register(MockAuthority, ());
     f.pool.add_settlement_authority(&authority);
     let depositor = Address::generate(&f.env);
     fund(&f, &depositor, 2_000);
@@ -1555,4 +1590,282 @@ fn test_ragequit_event_publishes_the_commitment() {
         f.env.events().all().filter_by_contract(&f.pool.address),
         expected
     );
+}
+
+// ── C1 defence in depth at the pool ──────────────────────────────────────────
+//
+// The verifier now rejects non-canonical public inputs, which closes the
+// double-spend for every proof-carrying entrypoint. These tests pin the pool's
+// OWN guard, which has to exist independently for two reasons:
+//
+//   1. `execute_settlement` marks nullifiers with no proof at all, so it never
+//      reaches the verifier.
+//   2. Storage here is keyed on the RAW bytes while `hash2` reduces mod r, so
+//      `n` and `n + r` are one Merkle leaf but two distinct keys.
+
+/// `n + r`, big-endian with carry. The cheapest alias of a field element: it
+/// reduces to the same scalar but is a different 32-byte string.
+fn alias_of(env: &Env, tag: u8) -> BytesN<32> {
+    let base = field_element(env, tag).to_array();
+    let mut out = [0u8; 32];
+    let mut carry = 0u16;
+    for i in (0..32).rev() {
+        let sum = base[i] as u16 + vayyl_types::BN254_FR_MODULUS_BE[i] as u16 + carry;
+        out[i] = (sum & 0xff) as u8;
+        carry = sum >> 8;
+    }
+    BytesN::from_array(env, &out)
+}
+
+#[test]
+fn test_v3_withdraw_rejects_a_non_canonical_nullifier() {
+    let f = setup_v2();
+    let hundred = 1_000_000_000i128;
+    seed_v3_note(&f, 0xF3, hundred);
+
+    let recipient = Address::generate(&f.env);
+    // Same proof, same everything -- only the nullifier is swapped for its
+    // alias. Before the guard this paid out a second time against one note.
+    assert_eq!(
+        f.pool.try_withdraw_v3(
+            &dummy_proof(&f.env),
+            &alias_of(&f.env, 0xF4),
+            &recipient,
+            &f.pool.get_root(),
+            &370_000_000i128,
+        ),
+        Err(Ok(Error::NonCanonicalFieldElement)),
+    );
+    assert_eq!(balance(&f, &recipient), 0, "no payout on a rejected alias");
+    assert_eq!(balance(&f, &f.pool.address), hundred, "pool untouched");
+}
+
+#[test]
+fn test_v3_withdraw_rejects_a_non_canonical_root() {
+    let f = setup_v2();
+    seed_v3_note(&f, 0xF3, 1_000_000_000i128);
+    let recipient = Address::generate(&f.env);
+    assert_eq!(
+        f.pool.try_withdraw_v3(
+            &dummy_proof(&f.env),
+            &commitment(&f.env, 0xF4),
+            &recipient,
+            &alias_of(&f.env, 0x05),
+            &370_000_000i128,
+        ),
+        Err(Ok(Error::NonCanonicalFieldElement)),
+    );
+}
+
+#[test]
+fn test_execute_settlement_rejects_a_non_canonical_nullifier() {
+    // The proofless path. Nothing upstream of this call validates the field
+    // element, so if the pool did not check, a settlement authority could mark
+    // `n + r` spent while the real note stayed spendable as `n`.
+    let f = setup();
+    fund(&f, &f.pool.address, 10_000);
+
+    let authority = f.env.register(MockAuthority, ());
+    f.pool.add_settlement_authority(&authority);
+
+    let recipient = Address::generate(&f.env);
+    let mut outs: Vec<BytesN<32>> = Vec::new(&f.env);
+    outs.push_back(commitment(&f.env, 42));
+    let mut nfs: Vec<BytesN<32>> = Vec::new(&f.env);
+    nfs.push_back(alias_of(&f.env, 7));
+
+    assert_eq!(
+        f.pool.try_execute_settlement(
+            &authority,
+            &nfs,
+            &outs,
+            &Some(recipient.clone()),
+            &600i128,
+        ),
+        Err(Ok(Error::NonCanonicalFieldElement)),
+    );
+    assert_eq!(f.pool.get_leaf_count(), 0, "no note inserted");
+    assert_eq!(balance(&f, &recipient), 0, "no payout");
+}
+
+#[test]
+fn test_execute_settlement_rejects_a_non_canonical_output_commitment() {
+    let f = setup();
+    fund(&f, &f.pool.address, 10_000);
+    let authority = f.env.register(MockAuthority, ());
+    f.pool.add_settlement_authority(&authority);
+
+    let mut outs: Vec<BytesN<32>> = Vec::new(&f.env);
+    outs.push_back(alias_of(&f.env, 42));
+    let nfs: Vec<BytesN<32>> = Vec::new(&f.env);
+
+    assert_eq!(
+        f.pool.try_execute_settlement(&authority, &nfs, &outs, &None, &0i128),
+        Err(Ok(Error::NonCanonicalFieldElement)),
+    );
+    assert_eq!(f.pool.get_leaf_count(), 0);
+}
+
+#[test]
+fn test_v3_deposit_rejects_a_non_canonical_commitment() {
+    let f = setup_v2();
+    let depositor = Address::generate(&f.env);
+    fund(&f, &depositor, 2_000_000_000);
+    assert_eq!(
+        f.pool.try_deposit_v3(
+            &depositor,
+            &dummy_proof(&f.env),
+            &alias_of(&f.env, 0x14),
+            &f.asp.root(),
+            &1_000_000_000i128,
+        ),
+        Err(Ok(Error::NonCanonicalFieldElement)),
+    );
+    assert_eq!(f.pool.get_leaf_count(), 0);
+}
+
+/// The boundary. `r - 1` is the largest legal field element and must be
+/// accepted; exactly `r` reduces to zero and must not be.
+#[test]
+fn test_field_element_boundary_is_exact() {
+    let f = setup();
+    fund(&f, &f.pool.address, 10_000);
+    let authority = f.env.register(MockAuthority, ());
+    f.pool.add_settlement_authority(&authority);
+
+    let mut r_minus_1 = vayyl_types::BN254_FR_MODULUS_BE;
+    r_minus_1[31] -= 1;
+
+    let mut outs: Vec<BytesN<32>> = Vec::new(&f.env);
+    outs.push_back(BytesN::from_array(&f.env, &r_minus_1));
+    let nfs: Vec<BytesN<32>> = Vec::new(&f.env);
+    f.pool.execute_settlement(&authority, &nfs, &outs, &None, &0i128);
+    assert_eq!(f.pool.get_leaf_count(), 1, "r-1 is a legal field element");
+
+    let mut outs2: Vec<BytesN<32>> = Vec::new(&f.env);
+    outs2.push_back(BytesN::from_array(&f.env, &vayyl_types::BN254_FR_MODULUS_BE));
+    let nfs2: Vec<BytesN<32>> = Vec::new(&f.env);
+    assert_eq!(
+        f.pool.try_execute_settlement(&authority, &nfs2, &outs2, &None, &0i128),
+        Err(Ok(Error::NonCanonicalFieldElement)),
+        "exactly r must be rejected: it reduces to 0",
+    );
+}
+
+// ── M3: positions can finally complete a round trip ──────────────────────────
+
+#[test]
+fn test_settlement_lands_in_a_v2_pool_and_the_note_is_withdrawable() {
+    // THE cross-vertical test, and the first one in this repo.
+    //
+    // `execute_settlement` used to require V1 mode while every withdraw
+    // entrypoint requires V2, and the factory only deploys V2. So a position
+    // closing into a pool produced a note that was provably owned and
+    // permanently unspendable. Neither vertical's tests caught it because
+    // neither crossed the boundary.
+    //
+    // The note inserted by settlement must be spendable by the ordinary
+    // payments path. That is the whole property.
+    let f = setup_v2();
+    fund(&f, &f.pool.address, 10_000_000_000);
+
+    let authority = f.env.register(MockAuthority, ());
+    f.pool.add_settlement_authority(&authority);
+
+    // A position closes: its payout note is inserted, no tokens move yet.
+    let payout_note = commitment(&f.env, 0x77);
+    let mut outs: Vec<BytesN<32>> = Vec::new(&f.env);
+    outs.push_back(payout_note.clone());
+    let nfs: Vec<BytesN<32>> = Vec::new(&f.env);
+    f.pool.execute_settlement(&authority, &nfs, &outs, &None, &0i128);
+
+    assert_eq!(f.pool.get_leaf_count(), 1, "settlement inserted the note");
+
+    // The trader now withdraws it through the normal payments path.
+    let recipient = Address::generate(&f.env);
+    let amount = 1_000_000_000i128;
+    f.pool.withdraw_v3(
+        &dummy_proof(&f.env),
+        &commitment(&f.env, 0x78), // the note's nullifier
+        &recipient,
+        &f.pool.get_root(),
+        &amount,
+    );
+
+    assert_eq!(
+        balance(&f, &recipient),
+        amount,
+        "a settled position note must be withdrawable, or closing a position burns funds",
+    );
+}
+
+#[test]
+fn test_settlement_still_works_on_a_v1_pool() {
+    // Dropping the mode gate must not have broken the V1 path it used to guard.
+    let f = setup();
+    fund(&f, &f.pool.address, 10_000);
+    let authority = f.env.register(MockAuthority, ());
+    f.pool.add_settlement_authority(&authority);
+
+    let recipient = Address::generate(&f.env);
+    let mut outs: Vec<BytesN<32>> = Vec::new(&f.env);
+    outs.push_back(commitment(&f.env, 0x21));
+    let nfs: Vec<BytesN<32>> = Vec::new(&f.env);
+    f.pool
+        .execute_settlement(&authority, &nfs, &outs, &Some(recipient.clone()), &600i128);
+
+    assert_eq!(balance(&f, &recipient), 600);
+}
+
+// ── H3: the settlement allowlist is the only control, so narrow it ───────────
+
+#[test]
+fn test_settlement_authority_must_be_a_deployed_contract() {
+    // `execute_settlement` pays out with no proof of anything. If a plain
+    // account can hold that permission, two admin transactions drain the pool:
+    // allowlist yourself, then pay yourself.
+    let f = setup();
+
+    // A contract-shaped address with nothing deployed behind it.
+    let empty = Address::generate(&f.env);
+    assert_eq!(
+        f.pool.try_add_settlement_authority(&empty),
+        Err(Ok(Error::SettlementAuthorityNotContract)),
+    );
+
+    // A Stellar Asset Contract is a contract, but not one with settlement logic.
+    assert_eq!(
+        f.pool.try_add_settlement_authority(&f.asset),
+        Err(Ok(Error::SettlementAuthorityNotContract)),
+    );
+
+    // A real deployed contract is accepted.
+    let real = f.env.register(MockAuthority, ());
+    f.pool.add_settlement_authority(&real);
+    assert!(f.pool.is_settlement_authority(&real));
+
+    // And the rejected ones did not sneak onto the list.
+    assert!(!f.pool.is_settlement_authority(&empty));
+    assert!(!f.pool.is_settlement_authority(&f.asset));
+}
+
+#[test]
+fn test_rejected_authority_cannot_settle() {
+    // The consequence, end to end: an address that failed the allowlist check
+    // must not be able to move funds.
+    let f = setup();
+    fund(&f, &f.pool.address, 10_000);
+    let rogue = Address::generate(&f.env);
+    let _ = f.pool.try_add_settlement_authority(&rogue);
+
+    let recipient = Address::generate(&f.env);
+    let outs: Vec<BytesN<32>> = Vec::new(&f.env);
+    let nfs: Vec<BytesN<32>> = Vec::new(&f.env);
+    assert_eq!(
+        f.pool
+            .try_execute_settlement(&rogue, &nfs, &outs, &Some(recipient.clone()), &9_000i128),
+        Err(Ok(Error::NotSettlementAuthority)),
+    );
+    assert_eq!(balance(&f, &recipient), 0);
+    assert_eq!(balance(&f, &f.pool.address), 10_000, "pool untouched");
 }
