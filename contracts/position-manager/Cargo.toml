@@ -12,5 +12,9 @@ vayyl-types = { path = "../vayyl-types" }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
-# Real VayylPool to prove close_or_modify_position inserts the output note.
+# The real vault and the real SEP-40 feed, not stand-ins: the reservation
+# arithmetic and the staleness window are exactly what these tests are about,
+# and a mock of either would be testing the mock.
+vayyl-counterparty-vault = { path = "../vayyl-counterparty-vault" }
+vayyl-mock-oracle = { path = "../vayyl-mock-oracle" }
 vayyl-pool = { path = "../vayyl-pool" }
