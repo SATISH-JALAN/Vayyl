@@ -23,9 +23,14 @@ function Invoke-Contract {
     param([string]$Id, [Parameter(ValueFromRemainingArguments = $true)][string[]]$InvokeArgs)
     $prev = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
-    & stellar contract invoke --id $Id --network $NETWORK --source $SOURCE -- @InvokeArgs 2>&1 | Out-Null
+    # Capture rather than discard. Piping to Out-Null threw away the CLI's own
+    # explanation, so every failure arrived as "invoke failed" with no cause --
+    # which is the difference between a one-line fix and an afternoon.
+    $out = & stellar contract invoke --id $Id --network $NETWORK --source $SOURCE -- @InvokeArgs 2>&1
     $ErrorActionPreference = $prev
-    if ($LASTEXITCODE -ne 0) { throw "invoke failed ($Id): $($InvokeArgs -join ' ')" }
+    if ($LASTEXITCODE -ne 0) {
+        throw "invoke failed ($Id): $($InvokeArgs -join ' ')`n$($out | Out-String)"
+    }
     Wait-AfterTx
 }
 
@@ -41,9 +46,25 @@ Write-Host "Deploying Mock Oracle..."
 $ORACLE_ID = Deploy-Contract "contracts/target/wasm32v1-none/release/vayyl_mock_oracle.wasm"
 Write-Host "Mock Oracle ID: $ORACLE_ID"
 
-Write-Host "Setting Mock Oracle initial price..."
-$TIMESTAMP = [int][double]::Parse((Get-Date (Get-Date).ToUniversalTime() -UFormat %s))
-Invoke-Contract $ORACLE_ID set_price --price 25000000000 --timestamp $TIMESTAMP
+# SEP-40. `decimals` and `resolution` are advisory metadata; the price itself is
+# in stroops of collateral per contract unit, which is what makes size * price
+# come out in stroops and lets the settlement arithmetic stay integer.
+Write-Host "Initializing Mock Oracle (SEP-40)..."
+Invoke-Contract $ORACLE_ID initialize --admin $ADMIN --decimals 7 --resolution 60
+
+# The asset key must match what PositionManager was initialized with, byte for
+# byte. A mismatch is not an error anywhere: the manager looks up a slot that
+# was never written and reads it as "no price published".
+# PowerShell 5.1 strips the quotes when handing a JSON string to a native exe,
+# so `--asset {"Other":"XLM"}` reaches the CLI as `{Other:XLM}` and is rejected
+# with "Unknown case ... for Asset". Every argument has a `--<name>-file-path`
+# variant that reads the JSON from disk instead, which no shell can mangle.
+$ORACLE_ASSET_FILE = Join-Path $env:TEMP "vayyl_oracle_asset.json"
+[System.IO.File]::WriteAllText($ORACLE_ASSET_FILE, '{"Other":"XLM"}')
+
+Write-Host "Publishing an initial price (1 XLM per contract unit)..."
+# The timestamp comes from the LEDGER, not from here -- see MockOracle::set_price.
+Invoke-Contract $ORACLE_ID set_price --asset-file-path $ORACLE_ASSET_FILE --price 10000000
 
 Write-Host "Deploying ASP Membership..."
 $ASP_ID = Deploy-Contract "contracts/target/wasm32v1-none/release/asp_membership.wasm"
@@ -69,6 +90,13 @@ Write-Host "Deploying Liquidation Engine..."
 $LIQUIDATION_ID = Deploy-Contract "contracts/target/wasm32v1-none/release/liquidation_engine.wasm"
 Write-Host "Liquidation Engine ID: $LIQUIDATION_ID"
 
+# The vault and the manager reference each other, so both are DEPLOYED before
+# either is INITIALIZED. Deploying yields an address without running any
+# constructor, which is what breaks the cycle.
+Write-Host "Deploying Counterparty Vault..."
+$VAULT_ID = Deploy-Contract "contracts/target/wasm32v1-none/release/vayyl_counterparty_vault.wasm"
+Write-Host "Counterparty Vault ID: $VAULT_ID"
+
 Write-Host "Deploying Hidden Order Registry..."
 $ORDER_REGISTRY_ID = Deploy-Contract "contracts/target/wasm32v1-none/release/hidden_order_registry.wasm"
 Write-Host "Hidden Order Registry ID: $ORDER_REGISTRY_ID"
@@ -80,14 +108,24 @@ Write-Host "Agentic Settlement Hub ID: $AGENTIC_ID"
 $TOKEN_ID = "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC"
 Write-Host "Token ID (XLM): $TOKEN_ID"
 
-Write-Host "Initializing Vayyl Pool..."
-Invoke-Contract $POOL_ID initialize --admin $ADMIN --asset $TOKEN_ID --verifier $VERIFIER_ID --membership $ASP_ID --non_membership $ASP_NM_ID
+# initialize_v2, NOT initialize. `initialize` leaves the pool in V1 mode, which
+# sets no Denomination key -- and every user-facing money path checks for it:
+# deposit_v2/v3, transfer_v2/v3, withdraw_v2/v3 and ragequit_v2 all fail with
+# WrongPoolMode without it. A V1 pool can still receive settlement notes from
+# the position manager, so a deploy would look successful and then strand every
+# note it minted: provably owned, permanently unspendable. This is the M3
+# blocker at the deployment layer, and `initialize` was how it got in.
+Write-Host "Initializing Vayyl Pool (V2 mode)..."
+Invoke-Contract $POOL_ID initialize_v2 --admin $ADMIN --asset $TOKEN_ID --verifier $VERIFIER_ID --membership $ASP_ID --non_membership $ASP_NM_ID
+
+Write-Host "Initializing Counterparty Vault..."
+Invoke-Contract $VAULT_ID initialize --admin $ADMIN --asset $TOKEN_ID --position_manager $MANAGER_ID
 
 Write-Host "Initializing Position Manager..."
-Invoke-Contract $MANAGER_ID initialize --admin $ADMIN --verifier $VERIFIER_ID --oracle $ORACLE_ID --liquidation_engine $LIQUIDATION_ID --pool $POOL_ID
+Invoke-Contract $MANAGER_ID initialize --admin $ADMIN --verifier $VERIFIER_ID --oracle $ORACLE_ID --oracle_asset-file-path $ORACLE_ASSET_FILE --liquidation_engine $LIQUIDATION_ID --pool $POOL_ID --vault $VAULT_ID
 
 Write-Host "Initializing Liquidation Engine..."
-Invoke-Contract $LIQUIDATION_ID initialize --admin $ADMIN --position_manager $MANAGER_ID --verifier $VERIFIER_ID --pool $POOL_ID --grace_period 3600
+Invoke-Contract $LIQUIDATION_ID initialize --admin $ADMIN --position_manager $MANAGER_ID --verifier $VERIFIER_ID --pool $POOL_ID --vault $VAULT_ID --grace_period 3600
 
 Write-Host "Initializing Hidden Order Registry..."
 Invoke-Contract $ORDER_REGISTRY_ID initialize --admin $ADMIN --verifier $VERIFIER_ID
@@ -109,6 +147,7 @@ $deployment = [ordered]@{
     pool           = $POOL_ID
     manager        = $MANAGER_ID
     liquidation    = $LIQUIDATION_ID
+    vault          = $VAULT_ID
     order_registry = $ORDER_REGISTRY_ID
     agentic_hub    = $AGENTIC_ID
     asp_membership = $ASP_ID
@@ -116,6 +155,17 @@ $deployment = [ordered]@{
     token          = $TOKEN_ID
 }
 [System.IO.File]::WriteAllText((Join-Path (Get-Location) "deployments/$NETWORK.json"), ($deployment | ConvertTo-Json))
+
+Write-Host ""
+Write-Host "Deployed. Before positions can be opened, TWO things must still happen:" -ForegroundColor Yellow
+Write-Host "  1. Fund the counterparty vault:" -ForegroundColor Yellow
+Write-Host "     stellar contract invoke --id $VAULT_ID --network $NETWORK --source $SOURCE -- \" -ForegroundColor Yellow
+Write-Host "       deposit_liquidity --lp <ADDRESS> --amount <STROOPS>" -ForegroundColor Yellow
+Write-Host "     Until it holds capital, every open fails with InsufficientLiquidity --" -ForegroundColor Yellow
+Write-Host "     which is correct: a position must not open unless its best case is funded." -ForegroundColor Yellow
+Write-Host "  2. Keep the oracle fresh. Prices older than 300s are refused on-chain," -ForegroundColor Yellow
+Write-Host "     so a one-off set_price stops working five minutes after this run." -ForegroundColor Yellow
+Write-Host ""
 
 Write-Host "Registering verification keys..."
 $env:VERIFIER_ID = $VERIFIER_ID

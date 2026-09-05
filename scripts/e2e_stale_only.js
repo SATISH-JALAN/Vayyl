@@ -1,4 +1,28 @@
 /**
+ * ============================================================
+ * STALE: targets the pre-2026-09-05 contract ABI.
+ * ============================================================
+ * The liquidation entry points changed shape: `initiate_liquidation` is now
+ * authenticated and takes the keeper's address.
+ *
+ * Running it against a current deployment produces transactions that simulate
+ * and revert with errors naming nothing useful. Left in place rather than
+ * deleted because the flow it describes is still the right one and it is the
+ * starting point for a rewrite -- but do not treat a failure here as a bug in
+ * the contracts.
+ *
+ * What replaced it as the actual gate:
+ *   contracts/position-manager/src/integration_test.rs
+ *       the same lifecycle against the REAL pool, vault, oracle and manager
+ *   circuits/scripts/position_circuits_test.mjs
+ *       40 witness-level soundness and completeness cases
+ *   contracts/groth16-verifier  (real_position_fixture.rs)
+ *       real proofs verified through the real on-chain verifier
+ *
+ * See docs/vayyl-private-positions-completion-2026-09-05.md.
+ */
+
+/**
  * Vayyl Sprint 1 — Position Vertical E2E on Testnet
  *
  * Full lifecycle:

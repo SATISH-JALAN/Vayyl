@@ -98,9 +98,19 @@ const CIRCUITS = {
     "PositionOpen": { id: 3, file: "position_open" },
     "PositionHealth": { id: 4, file: "position_health" },
     "PositionClose": { id: 5, file: "position_close" },
-    // LiquidationEngine::reveal_and_seize verifies against this circuit, so its
-    // VK MUST be registered or seize fails on-chain. id 6 = CircuitId enum order.
-    "LiquidationHeartbeat": { id: 6, file: "liquidation_heartbeat" },
+    // RETIRED. LiquidationEngine no longer verifies a proof on the seize path.
+    //
+    // `LiquidationHeartbeat` opened the position commitment, which binds
+    // `position_blindness` -- the OWNER's secret. A keeper does not have it, so
+    // no keeper could ever produce a valid proof. The old tests passed because
+    // they used a mock verifier that returned `true` unconditionally. With
+    // tiered positions the collateral at stake is a public constant, so there
+    // was nothing left for the circuit to prove; the keeper-secret binding is
+    // now a Poseidon2 preimage check the engine performs itself.
+    //
+    // Kept in the map, out of the default set, so the slot is documented rather
+    // than mysteriously absent. Registering it is harmless and useless.
+    "LiquidationHeartbeat": { id: 6, file: "liquidation_heartbeat", retired: true },
     // Order/agentic circuits — HiddenOrderTrigger=7, SealedOrder=11 in CircuitId enum.
     "HiddenOrderTrigger": { id: 7, file: "hidden_order_trigger" },
     "SealedOrder": { id: 11, file: "sealed_order" },
@@ -125,7 +135,6 @@ const V1_CIRCUITS = new Set([
     "PositionOpen",
     "PositionHealth",
     "PositionClose",
-    "LiquidationHeartbeat",
     "HiddenOrderTrigger",
     "SealedOrder",
     "RageQuit",
@@ -151,12 +160,50 @@ if (only.length > 0) {
     }
 }
 
+// The number of public inputs each contract actually sends. Asserted against
+// `ic.length - 1` in the exported key before anything is submitted.
+//
+// These are not documentation. A key whose `ic` is one entry short or long is
+// accepted by `set_vk` without complaint and rejects every honest proof
+// afterwards, so this table is the only thing standing between a circuit change
+// and a silently broken deployment.
+const EXPECTED_PUBLIC_INPUTS = {
+    PositionOpen: 8,   // root, nullifier, position_commitment, change_commitment,
+                       // tier_id, entry_price, direction, position_id
+    PositionClose: 9,  // position_nullifier, output_note_commitment,
+                       // old_position_commitment, tier_id, entry_price,
+                       // direction, payout, fee, position_id
+    PositionHealth: 4, // position_commitment, oracle_price, oracle_timestamp,
+                       // health_threshold
+    DepositV3: 3,
+    TransferV3: 11,
+    WithdrawV3: 4,
+};
+
+function assertPublicInputCount(vkeyObj, name) {
+    const expected = EXPECTED_PUBLIC_INPUTS[name];
+    if (expected === undefined) return; // no pinned expectation for this slot
+    const actual = Array.isArray(vkeyObj.ic) ? vkeyObj.ic.length - 1 : NaN;
+    if (actual !== expected) {
+        console.error(
+            `Refusing to register ${name}: the key describes ${actual} public inputs, ` +
+            `but the contract sends ${expected}. Recompile the circuit and re-run the ` +
+            `phase-2 setup; registering this would break every proof for that circuit.`,
+        );
+        process.exit(1);
+    }
+}
+
 console.log(`Target verifier: ${VERIFIER_ID} (network=${NETWORK}${DRY_RUN ? ", DRY_RUN" : ""})`);
 
 for (const [name, config] of Object.entries(CIRCUITS)) {
     if (only.length > 0 && !only.includes(name)) continue;
     if (vaultOnly && name !== 'Deposit' && name !== 'Withdraw') {
         console.log(`Skipping ${name}: outside Vault v1 scope.`);
+        continue;
+    }
+    if (config.retired && !only.includes(name)) {
+        console.log(`Skipping ${name}: retired, no longer verified on-chain.`);
         continue;
     }
     if (!registerAll && !V1_CIRCUITS.has(name)) {
@@ -197,6 +244,11 @@ for (const [name, config] of Object.entries(CIRCUITS)) {
 
     // Pre-registration safety gate: never submit a gamma == delta VK.
     assertGammaNeDelta(vkeyObj, name);
+    // ...and never submit one that describes a different statement than the
+    // contract builds (D13). A wrong-length key registers perfectly cleanly and
+    // then fails every real proof with an opaque PublicInputMismatch, long
+    // after anyone is looking at this step.
+    assertPublicInputCount(vkeyObj, name);
 
     console.log(`Registering VK for ${name}...`);
     // Escape double quotes for cmd.exe
