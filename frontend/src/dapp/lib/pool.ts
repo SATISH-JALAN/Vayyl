@@ -31,7 +31,9 @@ import {
   fetchTransfersFrom,
   fetchDepositsFrom,
   type IndexedTransferRow,
+  assertRootMatches,
 } from './tree-source';
+import { computeRoot } from './merkle';
 
 // ---- config (env-overridable) ----------------------------------------------
 
@@ -470,7 +472,7 @@ export async function fetchTransfers(since = 0): Promise<IndexedTransferRow[]> {
   return fetchTransfersFrom(INDEXER_URL, V2_POOL_ID, since);
 }
 
-async function simulateRead(contractId: string, method: string, args: xdr.ScVal[]) {
+export async function simulateRead(contractId: string, method: string, args: xdr.ScVal[]) {
   const source = await server.getAccount(VIEW_SOURCE);
   const tx = new TransactionBuilder(source, {
     fee: BASE_FEE,
@@ -582,6 +584,30 @@ export async function assertV2ServicesReady(recipient: string): Promise<void> {
 /** Ordered commitment field elements in leaf order. */
 export async function fetchCommitments(): Promise<bigint[]> {
   return fetchCommitmentsFrom(INDEXER_URL, V2_POOL_ID);
+}
+
+/** The pool's current Merkle root, straight from the contract. */
+export async function fetchPoolRoot(): Promise<bigint> {
+  const raw = await simulateRead(V2_POOL_ID, 'get_root', []);
+  // `get_root` returns BytesN<32>; scValToNative gives a Buffer/Uint8Array.
+  const bytes = raw as Uint8Array;
+  let out = 0n;
+  for (const b of bytes) out = (out << 8n) | BigInt(b);
+  return out;
+}
+
+/**
+ * M8: verify the leaf ordering we are about to prove against BEFORE proving.
+ * The rule itself lives in `tree-source.ts` (wallet-free, so it is testable);
+ * this supplies the on-chain root.
+ */
+export async function assertLeavesMatchChain(leaves: bigint[]): Promise<bigint[]> {
+  return assertRootMatches(leaves, await fetchPoolRoot(), (l) => computeRoot(l));
+}
+
+/** Fetch the commitment set and confirm it reproduces the pool's root. */
+export async function fetchVerifiedCommitments(): Promise<bigint[]> {
+  return assertLeavesMatchChain(await fetchCommitments());
 }
 
 export async function fetchSpentNullifiers(): Promise<Set<string>> {

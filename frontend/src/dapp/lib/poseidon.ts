@@ -28,21 +28,52 @@ async function calculator(wasmUrl: string) {
   return p;
 }
 
+// One calculator instance is shared per wasm, and `calculateWitness` is NOT
+// reentrant: it writes the inputs into the module's linear memory, runs, and
+// reads the witness back out. Two overlapping calls interleave those steps, so
+// the second call's inputs overwrite the first's and BOTH return the second
+// hash -- silently, with no error anywhere.
+//
+// That is about as dangerous as a bug gets here. A commitment computed from the
+// wrong preimage is a note whose own proof cannot open it: unspendable money,
+// and the failure surfaces much later as an opaque on-chain verification error.
+// It was reachable from any `Promise.all` over hashes, which is the obvious way
+// to write a batch derivation.
+//
+// So calls are serialised per wasm. The cost is real but small (these are
+// millisecond hashes, and the proving path is already single-threaded in a
+// worker), and it removes the whole class rather than relying on every future
+// caller remembering to await in sequence.
+const queues = new Map<string, Promise<unknown>>();
+
+function serialize<T>(wasmUrl: string, job: () => Promise<T>): Promise<T> {
+  const prior = queues.get(wasmUrl) ?? Promise.resolve();
+  // `catch` on the CHAIN, not on the job: one failed hash must not wedge the
+  // queue for every later caller, but it must still reject its own promise.
+  const next = prior.then(job, job);
+  queues.set(wasmUrl, next.catch(() => undefined));
+  return next;
+}
+
 export async function poseidon2Hash2(a: bigint, b: bigint): Promise<bigint> {
-  const wc = await calculator('/circuits/hash2.wasm');
-  const w = await wc.calculateWitness({ in: [modP(a).toString(), modP(b).toString()] }, false);
-  return w[1];
+  return serialize('/circuits/hash2.wasm', async () => {
+    const wc = await calculator('/circuits/hash2.wasm');
+    const w = await wc.calculateWitness({ in: [modP(a).toString(), modP(b).toString()] }, false);
+    return w[1];
+  });
 }
 
 export async function poseidon2Hash4(
   a: bigint, b: bigint, c: bigint, d: bigint,
 ): Promise<bigint> {
-  const wc = await calculator('/circuits/hash4.wasm');
-  const w = await wc.calculateWitness(
-    { in: [modP(a).toString(), modP(b).toString(), modP(c).toString(), modP(d).toString()] },
-    false,
-  );
-  return w[1];
+  return serialize('/circuits/hash4.wasm', async () => {
+    const wc = await calculator('/circuits/hash4.wasm');
+    const w = await wc.calculateWitness(
+      { in: [modP(a).toString(), modP(b).toString(), modP(c).toString(), modP(d).toString()] },
+      false,
+    );
+    return w[1];
+  });
 }
 
 /** commitment = Poseidon2(amount, pubX, pubY, blindness) */

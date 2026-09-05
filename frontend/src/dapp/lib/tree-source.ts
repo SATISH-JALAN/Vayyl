@@ -198,3 +198,37 @@ export async function fetchSpentNullifiersFrom(
   const data = await res.json();
   return new Set((data.nullifiers as string[]).map((h) => toField(h).toString()));
 }
+
+/**
+ * M8: confirm a reconstructed leaf ordering reproduces the pool's on-chain root.
+ *
+ * The client rebuilds the tree from the indexer, falling back to the committed
+ * snapshot. Nothing compared the result to the chain, so a stale or mis-ordered
+ * indexer cost the user a full proof generation — tens of seconds on a phone —
+ * and then came back as an opaque `UnknownRoot` from the contract, an error
+ * that says nothing about the indexer being behind.
+ *
+ * This is NOT a security control. The contract's own root check is
+ * authoritative and unchanged; a client that skipped this could not thereby
+ * spend anything. It exists so the failure happens in the right place, before
+ * the expensive step, with a message naming the actual cause.
+ *
+ * Takes the on-chain root as a parameter so the rule stays wallet-free and
+ * testable; `pool.ts` supplies it from `get_root`.
+ */
+export async function assertRootMatches(
+  leaves: bigint[],
+  onChainRoot: bigint,
+  computeRootFn: (leaves: bigint[]) => Promise<bigint>,
+): Promise<bigint[]> {
+  const local = await computeRootFn(leaves);
+  if (local !== onChainRoot) {
+    const hex = (v: bigint) => `0x${v.toString(16).padStart(64, '0')}`;
+    throw new Error(
+      `Note history is out of date: the local tree (${leaves.length} leaves) does not ` +
+      `match the pool. Pool root ${hex(onChainRoot)}, computed ${hex(local)}. ` +
+      `The indexer is probably behind — retry in a moment.`
+    );
+  }
+  return leaves;
+}

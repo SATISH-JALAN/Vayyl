@@ -9,6 +9,7 @@
 import { get, set, del } from 'idb-keyval';
 import { seal, open, isSealed, scopedStorageKey } from './note-crypto';
 import { V2_DENOMINATION_STROOPS, V2_DENOMINATION_XLM } from './denomination';
+import { tagLegacyNotes, mergeNotes } from './legacy-notes';
 
 export interface ShieldedNote {
   id: string; // = commitment (decimal string), unique per note
@@ -46,6 +47,21 @@ export interface ShieldedNote {
   ephemeralY?: string;
   createdAt: number;
   txHash?: string;
+  /**
+   * Which viewing-key derivation owns this note. Absent means the current one
+   * (v2) -- every note written before the tag existed came from the code path
+   * that is still current. Only notes recovered from a superseded derivation
+   * carry an explicit version. See legacy-notes.ts for why this has to be
+   * per-note rather than per-wallet.
+   */
+  keyVersion?: number;
+  /**
+   * The viewing key that actually opens this note, when it is not the wallet's
+   * current one. The spend key -- and therefore the note's public key and its
+   * nullifier -- is derived from this, so without it the note is unspendable
+   * even though the funds are still in the pool.
+   */
+  legacyViewingKey?: string;
 }
 
 
@@ -274,4 +290,57 @@ export async function importV2Backup(viewingKey: string, backup: string): Promis
   }
   await writeSealed(viewingKey, 'activity', [...mergedActivity.values()]);
   return payload.notes.length;
+}
+
+// ---- legacy viewing-key recovery -------------------------------------------
+// See legacy-notes.ts for the reasoning. The short version: a note shielded
+// under viewing key v1 can only ever be opened by the v1 spend key, so the v2
+// upgrade did not migrate those notes, it made them invisible. This moves them
+// into the live store WITH the key that opens them attached.
+
+/**
+ * Pull every note held under `legacyViewingKey` into `viewingKey`'s store.
+ *
+ * Returns how many notes were newly adopted. Safe to run repeatedly: notes
+ * already present are skipped, and already-tagged notes keep their original
+ * tag, so a second run reports 0 rather than duplicating or re-pointing
+ * anything.
+ *
+ * The legacy store is deleted only after the merged set has been written. If
+ * the write fails the old record is still there and the next run finds it
+ * again -- the opposite order would trade a recoverable error for lost notes.
+ */
+export async function recoverLegacyNotes(
+  viewingKey: string,
+  legacyViewingKey: string,
+  legacyVersion = 1,
+): Promise<{ adopted: number; found: number }> {
+  if (legacyViewingKey === viewingKey) return { adopted: 0, found: 0 };
+
+  const legacyNotes = await getNotes(legacyViewingKey);
+  const legacyEvents = await getActivity(legacyViewingKey);
+  if (legacyNotes.length === 0 && legacyEvents.length === 0) {
+    return { adopted: 0, found: 0 };
+  }
+
+  const tagged = tagLegacyNotes(legacyNotes, legacyViewingKey, legacyVersion);
+  const { notes, added } = mergeNotes(await getNotes(viewingKey), tagged);
+  await saveNotes(viewingKey, notes);
+
+  if (legacyEvents.length > 0) {
+    const current = await getActivity(viewingKey);
+    const seen = new Set(current.map((e) => e.id));
+    await writeSealed(viewingKey, 'activity', [
+      ...current,
+      ...legacyEvents.filter((e) => !seen.has(e.id)),
+    ]);
+  }
+
+  // Only now is it safe to drop the source.
+  await del(await scopedStorageKey(legacyViewingKey, 'notes'));
+  await del(await scopedStorageKey(legacyViewingKey, 'activity'));
+  await del(legacyNotesKey(legacyViewingKey));
+  await del(legacyActivityKey(legacyViewingKey));
+
+  return { adopted: added, found: legacyNotes.length };
 }

@@ -6,7 +6,13 @@ import {
   isAllowed,
   getNetworkDetails,
 } from '@stellar/freighter-api';
-import { deriveViewingKey, deriveShieldedKeys, type ShieldedKeys } from '../lib/crypto';
+import {
+  deriveViewingKey,
+  deriveViewingKeyV1,
+  deriveShieldedKeys,
+  type ShieldedKeys,
+} from '../lib/crypto';
+import { recoverLegacyNotes as adoptLegacyNotes } from '../lib/storage';
 import { isExpectedWalletNetwork, NETWORK } from '../lib/network';
 
 async function getExpectedNetwork(): Promise<string> {
@@ -29,6 +35,17 @@ interface WalletState {
   connect: () => Promise<void>;
   /** Derive the shielded viewing/spend keys (prompts a Freighter signature). */
   unlockShieldedKeys: () => Promise<ShieldedKeys>;
+  /**
+   * Adopt notes shielded under the superseded v1 viewing key.
+   *
+   * Prompts a SECOND Freighter signature, over the old fixed message, because
+   * that signature is the only thing that reproduces the v1 key -- and the v1
+   * key is the only thing that can spend those notes. User-triggered rather
+   * than automatic: silently asking for a second signature on every unlock
+   * trains people to sign whatever a page puts in front of them, which is the
+   * exact habit the origin-bound v2 message exists to break.
+   */
+  recoverLegacyNotes: () => Promise<{ adopted: number; found: number }>;
   disconnect: () => void;
   autoConnect: () => Promise<void>;
 }
@@ -80,6 +97,14 @@ export const useWalletStore = create<WalletState>((set, get) => ({
     } finally {
       set({ isUnlocking: false });
     }
+  },
+
+  recoverLegacyNotes: async () => {
+    const address = get().address;
+    if (!address) throw new Error('Connect your wallet first');
+    const keys = await get().unlockShieldedKeys();
+    const legacyViewingKey = await deriveViewingKeyV1(address);
+    return adoptLegacyNotes(keys.viewingKey, legacyViewingKey, 1);
   },
 
   disconnect: () => {

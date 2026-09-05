@@ -8,6 +8,7 @@
 import { create } from 'zustand';
 import { useWalletStore } from './wallet';
 import { useToastStore } from './toast';
+import { keysForNote, shareOneKey } from '../lib/legacy-notes';
 import {
   randomFieldElement,
 } from '../lib/poseidon';
@@ -20,7 +21,7 @@ import {
   submitTransferV3,
   submitWithdrawV3,
   fetchTransfers,
-  fetchCommitments,
+  fetchVerifiedCommitments,
   fetchSpentNullifiers,
   computeWithdrawBinding,
   fetchV2AspLeafIndex,
@@ -282,15 +283,18 @@ export const usePoolStore = create<PoolState>((set, get) => ({
 
       // Reconstruct the tree from the indexer's ordered commitments.
       set({ status: 'Reconstructing Merkle path…' });
-      const leaves = await fetchCommitments();
+      const leaves = await fetchVerifiedCommitments();
       // Locate this note's leaf index by matching its commitment.
       const idx = leaves.findIndex((c) => c.toString() === note.commitment);
       if (idx < 0) throw new Error('This note is not indexed yet. Wait a few seconds and retry.');
 
       set({ status: 'Generating withdraw proof…' });
+      // A note recovered from the v1 viewing key is opened by the v1 spend key,
+      // not the wallet's current one — see legacy-notes.ts.
+      const noteKeys = await keysForNote(note, keys);
       const proveResult = await runWorkerTask('PROVE_WITHDRAW_V2', {
         blindness: note.blindness,
-        privKey: keys.spendKey.toString(),
+        privKey: noteKeys.spendKey.toString(),
         commitment: note.commitment,
         leafIndex: idx,
         withdrawBinding,
@@ -366,9 +370,10 @@ export const usePoolStore = create<PoolState>((set, get) => ({
       // else: this is the escape hatch, so it must not depend on the indexer
       // being up.
       set({ status: 'Generating exit proof…' });
+      const noteKeys = await keysForNote(note, keys);
       const proveResult = await runWorkerTask('PROVE_RAGEQUIT_V2', {
         blindness: note.blindness,
-        privKey: keys.spendKey.toString(),
+        privKey: noteKeys.spendKey.toString(),
         commitment: note.commitment,
         exitBinding,
       });
@@ -424,15 +429,16 @@ export const usePoolStore = create<PoolState>((set, get) => ({
       if (!note) throw new Error('No unspent 1 XLM note was found for this wallet.');
 
       set({ status: 'Reconstructing Merkle path…' });
-      const leaves = await fetchCommitments();
+      const leaves = await fetchVerifiedCommitments();
       const idx = leaves.findIndex((c) => c.toString() === note.commitment);
       if (idx < 0) throw new Error('This note is not indexed yet. Wait a few seconds and retry.');
 
       // The ephemeral scalar, the shared secret and the output blindness are all
       // produced inside the worker and never leave it.
       set({ status: 'Generating transfer proof…' });
+      const noteKeys = await keysForNote(note, keys);
       const proveResult = await runWorkerTask('PROVE_TRANSFER_V2', {
-        privKey: keys.spendKey.toString(),
+        privKey: noteKeys.spendKey.toString(),
         blindness: note.blindness,
         commitment: note.commitment,
         leafIndex: idx,
@@ -584,7 +590,7 @@ export const usePoolStore = create<PoolState>((set, get) => ({
       );
 
       set({ status: 'Reconstructing Merkle paths…' });
-      const leaves = await fetchCommitments();
+      const leaves = await fetchVerifiedCommitments();
       const leafIndexOf = (commitment: string) => {
         const idx = leaves.findIndex((c) => c.toString() === commitment);
         if (idx < 0) throw new Error('A selected note is not indexed yet. Wait a few seconds and retry.');
@@ -597,9 +603,21 @@ export const usePoolStore = create<PoolState>((set, get) => ({
       });
       const picked = selection.inputs as unknown as Array<{ note: ShieldedNote }>;
 
+      // The V3 transfer circuit takes ONE privKey for both inputs, so a spend
+      // may not mix a recovered v1 note with a current one. Refusing here gives
+      // a sentence the user can act on; letting it through produces a snarkjs
+      // witness failure that names nothing.
+      if (!shareOneKey(picked.map((row) => row.note))) {
+        throw new Error(
+          'This amount would combine a recovered legacy note with a current one, ' +
+          'which one proof cannot spend. Send the legacy balance to yourself first.',
+        );
+      }
+      const noteKeys = await keysForNote(picked[0].note, keys);
+
       set({ status: 'Generating transfer proof…' });
       const proveResult = await runWorkerTask('PROVE_TRANSFER_V3', {
-        privKey: keys.spendKey.toString(),
+        privKey: noteKeys.spendKey.toString(),
         in1: asInput(picked[0]),
         in2: picked[1] ? asInput(picked[1]) : undefined,
         leaves: leaves.map((c) => c.toString()),
@@ -638,13 +656,18 @@ export const usePoolStore = create<PoolState>((set, get) => ({
           protocol: 'v3',
           pool: V2_POOL_ID,
           commitment: change.commitment,
-          nullifier: (await poseidon2Hash2(BigInt(change.commitment), keys.spendKey)).toString(),
+          nullifier: (await poseidon2Hash2(BigInt(change.commitment), noteKeys.spendKey)).toString(),
           pubX: change.pubX,
           pubY: change.pubY,
           blindness: change.blindness,
           leafIndex: -1,
           isSpent: false,
           source: 'change',
+          // Change from a legacy note is derived from the legacy key, so it is
+          // itself a legacy note. Tagging it is what stops it becoming
+          // unspendable the moment it lands.
+          keyVersion: picked[0].note.keyVersion,
+          legacyViewingKey: picked[0].note.legacyViewingKey,
           ephemeralX: proveResult.eph2X,
           ephemeralY: proveResult.eph2Y,
           createdAt: Date.now(),
@@ -701,13 +724,14 @@ export const usePoolStore = create<PoolState>((set, get) => ({
       const withdrawBinding = await computeWithdrawBinding(destination, BigInt(amountStroops));
 
       set({ status: 'Reconstructing Merkle path…' });
-      const leaves = await fetchCommitments();
+      const leaves = await fetchVerifiedCommitments();
       const idx = leaves.findIndex((c) => c.toString() === note.commitment);
       if (idx < 0) throw new Error('This note is not indexed yet. Wait a few seconds and retry.');
 
       set({ status: 'Generating withdraw proof…' });
+      const noteKeys = await keysForNote(note, keys);
       const proveResult = await runWorkerTask('PROVE_WITHDRAW_V3', {
-        privKey: keys.spendKey.toString(),
+        privKey: noteKeys.spendKey.toString(),
         blindness: note.blindness,
         amountStroops,
         commitment: note.commitment,

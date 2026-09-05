@@ -9,6 +9,14 @@
 import { signMessage } from '@stellar/freighter-api';
 import { modP } from './poseidon';
 import { NETWORK_PASSPHRASE } from './network';
+import {
+  vayylAuthMessage,
+  normalizeSignatureBytes,
+  deriveViewingKeyFromSignature,
+  deriveViewingKeyV1FromResponse,
+  currentOrigin,
+  VAYYL_AUTH_MESSAGE,
+} from './viewing-key';
 
 export {
   poseidon2Hash2,
@@ -37,39 +45,46 @@ export function generateBlindness(): string {
 // deriveViewingKey below, which is the genuinely wallet-coupled half.
 
 // ---- Viewing key from a Freighter signature --------------------------------
+//
+// Everything byte-level lives in viewing-key.ts (wallet-free, so it is testable
+// under `node --test`). What remains here is the one step that genuinely needs
+// the wallet: asking Freighter to sign.
 
-export const VAYYL_AUTH_MESSAGE =
-  'Authenticate with Vayyl to derive your private viewing key. DO NOT SIGN THIS on untrusted domains.';
+export {
+  VIEWING_KEY_VERSION,
+  VAYYL_AUTH_MESSAGE,
+  vayylAuthMessage,
+  normalizeSignatureBytes,
+  deriveViewingKeyFromSignature,
+  deriveViewingKeyV1FromResponse,
+  currentOrigin,
+} from './viewing-key';
 
-export const deriveViewingKey = async (address: string): Promise<string> => {
-  const signatureResponse = await signMessage(VAYYL_AUTH_MESSAGE, {
+export const deriveViewingKey = async (
+  address: string,
+  origin: string = currentOrigin(),
+): Promise<string> => {
+  const response = await signMessage(vayylAuthMessage(origin), {
     address,
     networkPassphrase: NETWORK_PASSPHRASE,
   });
-  if ((signatureResponse as { error?: string }).error) {
-    throw new Error((signatureResponse as { error?: string }).error);
+  if ((response as { error?: string }).error) {
+    throw new Error((response as { error?: string }).error);
   }
+  return deriveViewingKeyFromSignature(normalizeSignatureBytes(response));
+};
 
-  let signedMessage = '';
-  const anyResp = signatureResponse as unknown as
-    | Uint8Array
-    | string
-    | { signedMessage?: string | Uint8Array };
-  if (anyResp instanceof Uint8Array) {
-    signedMessage = new TextDecoder().decode(anyResp);
-  } else if (typeof anyResp === 'string') {
-    signedMessage = anyResp;
-  } else if (anyResp.signedMessage) {
-    signedMessage =
-      typeof anyResp.signedMessage === 'string'
-        ? anyResp.signedMessage
-        : new TextDecoder().decode(anyResp.signedMessage);
+/**
+ * The v1 viewing key, for recovering notes shielded before the v2 change.
+ * Deliberately not called in the normal flow — see viewing-key.ts.
+ */
+export const deriveViewingKeyV1 = async (address: string): Promise<string> => {
+  const response = await signMessage(VAYYL_AUTH_MESSAGE, {
+    address,
+    networkPassphrase: NETWORK_PASSPHRASE,
+  });
+  if ((response as { error?: string }).error) {
+    throw new Error((response as { error?: string }).error);
   }
-  if (!signedMessage) throw new Error('Failed to extract signed message');
-
-  const signatureBytes = new TextEncoder().encode(signedMessage);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', signatureBytes);
-  return Array.from(new Uint8Array(hashBuffer))
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
+  return deriveViewingKeyV1FromResponse(response);
 };

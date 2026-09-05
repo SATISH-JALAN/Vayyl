@@ -12,6 +12,7 @@
 import * as snarkjs from 'snarkjs';
 import { computeCommitment, computeNullifier, poseidon2Hash2, poseidon2Hash4 } from './poseidon';
 import { buildMerklePath, zeroHashes, TREE_DEPTH } from './merkle';
+import { derivePublicKey } from './babyjub';
 import {
   deriveOutgoingNote,
   deriveOutgoingNoteV3,
@@ -194,6 +195,57 @@ interface V2ScanPayload {
   transfers: IndexedTransfer[];
 }
 
+// ---- positions -------------------------------------------------------------
+// Everything the CONTRACT decides arrives here as a value to pass through, not
+// as something to recompute. `entryPrice` is the oracle price the contract read
+// under a staleness check, `payoutStroops` is what the contract will settle for,
+// and `marginStroops`/`size` come from the tier table. Recomputing any of them
+// client-side is how a proof ends up verifying locally and failing on-chain.
+
+interface PositionOpenPayload {
+  privKey: string;
+  /** The whole collateral note being spent, in stroops. */
+  collateralStroops: string;
+  collateralBlindness: string;
+  leafIndex: number;
+  leaves: string[];
+  tierId: number;
+  marginStroops: string;
+  size: string;
+  direction: number;
+  entryPrice: string;
+  positionId: string;
+  positionBlindness: string;
+  changeBlindness: string;
+}
+
+interface PositionHealthPayload {
+  privKey: string;
+  tierId: number;
+  marginStroops: string;
+  size: string;
+  direction: number;
+  entryPrice: string;
+  positionBlindness: string;
+  oraclePrice: string;
+  oracleTimestamp: string;
+  healthThreshold: string;
+}
+
+interface PositionClosePayload {
+  privKey: string;
+  tierId: number;
+  marginStroops: string;
+  size: string;
+  direction: number;
+  entryPrice: string;
+  positionId: string;
+  positionBlindness: string;
+  payoutStroops: string;
+  feeStroops: string;
+  payoutBlindness: string;
+}
+
 self.onmessage = async (e: MessageEvent) => {
   const { type, payload, id } = e.data;
   try {
@@ -317,9 +369,20 @@ self.onmessage = async (e: MessageEvent) => {
         // dummy's blindness MUST be fresh per transfer: it still produces a
         // nullifier the pool marks spent, so reusing one makes the next
         // transfer fail on-chain as a double spend.
+        // D1: draw the dummy blindness ONCE and thread the same value into both
+        // the derivation and the witness below. Deriving `in2` from a fresh
+        // scalar while handing the circuit `in_blindness2: '0'` makes
+        // `note2.nullifier === nullifier2` unsatisfiable, so `fullProve` throws
+        // during witness generation -- and `needsDummy` is true whenever a
+        // single note covers the amount, i.e. the ordinary case.
+        //
+        // Do NOT "fix" that by deriving with '0' to match: the dummy nullifier
+        // would then be a constant per wallet and the SECOND single-note
+        // transfer would be rejected on-chain as a double spend.
+        const dummyBlindness = randomScalar().toString();
         const in2 = p.in2
           ? await deriveNote(p.privKey, p.in2.amountStroops, p.in2.blindness)
-          : await deriveNote(p.privKey, '0', randomScalar().toString());
+          : await deriveNote(p.privKey, '0', dummyBlindness);
         const path2 = p.in2 ? await buildMerklePath(leaves, p.in2.leafIndex) : path1;
         const in2Amount = p.in2 ? p.in2.amountStroops : '0';
         const isDummy2 = p.in2 ? '0' : '1';
@@ -357,7 +420,7 @@ self.onmessage = async (e: MessageEvent) => {
             in_pathElements1: path1.pathElements.map(String),
             in_pathIndices1: path1.pathIndices.map(String),
             in_amount2: in2Amount,
-            in_blindness2: p.in2 ? p.in2.blindness : '0',
+            in_blindness2: p.in2 ? p.in2.blindness : dummyBlindness,
             in_pathElements2: path2.pathElements.map(String),
             in_pathIndices2: path2.pathIndices.map(String),
             isDummy2,
@@ -491,117 +554,180 @@ self.onmessage = async (e: MessageEvent) => {
         break;
       }
 
+      // ---- positions ---------------------------------------------------
+      // These witness layouts mirror position_open.circom and
+      // position_close.circom exactly. Everything the CONTRACT supplies as a
+      // public input -- tier, entry price, direction, payout, position id --
+      // is passed through unchanged rather than recomputed here. A client that
+      // derived its own value would produce a proof that verifies locally and
+      // is rejected on-chain, which is precisely the failure mode this vertical
+      // kept hitting.
+
       case 'PROVE_POSITION_OPEN': {
-        const p = payload as any;
-        
-        const amount = BigInt(p.amount);
-        const pubX = BigInt(p.pubX);
-        const pubY = BigInt(p.pubY);
-        const blindness = BigInt(p.blindness);
+        const p = payload as PositionOpenPayload;
+
         const privKey = BigInt(p.privKey);
-        
-        const commitment = await computeCommitment(amount, pubX, pubY, blindness);
-        const nullifier = await computeNullifier(commitment, privKey);
-        
-        const leaves = p.leaves.map((x: string) => BigInt(x));
-        const { root, pathElements, pathIndices } = await buildMerklePath(leaves, p.leafIndex);
-        
+        const inAmount = BigInt(p.collateralStroops);
+        const inBlindness = BigInt(p.collateralBlindness);
+        const margin = BigInt(p.marginStroops);
         const size = BigInt(p.size);
         const direction = BigInt(p.direction);
-        const entry_price = BigInt(p.entry_price);
-        const position_blindness = BigInt(p.position_blindness);
-        
-        const metaHash1 = await poseidon2Hash4(size, direction, entry_price, position_blindness);
-        const pos_commit = await poseidon2Hash4(amount, pubX, pubY, metaHash1);
-        
+        const entryPrice = BigInt(p.entryPrice);
+        const positionId = BigInt(p.positionId);
+
+        // Derived, exactly as Note() does inside the circuit. A note whose
+        // public key came from anywhere else builds a commitment the proof
+        // cannot open.
+        const { pubX, pubY } = derivePublicKey(privKey);
+
+        const commitment = await computeCommitment(inAmount, pubX, pubY, inBlindness);
+        const nullifier = await computeNullifier(commitment, privKey);
+
+        const leaves = p.leaves.map((x: string) => BigInt(x));
+        const { root, pathElements, pathIndices } = await buildMerklePath(leaves, p.leafIndex);
+
+        // Blindness is derived from (spendKey, positionId) rather than drawn at
+        // random, so both notes survive losing this browser. See
+        // lib/position-notes.ts for why that is safe and why it is necessary.
+        const changeAmount = inAmount - margin;
+        const changeBlind = BigInt(p.changeBlindness);
+        const changeCommitment = await computeCommitment(changeAmount, pubX, pubY, changeBlind);
+
+        const posBlind = BigInt(p.positionBlindness);
+        const meta = await poseidon2Hash4(size, direction, entryPrice, posBlind);
+        const positionCommitment = await poseidon2Hash4(margin, pubX, pubY, meta);
+
         const input = {
           root: root.toString(),
           nullifier: nullifier.toString(),
-          position_commitment: pos_commit.toString(),
-          meta_hash: p.meta_hash,
-          amount: amount.toString(),
-          pubX: pubX.toString(),
-          pubY: pubY.toString(),
-          blindness: blindness.toString(),
+          position_commitment: positionCommitment.toString(),
+          change_commitment: changeCommitment.toString(),
+          tier_id: p.tierId.toString(),
+          entry_price: entryPrice.toString(),
+          direction: direction.toString(),
+          position_id: positionId.toString(),
           privKey: privKey.toString(),
+          in_amount: inAmount.toString(),
+          in_blindness: inBlindness.toString(),
           pathElements: pathElements.map((x) => x.toString()),
           pathIndices: pathIndices.map((x) => x.toString()),
-          size: size.toString(),
-          direction: direction.toString(),
-          entry_price: entry_price.toString(),
-          position_blindness: position_blindness.toString(),
+          change_amount: changeAmount.toString(),
+          change_blindness: changeBlind.toString(),
+          position_blindness: posBlind.toString(),
         };
 
         const { proof, publicSignals } = await snarkjs.groth16.fullProve(
-          input, '/circuits/position_open.wasm', '/circuits/position_open_final.zkey'
+          input, '/circuits/position_open.wasm', '/circuits/position_open_final.zkey',
         );
-        
-        result = { proof, publicSignals, position_commitment: pos_commit.toString(), nullifier: nullifier.toString(), root: root.toString() };
+
+        result = {
+          proof,
+          publicSignals,
+          root: root.toString(),
+          nullifier: nullifier.toString(),
+          position_commitment: positionCommitment.toString(),
+          change_commitment: changeCommitment.toString(),
+          change_amount: changeAmount.toString(),
+          change_blindness: changeBlind.toString(),
+        };
+        break;
+      }
+
+      case 'PROVE_POSITION_HEALTH': {
+        const p = payload as PositionHealthPayload;
+
+        const privKey = BigInt(p.privKey);
+        const { pubX, pubY } = derivePublicKey(privKey);
+        const margin = BigInt(p.marginStroops);
+        const size = BigInt(p.size);
+        const direction = BigInt(p.direction);
+        const entryPrice = BigInt(p.entryPrice);
+        const oraclePrice = BigInt(p.oraclePrice);
+        const posBlind = BigInt(p.positionBlindness);
+
+        const meta = await poseidon2Hash4(size, direction, entryPrice, posBlind);
+        const positionCommitment = await poseidon2Hash4(margin, pubX, pubY, meta);
+
+        const input = {
+          position_commitment: positionCommitment.toString(),
+          oracle_price: oraclePrice.toString(),
+          oracle_timestamp: p.oracleTimestamp.toString(),
+          health_threshold: p.healthThreshold.toString(),
+          collateral_amount: margin.toString(),
+          size: size.toString(),
+          direction: direction.toString(),
+          entry_price: entryPrice.toString(),
+          privKey: privKey.toString(),
+          position_blindness: posBlind.toString(),
+          // The sign selector, pinned in-circuit by a range check on the
+          // SELECTED delta. Supplying the wrong one forges nothing; it simply
+          // fails to prove.
+          price_ge_entry: (oraclePrice >= entryPrice ? 1n : 0n).toString(),
+        };
+
+        const { proof, publicSignals } = await snarkjs.groth16.fullProve(
+          input, '/circuits/position_health.wasm', '/circuits/position_health_final.zkey',
+        );
+
+        result = { proof, publicSignals, position_commitment: positionCommitment.toString() };
         break;
       }
 
       case 'PROVE_POSITION_CLOSE': {
-        const p = payload as any;
-        
-        const pubX = BigInt(p.pubX);
-        const pubY = BigInt(p.pubY);
-        const old_privKey = BigInt(p.old_privKey);
-        
-        const old_position_commitment = p.old_position_commitment.startsWith('0x') 
-          ? BigInt(p.old_position_commitment) 
-          : BigInt('0x' + p.old_position_commitment);
-        const position_nullifier = await poseidon2Hash2(old_position_commitment, old_privKey);
-        
-        const new_size = BigInt(p.new_size);
-        const new_direction = BigInt(p.new_direction);
-        const new_entry_price = BigInt(p.new_entry_price);
-        const new_collateral = BigInt(p.new_collateral);
-        const new_blindness = BigInt(p.new_blindness);
-        
-        const new_pos_commit = await poseidon2Hash2(new_collateral, await poseidon2Hash2(pubX, await poseidon2Hash2(pubY, await poseidon2Hash2(new_size, await poseidon2Hash2(new_direction, await poseidon2Hash2(new_entry_price, new_blindness))))));
-        // Note: position_commitment hash ordering differs slightly between e2e and circuits sometimes. Wait, the e2e uses calculatePositionCommitment which is Hash4(collateral, pubX, pubY, Hash4(size, direction, entry_price, blindness)).
-        // Let's match the e2e script exactly for the worker.
-        
-        const metaHash1 = await poseidon2Hash4(new_size, new_direction, new_entry_price, new_blindness);
-        const new_pos_commit_correct = await poseidon2Hash4(new_collateral, pubX, pubY, metaHash1);
+        const p = payload as PositionClosePayload;
 
-        const note_amount = BigInt(p.note_amount);
-        const note_blindness = BigInt(p.note_blindness);
-        const output_note_commitment = await computeCommitment(note_amount, pubX, pubY, note_blindness);
-        
+        const privKey = BigInt(p.privKey);
+        const { pubX, pubY } = derivePublicKey(privKey);
+
+        const margin = BigInt(p.marginStroops);
+        const size = BigInt(p.size);
+        const direction = BigInt(p.direction);
+        const entryPrice = BigInt(p.entryPrice);
+        const payout = BigInt(p.payoutStroops);
+        const fee = BigInt(p.feeStroops);
+        const positionId = BigInt(p.positionId);
+        const posBlind = BigInt(p.positionBlindness);
+
+        // Recomputed rather than taken from the caller, so it is guaranteed to
+        // be the commitment THIS key opens. The contract supplies the stored one
+        // as a public input (audit C3); if the two disagree the proof fails,
+        // which is the correct outcome and better than proving against a value
+        // the chain will not accept.
+        const meta = await poseidon2Hash4(size, direction, entryPrice, posBlind);
+        const oldPositionCommitment = await poseidon2Hash4(margin, pubX, pubY, meta);
+        const positionNullifier = await poseidon2Hash2(oldPositionCommitment, privKey);
+
+        const noteAmount = payout - fee;
+        const noteBlind = BigInt(p.payoutBlindness);
+        const outputNoteCommitment = await computeCommitment(noteAmount, pubX, pubY, noteBlind);
+
         const input = {
-          position_nullifier: position_nullifier.toString(),
-          new_position_commitment: new_pos_commit_correct.toString(),
-          output_note_commitment: output_note_commitment.toString(),
-          oracle_price: p.oracle_price.toString(),
-          fee: p.fee.toString(),
-          meta_hash: p.meta_hash,
-          old_collateral: p.old_collateral.toString(),
-          old_size: p.old_size.toString(),
-          old_direction: p.old_direction.toString(),
-          old_entry_price: p.old_entry_price.toString(),
-          old_pubX: pubX.toString(),
-          old_pubY: pubY.toString(),
-          old_blindness: p.old_blindness.toString(),
-          old_privKey: old_privKey.toString(),
-          new_collateral: new_collateral.toString(),
-          new_size: new_size.toString(),
-          new_direction: new_direction.toString(),
-          new_entry_price: new_entry_price.toString(),
-          new_pubX: pubX.toString(),
-          new_pubY: pubY.toString(),
-          new_blindness: new_blindness.toString(),
-          note_amount: note_amount.toString(),
-          note_pubX: pubX.toString(),
-          note_pubY: pubY.toString(),
-          note_blindness: note_blindness.toString()
+          position_nullifier: positionNullifier.toString(),
+          output_note_commitment: outputNoteCommitment.toString(),
+          old_position_commitment: oldPositionCommitment.toString(),
+          tier_id: p.tierId.toString(),
+          entry_price: entryPrice.toString(),
+          direction: direction.toString(),
+          payout: payout.toString(),
+          fee: fee.toString(),
+          position_id: positionId.toString(),
+          privKey: privKey.toString(),
+          position_blindness: posBlind.toString(),
+          note_blindness: noteBlind.toString(),
         };
 
         const { proof, publicSignals } = await snarkjs.groth16.fullProve(
-          input, '/circuits/position_close.wasm', '/circuits/position_close_final.zkey'
+          input, '/circuits/position_close.wasm', '/circuits/position_close_final.zkey',
         );
-        
-        result = { proof, publicSignals, position_nullifier: position_nullifier.toString(), new_position_commitment: new_pos_commit_correct.toString(), output_note_commitment: output_note_commitment.toString() };
+
+        result = {
+          proof,
+          publicSignals,
+          position_nullifier: positionNullifier.toString(),
+          output_note_commitment: outputNoteCommitment.toString(),
+          note_amount: noteAmount.toString(),
+          note_blindness: noteBlind.toString(),
+        };
         break;
       }
 
