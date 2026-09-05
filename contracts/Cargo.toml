@@ -11,7 +11,9 @@ members = [
     "agentic-settlement-hub",
     "vayyl-pool-factory",
     "vayyl-types",
-    "vayyl-mock-token"
+    "vayyl-mock-token",
+    "vayyl-mock-oracle",
+    "vayyl-counterparty-vault"
 ]
 
 [workspace.dependencies]
