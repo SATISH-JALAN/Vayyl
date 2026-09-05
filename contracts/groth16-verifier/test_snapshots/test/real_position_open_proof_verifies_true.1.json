@@ -1,6 +1,6 @@
 {
   "generators": {
-    "address": 3,
+    "address": 2,
     "nonce": 0,
     "mux_id": 0
   },
@@ -19,7 +19,7 @@
                 {
                   "vec": [
                     {
-                      "symbol": "Withdraw"
+                      "symbol": "PositionOpen"
                     }
                   ]
                 },
@@ -46,7 +46,7 @@
                         "symbol": "delta_g2"
                       },
                       "val": {
-                        "bytes": "25b90ae49f091498107e6d006742911415371f1dab2cc4b323a6f32fc6e830390c0836c70e8ce0cc94d25564f471a976c76140628689b770cd7b6fd3a0eb943e02874c645baeb9ef74563a081589b72b10d83771aba5d177edc68a0b07be50442a2e2d58a47449c005203ccf410546635ff11691f9f29a453a3760cf61a098e6"
+                        "bytes": "26b3543fd65d777b848e4c06cdd0da3900859c59d7500563a7eec9cc44e45dcd0367ab0028224e598b06c798a92013d4faa680086c510e5eaa53c9f530bdbf2914ec8d11f636afa949fa9e514a0149928a9198ec9d16a9fe58a05a0ad5c3c19a2e04bc768b97cc26ed49a4d8e3c0fd4802583a1e1be65b178e46b69ae13aa506"
                       }
                     },
                     {
@@ -64,16 +64,31 @@
                       "val": {
                         "vec": [
                           {
-                            "bytes": "2854dff2e076a03d0b153d52393c1c3757f7475396478afaeb0960529770ad0a127b31d41f46b92bf37acbcdbfe865ce8b30ae23123ffe8fd4fa5b2bd4f1536a"
+                            "bytes": "0c459100981356fa3f0ddec6eec454d4d812c09b1236488763b4543bfb17d5871754d58aead249dfb57bc8396038c0dd82fc7d947087aa00645429f8795d0d6e"
                           },
                           {
-                            "bytes": "2e2fbcb1d7464f98fad58840cb85140a90d75cea495c15f4af30a399d218afb4297d056bcb7f1ce60697763c0fbefecb8268da6e9a63f4b6d7c607bcbff0a00f"
+                            "bytes": "257d61ab85a6fcaab7bb4e1f6159a73fa8a48e9b1acb28b4161c68ea42aefc780a873ae842c4a779bc7c33306708700bb4beaa47331b63b5a9ca1e2bf0d45839"
                           },
                           {
-                            "bytes": "0575cd484addb8feb8778579f0ce061687d468be57adfcb7337512b487d0f07c0ce3e2a8d3189b6d19ee757dc375e6403bfc5203eaadf4ac7ad9660977b29c0f"
+                            "bytes": "05fef4c90b34a6f122f013c9bcb8a15f4d8c813784ee6e5e60fe46749934c7602ea6b99f0607478f49d3c11f60c54c25b655a2b2f3167df23a60bd7dab3b074a"
                           },
                           {
-                            "bytes": "301851242c8d18a62d04fd54ae37630a4c7e63dea4c06bd4ae01bec3d777e1492f340d354be3b96db84a80e8202c40d3ec32230bff115607a081701aef5454d1"
+                            "bytes": "07d3f280cbdce67cc7510a1d87ba0407a7ec001530e9d2e45219b422156b88a62d9f0d510cb43cd49a170d460a13814e90669ab359db465914988415800bf5fc"
+                          },
+                          {
+                            "bytes": "1583c8464814c4ccab35c2656518302919bc1cc2e4bdcf4d29d13276b43e9fd62e43f77fd77fb738ffe0370927c17a15a69abfb87e7d73b6089017f409a2f28f"
+                          },
+                          {
+                            "bytes": "2e03c857f33eb931c5219c24c9162715fe3faaf1334ced838e17a88cea607b4f1e980ce6c00f840bf185a726dde737d3ac4fc644d1637fd792069d6c9796ecf5"
+                          },
+                          {
+                            "bytes": "1f316b7f0a1d3b22d29c580fff5ff87139d070e07b232c2828c7e5640c22e8d61561efea7fd7f768dc6e06c201c6aaa22d302f48e1b94e61166ff05184220f33"
+                          },
+                          {
+                            "bytes": "1fe6313093d658e92b01315b7a4aff17469cf46d5e6ba678888b0b99ef8423980b23d60a4255d48f3f2fc3cdd53080d9d485691e1c938b5baad41edab1d20bd0"
+                          },
+                          {
+                            "bytes": "28570a3d651850a1b566beea76f20be69454472141d9bc2c4501db7b242f4d1403f714a52be5345307140dc1021b17eb25158f6bd3effc220aaaef2c7f2b7747"
                           }
                         ]
                       }
@@ -87,7 +102,6 @@
         }
       ]
     ],
-    [],
     []
   ],
   "ledger": {
@@ -136,7 +150,7 @@
                           {
                             "vec": [
                               {
-                                "symbol": "Withdraw"
+                                "symbol": "PositionOpen"
                               }
                             ]
                           }
@@ -165,7 +179,7 @@
                               "symbol": "delta_g2"
                             },
                             "val": {
-                              "bytes": "25b90ae49f091498107e6d006742911415371f1dab2cc4b323a6f32fc6e830390c0836c70e8ce0cc94d25564f471a976c76140628689b770cd7b6fd3a0eb943e02874c645baeb9ef74563a081589b72b10d83771aba5d177edc68a0b07be50442a2e2d58a47449c005203ccf410546635ff11691f9f29a453a3760cf61a098e6"
+                              "bytes": "26b3543fd65d777b848e4c06cdd0da3900859c59d7500563a7eec9cc44e45dcd0367ab0028224e598b06c798a92013d4faa680086c510e5eaa53c9f530bdbf2914ec8d11f636afa949fa9e514a0149928a9198ec9d16a9fe58a05a0ad5c3c19a2e04bc768b97cc26ed49a4d8e3c0fd4802583a1e1be65b178e46b69ae13aa506"
                             }
                           },
                           {
@@ -183,16 +197,31 @@
                             "val": {
                               "vec": [
                                 {
-                                  "bytes": "2854dff2e076a03d0b153d52393c1c3757f7475396478afaeb0960529770ad0a127b31d41f46b92bf37acbcdbfe865ce8b30ae23123ffe8fd4fa5b2bd4f1536a"
+                                  "bytes": "0c459100981356fa3f0ddec6eec454d4d812c09b1236488763b4543bfb17d5871754d58aead249dfb57bc8396038c0dd82fc7d947087aa00645429f8795d0d6e"
                                 },
                                 {
-                                  "bytes": "2e2fbcb1d7464f98fad58840cb85140a90d75cea495c15f4af30a399d218afb4297d056bcb7f1ce60697763c0fbefecb8268da6e9a63f4b6d7c607bcbff0a00f"
+                                  "bytes": "257d61ab85a6fcaab7bb4e1f6159a73fa8a48e9b1acb28b4161c68ea42aefc780a873ae842c4a779bc7c33306708700bb4beaa47331b63b5a9ca1e2bf0d45839"
                                 },
                                 {
-                                  "bytes": "0575cd484addb8feb8778579f0ce061687d468be57adfcb7337512b487d0f07c0ce3e2a8d3189b6d19ee757dc375e6403bfc5203eaadf4ac7ad9660977b29c0f"
+                                  "bytes": "05fef4c90b34a6f122f013c9bcb8a15f4d8c813784ee6e5e60fe46749934c7602ea6b99f0607478f49d3c11f60c54c25b655a2b2f3167df23a60bd7dab3b074a"
                                 },
                                 {
-                                  "bytes": "301851242c8d18a62d04fd54ae37630a4c7e63dea4c06bd4ae01bec3d777e1492f340d354be3b96db84a80e8202c40d3ec32230bff115607a081701aef5454d1"
+                                  "bytes": "07d3f280cbdce67cc7510a1d87ba0407a7ec001530e9d2e45219b422156b88a62d9f0d510cb43cd49a170d460a13814e90669ab359db465914988415800bf5fc"
+                                },
+                                {
+                                  "bytes": "1583c8464814c4ccab35c2656518302919bc1cc2e4bdcf4d29d13276b43e9fd62e43f77fd77fb738ffe0370927c17a15a69abfb87e7d73b6089017f409a2f28f"
+                                },
+                                {
+                                  "bytes": "2e03c857f33eb931c5219c24c9162715fe3faaf1334ced838e17a88cea607b4f1e980ce6c00f840bf185a726dde737d3ac4fc644d1637fd792069d6c9796ecf5"
+                                },
+                                {
+                                  "bytes": "1f316b7f0a1d3b22d29c580fff5ff87139d070e07b232c2828c7e5640c22e8d61561efea7fd7f768dc6e06c201c6aaa22d302f48e1b94e61166ff05184220f33"
+                                },
+                                {
+                                  "bytes": "1fe6313093d658e92b01315b7a4aff17469cf46d5e6ba678888b0b99ef8423980b23d60a4255d48f3f2fc3cdd53080d9d485691e1c938b5baad41edab1d20bd0"
+                                },
+                                {
+                                  "bytes": "28570a3d651850a1b566beea76f20be69454472141d9bc2c4501db7b242f4d1403f714a52be5345307140dc1021b17eb25158f6bd3effc220aaaef2c7f2b7747"
                                 }
                               ]
                             }
@@ -228,29 +257,6 @@
           "ext": "v0"
         },
         "live_until": 6311999
-      },
-      {
-        "entry": {
-          "last_modified_ledger_seq": 0,
-          "data": {
-            "contract_data": {
-              "ext": "v0",
-              "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
-              "key": "ledger_key_contract_instance",
-              "durability": "persistent",
-              "val": {
-                "contract_instance": {
-                  "executable": {
-                    "wasm": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-                  },
-                  "storage": null
-                }
-              }
-            }
-          },
-          "ext": "v0"
-        },
-        "live_until": 4095
       },
       {
         "entry": {

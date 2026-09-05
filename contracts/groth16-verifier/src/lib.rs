@@ -8,7 +8,7 @@ use soroban_sdk::{
 };
 use core::ops::Neg;
 
-use vayyl_types::{CircuitId, Groth16Proof, VerificationKey};
+use vayyl_types::{is_canonical_fr, CircuitId, Groth16Proof, VerificationKey};
 
 /// Storage keys
 #[contracttype]
@@ -36,6 +36,23 @@ pub enum Error {
     InvalidEncoding = 6,
 }
 
+/// Instance/persistent TTL bounds. `PERSISTENT_TTL_EXTEND` stays under the
+/// measured mainnet `max_entry_ttl` (3,110,400 ledgers, ~180 days).
+pub const PERSISTENT_TTL_THRESHOLD: u32 = 1_000_000;
+pub const PERSISTENT_TTL_EXTEND: u32 = 3_000_000;
+
+/// H8: keep the contract's INSTANCE entry alive.
+///
+/// The admin and every registered verification key live in instance storage, and nothing extended it. When the instance
+/// archives the contract stops working entirely until someone submits a
+/// RestoreFootprint. Called on every state-changing entrypoint, where the
+/// transaction is already paying for storage.
+fn extend_instance_ttl(env: &Env) {
+    env.storage()
+        .instance()
+        .extend_ttl(PERSISTENT_TTL_THRESHOLD, PERSISTENT_TTL_EXTEND);
+}
+
 #[contract]
 pub struct Groth16VerifierContract;
 
@@ -43,6 +60,7 @@ pub struct Groth16VerifierContract;
 impl Groth16VerifierContract {
     /// Initialize the verifier with an admin address
     pub fn initialize(env: Env, admin: Address) -> Result<(), Error> {
+        extend_instance_ttl(&env);
         if env.storage().instance().has(&DataKey::Admin) {
             return Err(Error::Unauthorized);
         }
@@ -53,6 +71,7 @@ impl Groth16VerifierContract {
     /// Register a verification key for a circuit.
     /// Admin-gated. Asserts gamma ≠ delta (prevents Veil Cash / FoomCash forgery bug).
     pub fn set_vk(env: Env, circuit_id: CircuitId, vk: VerificationKey) -> Result<(), Error> {
+        extend_instance_ttl(&env);
         let admin: Address = env
             .storage()
             .instance()
@@ -99,6 +118,7 @@ impl Groth16VerifierContract {
         proof: Groth16Proof,
         public_inputs: Vec<BytesN<32>>,
     ) -> Result<bool, Error> {
+        extend_instance_ttl(&env);
         let vk: VerificationKey = env
             .storage()
             .instance()
@@ -120,9 +140,25 @@ impl Groth16VerifierContract {
             let ic_point = Bn254G1Affine::from_bytes(
                 vk.ic.get(i + 1).ok_or(Error::PublicInputMismatch)?
             );
-            let scalar = Bn254Fr::from_bytes(
-                public_inputs.get(i).ok_or(Error::PublicInputMismatch)?
-            );
+            // C1: reject non-canonical public inputs BEFORE they reach the curve.
+            //
+            // `Bn254Fr::from_bytes` reduces mod r instead of validating, so
+            // without this the same proof verifies under ~6 distinct encodings
+            // of every public input. Callers key their nullifier sets on the raw
+            // bytes, so each alias reads as a fresh, unspent nullifier — one note
+            // spends six times — and a blocked nullifier `n` evades the ASP
+            // blocklist as `n + r`. Guarding here covers every caller at once.
+            let raw = public_inputs.get(i).ok_or(Error::PublicInputMismatch)?;
+            if !is_canonical_fr(&raw) {
+                log!(
+                    &env,
+                    "Non-canonical public input at index {} for circuit {:?}",
+                    i,
+                    circuit_id
+                );
+                return Err(Error::InvalidEncoding);
+            }
+            let scalar = Bn254Fr::from_bytes(raw);
 
             // scalar * IC[i+1]
             let product = bn254.g1_mul(&ic_point, &scalar);
@@ -210,6 +246,7 @@ impl Groth16VerifierContract {
     /// (admin + every registered VK). Without this, a verifier bug fix would
     /// require a fresh deploy and re-registration of every circuit's VK.
     pub fn upgrade(env: Env, new_wasm_hash: BytesN<32>) -> Result<(), Error> {
+        extend_instance_ttl(&env);
         let admin: Address = env
             .storage()
             .instance()
@@ -228,11 +265,15 @@ mod real_proof_fixture;
 mod real_transfer_fixture;
 
 #[cfg(test)]
+mod real_position_fixture;
+
+#[cfg(test)]
 mod test {
     use super::*;
     use soroban_sdk::testutils::Address as _;
     use crate::real_proof_fixture as fixture;
     use crate::real_transfer_fixture as transfer_fixture;
+    use crate::real_position_fixture as position_fixture;
 
     #[test]
     fn test_initialize() {
@@ -422,6 +463,173 @@ mod test {
 
     fn real_public_inputs(env: &Env) -> Vec<BytesN<32>> {
         public_inputs_from(env, &fixture::PUBLIC_INPUTS)
+    }
+
+    // ---- positions ---------------------------------------------------------
+    //
+    // The positions vertical never had a real proof verified through this
+    // contract. Its tests used a mock verifier that returned `true`
+    // unconditionally, so the Phase-2 setup, the curve-point serialization and
+    // the public-input ORDER were all untested -- and every one of those fails
+    // silently, as a proof snarkjs accepts and the chain rejects.
+
+    fn position_open_vk(env: &Env) -> VerificationKey {
+        vk_from(
+            env,
+            position_fixture::POSITION_OPEN_VK_ALPHA_G1,
+            position_fixture::POSITION_OPEN_VK_BETA_G2,
+            position_fixture::POSITION_OPEN_VK_GAMMA_G2,
+            position_fixture::POSITION_OPEN_VK_DELTA_G2,
+            &position_fixture::POSITION_OPEN_VK_IC,
+        )
+    }
+
+    fn position_close_vk(env: &Env) -> VerificationKey {
+        vk_from(
+            env,
+            position_fixture::POSITION_CLOSE_VK_ALPHA_G1,
+            position_fixture::POSITION_CLOSE_VK_BETA_G2,
+            position_fixture::POSITION_CLOSE_VK_GAMMA_G2,
+            position_fixture::POSITION_CLOSE_VK_DELTA_G2,
+            &position_fixture::POSITION_CLOSE_VK_IC,
+        )
+    }
+
+    fn position_open_proof(env: &Env) -> Groth16Proof {
+        proof_from(
+            env,
+            position_fixture::POSITION_OPEN_PROOF_A,
+            position_fixture::POSITION_OPEN_PROOF_B,
+            position_fixture::POSITION_OPEN_PROOF_C,
+        )
+    }
+
+    fn position_close_proof(env: &Env) -> Groth16Proof {
+        proof_from(
+            env,
+            position_fixture::POSITION_CLOSE_PROOF_A,
+            position_fixture::POSITION_CLOSE_PROOF_B,
+            position_fixture::POSITION_CLOSE_PROOF_C,
+        )
+    }
+
+    fn verifier_with(env: &Env, id: CircuitId, vk: VerificationKey) -> Groth16VerifierContractClient<'static> {
+        env.mock_all_auths();
+        let client =
+            Groth16VerifierContractClient::new(env, &env.register(Groth16VerifierContract, ()));
+        client.initialize(&Address::generate(env));
+        client.set_vk(&id, &vk);
+        client
+    }
+
+    #[test]
+    fn real_position_open_proof_verifies_true() {
+        let env = Env::default();
+        let client = verifier_with(&env, CircuitId::PositionOpen, position_open_vk(&env));
+        assert!(client.verify(
+            &CircuitId::PositionOpen,
+            &position_open_proof(&env),
+            &public_inputs_from(&env, &position_fixture::POSITION_OPEN_PUBLIC_INPUTS),
+        ));
+    }
+
+    #[test]
+    fn real_position_close_proof_verifies_true() {
+        let env = Env::default();
+        let client = verifier_with(&env, CircuitId::PositionClose, position_close_vk(&env));
+        assert!(client.verify(
+            &CircuitId::PositionClose,
+            &position_close_proof(&env),
+            &public_inputs_from(&env, &position_fixture::POSITION_CLOSE_PUBLIC_INPUTS),
+        ));
+    }
+
+    #[test]
+    fn a_position_open_public_input_cannot_be_reordered() {
+        // The public-input ORDER is a contract between position-manager and the
+        // circuit that nothing else checks. Swapping two of them leaves a
+        // perfectly well-formed vector of canonical field elements, so the only
+        // symptom is a failed pairing -- on-chain, after the user has already
+        // paid to generate the proof.
+        let env = Env::default();
+        let client = verifier_with(&env, CircuitId::PositionOpen, position_open_vk(&env));
+
+        let honest = public_inputs_from(&env, &position_fixture::POSITION_OPEN_PUBLIC_INPUTS);
+        let mut swapped = Vec::new(&env);
+        swapped.push_back(honest.get(1).unwrap());
+        swapped.push_back(honest.get(0).unwrap());
+        for i in 2..honest.len() {
+            swapped.push_back(honest.get(i).unwrap());
+        }
+
+        assert!(!client.verify(&CircuitId::PositionOpen, &position_open_proof(&env), &swapped));
+    }
+
+    #[test]
+    fn a_position_close_payout_cannot_be_inflated_after_proving() {
+        // `payout` is public input 6, and it is the number the vault pays out
+        // against -- the most valuable tamper available anywhere on this path.
+        // It gets its own test rather than being folded into a generic mutation
+        // case.
+        let env = Env::default();
+        let client = verifier_with(&env, CircuitId::PositionClose, position_close_vk(&env));
+
+        let honest = public_inputs_from(&env, &position_fixture::POSITION_CLOSE_PUBLIC_INPUTS);
+        let mut tampered = Vec::new(&env);
+        for i in 0..honest.len() {
+            if i == 6 {
+                let mut bytes = honest.get(i).unwrap().to_array();
+                bytes[31] = bytes[31].wrapping_add(1);
+                tampered.push_back(BytesN::from_array(&env, &bytes));
+            } else {
+                tampered.push_back(honest.get(i).unwrap());
+            }
+        }
+
+        assert!(!client.verify(&CircuitId::PositionClose, &position_close_proof(&env), &tampered));
+    }
+
+    #[test]
+    fn a_position_open_proof_does_not_verify_under_the_close_key() {
+        // Circuit ids index verification keys. If a proof verified under the
+        // wrong key, the id would be decoration and one circuit's proof would
+        // satisfy another circuit's statement.
+        let env = Env::default();
+        let client = verifier_with(&env, CircuitId::PositionClose, position_close_vk(&env));
+
+        // Padded to the close key's 9 inputs so this fails on the pairing
+        // rather than on the length check, which is the interesting outcome.
+        let honest = public_inputs_from(&env, &position_fixture::POSITION_OPEN_PUBLIC_INPUTS);
+        let mut padded = Vec::new(&env);
+        for i in 0..honest.len() {
+            padded.push_back(honest.get(i).unwrap());
+        }
+        padded.push_back(BytesN::from_array(&env, &[0u8; 32]));
+
+        assert!(!client.verify(&CircuitId::PositionClose, &position_open_proof(&env), &padded));
+    }
+
+    #[test]
+    fn the_position_keys_declare_the_public_input_counts_the_contracts_send() {
+        // D13. A VK whose `ic` length disagrees with the contract's public-input
+        // vector registers cleanly and then fails every real proof with an
+        // opaque PublicInputMismatch, long after anyone is looking at the setup.
+        let env = Env::default();
+        assert_eq!(position_open_vk(&env).ic.len(), 9, "position_open: 8 inputs + 1");
+        assert_eq!(position_close_vk(&env).ic.len(), 10, "position_close: 9 inputs + 1");
+        assert_eq!(position_fixture::POSITION_OPEN_PUBLIC_INPUTS.len(), 8);
+        assert_eq!(position_fixture::POSITION_CLOSE_PUBLIC_INPUTS.len(), 9);
+    }
+
+    #[test]
+    fn the_position_keys_have_distinct_gamma_and_delta() {
+        // The Veil Cash / FoomCash bug: with gamma == delta a proof can be
+        // forged for any statement. `set_vk` rejects such a key, so this pins
+        // that the generated keys are not in that state to begin with.
+        let env = Env::default();
+        for vk in [position_open_vk(&env), position_close_vk(&env)] {
+            assert_ne!(vk.gamma_g2, vk.delta_g2);
+        }
     }
 
     fn transfer_vk(env: &Env) -> VerificationKey {
@@ -681,9 +889,14 @@ mod test {
     // proof verifies under 6 distinct 32-byte encodings of every public input.
     //
     // Callers key their nullifier sets on the RAW bytes, so each alias is a
-    // fresh, unspent nullifier as far as the pool is concerned. This test is
-    // written as the assertion we WANT to hold; it fails today, which is the
-    // finding. After the fix (reject any input >= r) it becomes the regression.
+    // fresh, unspent nullifier as far as the pool is concerned. It also let a
+    // blocked nullifier `n` walk past the ASP blocklist as `n + r`.
+    //
+    // FIXED: `verify` now rejects any public input >= r with `InvalidEncoding`
+    // (see `is_canonical_fr` in `vayyl-types`). This is the regression test.
+    // It asserts the ERROR rather than a false return, because a non-canonical
+    // input is malformed data, not an honestly-invalid proof — the `Ok(false)`
+    // path is reserved for a genuine pairing failure.
     #[test]
     fn non_canonical_public_input_must_be_rejected() {
         let env = Env::default();
@@ -706,9 +919,44 @@ mod test {
 
         // The same unmodified proof must NOT verify against a non-canonical
         // encoding of its public input.
-        assert!(
-            !client.verify(&CircuitId::Withdraw, &real_proof(&env), &inputs),
-            "SECURITY: proof verified under a non-canonical (aliased) public input;              the pool would treat this as an unspent nullifier and pay out again",
+        assert_eq!(
+            client.try_verify(&CircuitId::Withdraw, &real_proof(&env), &inputs),
+            Err(Ok(Error::InvalidEncoding)),
+            "SECURITY: proof verified under a non-canonical (aliased) public input; \
+             the pool would treat this as an unspent nullifier and pay out again",
         );
+
+        // Every alias must be rejected, not just `n + 1*r`. floor(2^256 / r) = 5,
+        // so n + 2r .. n + 5r also fit in 32 bytes and would each be a distinct
+        // storage key. Walk them by adding r repeatedly to the canonical value.
+        let mut alias = real_public_inputs(&env).get(1).unwrap().to_array();
+        for k in 1..=5u32 {
+            alias = add_be_32(&alias, &vayyl_types::BN254_FR_MODULUS_BE);
+            let mut inputs_k = real_public_inputs(&env);
+            inputs_k.set(1, BytesN::from_array(&env, &alias));
+            assert_eq!(
+                client.try_verify(&CircuitId::Withdraw, &real_proof(&env), &inputs_k),
+                Err(Ok(Error::InvalidEncoding)),
+                "alias n + {}*r was accepted",
+                k,
+            );
+        }
+
+        // And the canonical statement still verifies — the guard must not have
+        // broken the honest path.
+        assert!(client.verify(&CircuitId::Withdraw, &real_proof(&env), &real_public_inputs(&env)));
+    }
+
+    /// Big-endian 256-bit addition, wrapping. Test-only helper for walking the
+    /// aliases of a field element.
+    fn add_be_32(a: &[u8; 32], b: &[u8; 32]) -> [u8; 32] {
+        let mut out = [0u8; 32];
+        let mut carry = 0u16;
+        for i in (0..32).rev() {
+            let s = a[i] as u16 + b[i] as u16 + carry;
+            out[i] = (s & 0xff) as u8;
+            carry = s >> 8;
+        }
+        out
     }
 }
