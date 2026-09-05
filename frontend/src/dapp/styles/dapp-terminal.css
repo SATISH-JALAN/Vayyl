@@ -1,0 +1,1519 @@
+/* ============================================================
+   Positions terminal
+   ============================================================
+   A trading-desk layout for the positions page. Everything reuses the tokens
+   in dapp-tokens.css -- no new colours -- so the terminal stays part of the
+   same product rather than a second design pinned onto it.
+
+   The `vy-` prefix marks components that only exist on this page, keeping them
+   out of the way of the `dapp-` classes the rest of the app shares. */
+
+.vy-terminal {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* --- market header ---------------------------------------------------- */
+
+.vy-market {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  flex-wrap: wrap;
+  padding: var(--space-4) var(--space-5);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-l);
+}
+
+.vy-market__pair {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding-right: var(--space-6);
+  border-right: 1px solid var(--border-subtle);
+}
+
+.vy-market__pair-icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-elevated);
+  color: var(--coral);
+}
+
+.vy-market__pair strong {
+  display: block;
+  color: var(--text-primary);
+  font-size: var(--text-h3);
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.vy-market__pair small {
+  color: var(--text-muted);
+  font-size: var(--text-caption);
+}
+
+.vy-market__stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-6);
+  margin: 0;
+}
+
+/* Title case, matching the design. Uppercase turned "24h Change" into
+   "24H CHANGE", which reads as a different, shoutier product. */
+.vy-stat dt {
+  margin-bottom: 2px;
+  color: var(--text-muted);
+  font-size: var(--text-caption);
+  letter-spacing: 0.01em;
+}
+
+.vy-stat dd {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--text-small);
+  font-weight: 650;
+}
+
+.vy-stat dd.is-stale { color: var(--warning); }
+.vy-stat__flag { color: var(--warning); font-weight: 700; }
+
+.vy-market__badges {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+
+.vy-badge {
+  padding: 5px var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  white-space: nowrap;
+}
+
+.vy-badge--network {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  text-transform: lowercase;
+}
+
+.vy-badge--network i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--success);
+}
+
+/* --- disclosure ------------------------------------------------------- */
+
+.vy-disclosure {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-left: 2px solid var(--coral);
+  border-radius: var(--radius-m);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-size: var(--text-caption);
+  line-height: var(--leading-body);
+}
+
+.vy-disclosure strong { color: var(--text-primary); }
+
+/* --- chart + ticket --------------------------------------------------- */
+
+.vy-terminal__main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 336px;
+  gap: var(--space-3);
+  align-items: stretch;
+}
+
+.vy-terminal__chart {
+  min-width: 0;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-l);
+  overflow: hidden;
+}
+
+.vy-chart {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 420px;
+}
+
+.vy-chart__toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.vy-chart__intervals { display: flex; gap: var(--space-1); }
+
+.vy-chip {
+  padding: 5px var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-caption);
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out);
+}
+
+.vy-chip:hover { color: var(--text-primary); background: var(--bg-elevated); }
+
+.vy-chip.is-active {
+  color: var(--coral);
+  border-color: var(--coral);
+  background: rgba(244, 111, 115, 0.08);
+}
+
+.vy-chart__legend {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  margin-left: auto;
+  color: var(--text-muted);
+  font-size: var(--text-caption);
+}
+
+.vy-legend__item { display: inline-flex; align-items: center; gap: 6px; }
+
+.vy-legend__swatch { width: 14px; height: 2px; border-radius: 2px; }
+.vy-legend__swatch--market { background: var(--success); }
+.vy-legend__swatch--oracle {
+  background: repeating-linear-gradient(90deg, var(--warning) 0 4px, transparent 4px 7px);
+}
+
+.vy-chart__loading { color: var(--text-disabled); }
+
+/* `flex: 1` gives the canvas the leftover space INSIDE a parent that already
+   has a height. In normal flow -- short viewports, mobile -- nothing sets that
+   height, so without a floor the canvas computes to zero and the chart simply
+   is not there: the order ticket renders where it should have been and reads
+   as content overlapping. The one-screen layout overrides this to 0 so it can
+   shrink to the viewport. */
+.vy-chart__canvas {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 320px;
+}
+
+.vy-chart__body { min-height: 320px; }
+
+.vy-chart__empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  gap: var(--space-2);
+  padding: var(--space-6);
+  text-align: center;
+  color: var(--text-muted);
+  font-size: var(--text-small);
+}
+
+.vy-chart__empty strong { color: var(--text-primary); }
+.vy-chart__empty code {
+  max-width: 420px;
+  color: var(--text-disabled);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  word-break: break-word;
+}
+
+.vy-chart__stale {
+  margin: 0;
+  padding: var(--space-2) var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+  color: var(--warning);
+  font-size: var(--text-caption);
+}
+
+/* --- order ticket ----------------------------------------------------- */
+
+.vy-ticket {
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-4);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-l);
+}
+
+.vy-ticket form { display: flex; flex-direction: column; gap: var(--space-4); }
+
+.vy-ticket__offline {
+  display: grid;
+  gap: var(--space-1);
+  margin-bottom: var(--space-4);
+  padding: var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-left: 2px solid var(--warning);
+  border-radius: var(--radius-m);
+  background: var(--bg-elevated);
+}
+
+.vy-ticket__offline strong { color: var(--warning); font-size: var(--text-small); }
+.vy-ticket__offline p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-caption);
+  line-height: var(--leading-body);
+}
+
+/* Dimmed, not hidden: the layout stays legible and the tier numbers stay
+   readable, while nothing looks clickable. */
+.vy-ticket.is-offline form { opacity: 0.6; }
+
+.vy-side {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2);
+}
+
+.vy-side__btn {
+  padding: var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-m);
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  font-family: var(--font-ui);
+  font-size: var(--text-small);
+  font-weight: 700;
+  cursor: pointer;
+  transition: all var(--dur-fast) var(--ease-out);
+}
+
+.vy-side__btn:hover:not(:disabled) { color: var(--text-primary); }
+.vy-side__btn:disabled { cursor: not-allowed; opacity: 0.55; }
+
+.vy-side__btn--long.is-active {
+  background: rgba(143, 199, 126, 0.16);
+  border-color: var(--success);
+  color: var(--success);
+}
+
+.vy-side__btn--short.is-active {
+  background: rgba(244, 111, 115, 0.14);
+  border-color: var(--coral);
+  color: var(--coral);
+}
+
+.vy-shield {
+  display: flex;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-m);
+  background: var(--bg-elevated);
+}
+
+.vy-shield__icon { color: var(--success); flex-shrink: 0; padding-top: 2px; }
+.vy-shield strong { display: block; color: var(--text-primary); font-size: var(--text-small); }
+.vy-shield small {
+  color: var(--text-muted);
+  font-size: var(--text-caption);
+  line-height: var(--leading-body);
+}
+
+.vy-field { display: grid; gap: var(--space-2); }
+
+.vy-field__label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  color: var(--text-secondary);
+  font-size: var(--text-caption);
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.vy-field__hint {
+  color: var(--text-disabled);
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.vy-amount {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-m);
+  background: var(--bg-primary);
+}
+
+.vy-amount__value { color: var(--text-primary); font-size: 1.3rem; font-weight: 700; }
+.vy-amount__unit { color: var(--text-muted); font-size: var(--text-small); }
+
+.vy-tiers { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
+
+.vy-tiers__chip {
+  display: grid;
+  gap: 2px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-m);
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  text-align: left;
+  cursor: pointer;
+  transition: all var(--dur-fast) var(--ease-out);
+}
+
+.vy-tiers__chip strong { color: var(--text-secondary); font-size: var(--text-small); }
+.vy-tiers__chip small { color: var(--text-disabled); font-size: 0.68rem; }
+.vy-tiers__chip:hover:not(:disabled) { border-color: var(--border-strong); }
+.vy-tiers__chip:disabled { cursor: not-allowed; opacity: 0.55; }
+
+.vy-tiers__chip.is-active {
+  border-color: var(--coral);
+  background: rgba(244, 111, 115, 0.08);
+}
+.vy-tiers__chip.is-active strong { color: var(--text-primary); }
+.vy-tiers__chip.is-active small { color: var(--coral); }
+
+.vy-note {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-caption);
+  line-height: var(--leading-body);
+}
+
+.vy-lev {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-m);
+  background: var(--bg-primary);
+}
+
+.vy-lev strong { color: var(--text-primary); font-size: 1.15rem; }
+.vy-lev__detail { color: var(--text-muted); font-size: var(--text-caption); }
+
+.vy-summary {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-m);
+  background: var(--bg-elevated);
+  overflow: hidden;
+}
+
+.vy-summary__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  font-size: var(--text-caption);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.vy-summary dl { margin: 0; padding: var(--space-2) var(--space-3); }
+
+.vy-summary dl > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: 3px 0;
+}
+
+.vy-summary dt { color: var(--text-muted); font-size: var(--text-caption); }
+.vy-summary dd {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--text-caption);
+  font-weight: 650;
+}
+
+.vy-summary .vy-note { padding: 0 var(--space-3) var(--space-3); }
+
+.vy-alert {
+  margin: 0;
+  padding: var(--space-3);
+  border-radius: var(--radius-m);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  font-size: var(--text-caption);
+  line-height: var(--leading-body);
+}
+
+.vy-alert--error {
+  background: rgba(255, 140, 131, 0.1);
+  color: var(--error);
+}
+
+.vy-alert--ok {
+  background: rgba(143, 199, 126, 0.1);
+  color: var(--success);
+}
+
+.vy-submit {
+  padding: var(--space-4);
+  border: none;
+  border-radius: var(--radius-m);
+  color: var(--charcoal);
+  font-family: var(--font-ui);
+  font-size: var(--text-small);
+  font-weight: 750;
+  cursor: pointer;
+  transition: filter var(--dur-fast) var(--ease-out);
+}
+
+.vy-submit--long { background: var(--success); }
+.vy-submit--short { background: var(--coral); }
+.vy-submit:hover:not(:disabled) { filter: brightness(1.08); }
+.vy-submit:disabled { cursor: not-allowed; opacity: 0.45; }
+
+/* --- ledger tabs + tables --------------------------------------------- */
+
+.vy-terminal__ledger {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-l);
+  overflow: hidden;
+}
+
+.vy-tabs {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0 var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.vy-tabs__tab {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-3);
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--text-muted);
+  font-family: var(--font-ui);
+  font-size: var(--text-small);
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.vy-tabs__tab:hover { color: var(--text-secondary); }
+
+.vy-tabs__tab.is-active {
+  color: var(--text-primary);
+  border-bottom-color: var(--coral);
+}
+
+.vy-tabs__count {
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-muted);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+}
+
+.vy-tabs__tab.is-active .vy-tabs__count { background: rgba(244, 111, 115, 0.16); color: var(--coral); }
+
+.vy-tabs__summary {
+  display: flex;
+  gap: var(--space-5);
+  margin-left: auto;
+  color: var(--text-muted);
+  font-size: var(--text-caption);
+}
+
+.vy-tabs__summary strong { color: var(--text-primary); }
+.vy-tabs__summary .is-up strong { color: var(--success); }
+.vy-tabs__summary .is-down strong { color: var(--coral); }
+
+.vy-tabs__panel { min-height: 190px; }
+
+.vy-table-wrap { overflow-x: auto; }
+
+.vy-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-caption);
+}
+
+.vy-table th {
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  font-size: 0.65rem;
+  font-weight: 650;
+  text-align: left;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+
+.vy-table td {
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.vy-table tbody tr:last-child td { border-bottom: none; }
+.vy-table tbody tr:hover { background: var(--bg-elevated); }
+
+.vy-table td small { display: block; color: var(--text-disabled); font-size: 0.65rem; }
+.vy-table .is-up { color: var(--success); }
+.vy-table .is-down { color: var(--coral); }
+
+.vy-table__note {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  font-size: var(--text-caption);
+}
+
+.vy-market-cell { display: flex; align-items: center; gap: var(--space-2); }
+.vy-market-cell strong { color: var(--text-primary); }
+.vy-market-cell small { color: var(--text-disabled); }
+
+.vy-tag {
+  padding: 2px 7px;
+  border-radius: var(--radius-s);
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.vy-tag--long { background: rgba(143, 199, 126, 0.16); color: var(--success); }
+.vy-tag--short { background: rgba(244, 111, 115, 0.16); color: var(--coral); }
+
+.vy-health { display: flex; align-items: center; gap: var(--space-2); }
+
+.vy-health__bar {
+  width: 56px;
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-muted);
+  overflow: hidden;
+}
+
+.vy-health__bar span {
+  display: block;
+  height: 100%;
+  background: var(--success);
+  transition: width var(--dur-normal) var(--ease-out);
+}
+
+.vy-health.is-critical .vy-health__bar span { background: var(--coral); }
+.vy-health__value { color: var(--text-secondary); }
+.vy-health__flag { color: var(--coral); font-weight: 700; }
+
+.vy-heartbeat { color: var(--text-muted); }
+.vy-heartbeat.is-warn { color: var(--warning); font-weight: 650; }
+
+.vy-row-actions { display: flex; gap: var(--space-2); justify-content: flex-end; }
+
+.vy-mini {
+  padding: 5px var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-s);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
+  font-size: var(--text-caption);
+  font-weight: 650;
+  cursor: pointer;
+  transition: all var(--dur-fast) var(--ease-out);
+}
+
+.vy-mini:hover:not(:disabled) { color: var(--text-primary); border-color: var(--border-strong); }
+.vy-mini:disabled { cursor: not-allowed; opacity: 0.5; }
+
+.vy-mini--primary { background: var(--coral); border-color: var(--coral); color: var(--charcoal); }
+.vy-mini--primary:hover:not(:disabled) { filter: brightness(1.08); color: var(--charcoal); }
+
+.vy-empty {
+  display: grid;
+  place-items: center;
+  gap: var(--space-2);
+  padding: var(--space-10) var(--space-6);
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.vy-empty svg { color: var(--text-disabled); }
+.vy-empty strong { color: var(--text-secondary); font-size: var(--text-small); }
+.vy-empty span { max-width: 460px; font-size: var(--text-caption); line-height: var(--leading-body); }
+
+/* --- responsive -------------------------------------------------------- */
+
+/* Collapse to one column at exactly the width the one-screen layout releases.
+   These were 1180px and 981px, so between those two numbers the terminal
+   stacked the ticket above the chart WHILE still being locked to the viewport
+   height -- which crushed the chart to a few pixels. Two breakpoints describing
+   the same decision have to be the same number. */
+@media (max-width: 980px) {
+  .vy-terminal__main { grid-template-columns: minmax(0, 1fr); }
+  .vy-ticket { order: -1; }
+}
+
+/* Just above that, the ticket gives width back to the chart rather than the
+   two-column layout breaking down. */
+@media (min-width: 981px) and (max-width: 1240px) {
+  .vy-terminal__main { grid-template-columns: minmax(0, 1fr) clamp(272px, 27vw, 336px); }
+}
+
+@media (max-width: 720px) {
+  .vy-market { gap: var(--space-4); }
+  .vy-market__pair { padding-right: 0; border-right: none; }
+  .vy-market__stats { gap: var(--space-4); }
+  .vy-market__badges { margin-left: 0; }
+  .vy-tabs { overflow-x: auto; }
+  .vy-tabs__summary { display: none; }
+}
+
+/* --- brand marks ------------------------------------------------------- */
+/* The real Stellar assets the rest of the app already ships. External image
+   hosts are blocked by `img-src 'self' data: blob:` in src/proxy.ts, so brand
+   marks have to be served from public/ -- which is also why nothing here
+   hotlinks a logo CDN. */
+
+.vy-market__pair-icon {
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--coral);
+}
+
+.vy-chain {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 4px var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+  background: var(--bg-elevated);
+  text-decoration: none;
+  transition: border-color var(--dur-fast) var(--ease-out);
+}
+
+.vy-chain:hover { border-color: var(--border-strong); }
+
+.vy-chain__label {
+  color: var(--text-muted);
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* The wordmark is white-on-transparent and very wide (roughly 4:1), so it is
+   sized by height and left to keep its own ratio. */
+.vy-chain img {
+  height: 13px;
+  width: auto;
+  display: block;
+}
+
+.vy-badge--link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  text-decoration: none;
+  transition: border-color var(--dur-fast) var(--ease-out);
+}
+
+.vy-badge--link:hover { border-color: var(--border-strong); color: var(--text-primary); }
+
+.vy-badge--link img,
+.vy-explorer img {
+  width: 13px;
+  height: 13px;
+  object-fit: contain;
+  border-radius: 3px;
+  background: var(--ivory);
+}
+
+/* Commitment cells link to the explorer. A user should be able to check the
+   app's claim against the ledger without taking our word for it. */
+.vy-explorer {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary);
+  text-decoration: none;
+}
+
+.vy-explorer:hover { color: var(--coral); }
+
+/* Asset marks. The image is resolved from the asset itself via SEP-1
+   (/api/asset-icon); the monogram is what an asset that publishes no logo
+   falls back to. */
+.vy-asset {
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+  overflow: hidden;
+  border-radius: var(--radius-pill);
+  background: var(--bg-elevated);
+}
+
+.vy-asset img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.vy-asset--mono {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1;
+}
+
+/* The OHLC read-out, overlaying the canvas top-left as the design has it and
+   tracking the crosshair. Values come from a candle actually received, never
+   from a placeholder. `pointer-events: none` so it never swallows a click
+   meant for the chart -- with a drawing tool armed, that click is a point. */
+.vy-chart__ohlc {
+  position: absolute;
+  top: var(--space-2);
+  left: var(--space-3);
+  right: var(--space-3);
+  z-index: 5;
+  display: flex;
+  align-items: baseline;
+  /* Never wraps. Wrapping put a second line of text down into the candles,
+     which is unreadable over them and hides the price action it describes.
+     Below, the least important parts are dropped instead. */
+  flex-wrap: nowrap;
+  overflow: hidden;
+  gap: var(--space-3);
+  pointer-events: none;
+  white-space: nowrap;
+  color: var(--text-muted);
+  font-size: var(--text-caption);
+}
+
+/* Dropped in order of what a trader can reconstruct from elsewhere on screen:
+   the timeframe is in the tabs above, and the pair is in the header. */
+@media (max-width: 1360px) {
+  .vy-chart__ohlc > span:nth-child(2) { display: none; }
+}
+
+@media (max-width: 1180px) {
+  .vy-chart__ohlc > strong { display: none; }
+  .vy-chart__ohlc { gap: var(--space-2); }
+}
+
+.vy-chart__ohlc strong { color: var(--text-primary); }
+.vy-chart__ohlc .is-up { color: var(--success); }
+.vy-chart__ohlc .is-down { color: var(--coral); }
+
+/* ============================================================
+   Market bar — the terminal's top row
+   ============================================================
+   Occupies the shell's topbar slot on the positions route, so market stats and
+   the wallet button share one line as the design has them. */
+
+/* One row, always. `flex-wrap: wrap` dropped the badges and the Connect button
+   onto a second line as soon as the window narrowed or the page was zoomed,
+   which doubled the header's height and pushed the chart down. The stats shrink
+   and scroll instead. */
+.vy-marketbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  flex-wrap: nowrap;
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-3);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-l);
+}
+
+.vy-marketbar__picker { position: relative; }
+
+.vy-select {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-m);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: var(--text-small);
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color var(--dur-fast) var(--ease-out);
+}
+
+.vy-select:hover { border-color: var(--border-strong); }
+.vy-select svg { color: var(--text-muted); margin-left: var(--space-2); }
+
+.vy-select__menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 40;
+  min-width: 280px;
+  margin: 0;
+  padding: var(--space-2);
+  list-style: none;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-m);
+  box-shadow: var(--shadow-panel);
+}
+
+.vy-select__menu button {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: none;
+  border-radius: var(--radius-s);
+  background: none;
+  color: var(--text-secondary);
+  text-align: left;
+  cursor: pointer;
+}
+
+.vy-select__menu button.is-active { background: rgba(244, 111, 115, 0.1); color: var(--text-primary); }
+.vy-select__menu strong { display: block; font-size: var(--text-small); }
+.vy-select__menu small { color: var(--text-muted); font-size: var(--text-caption); }
+
+.vy-select__note {
+  padding: var(--space-2) var(--space-3) var(--space-1);
+  color: var(--text-disabled);
+  font-size: var(--text-caption);
+  line-height: var(--leading-body);
+}
+
+.vy-marketbar__stats {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: var(--space-5);
+  min-width: 0;
+  margin: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.vy-marketbar__stats::-webkit-scrollbar { display: none; }
+.vy-marketbar__stats .vy-stat { flex: 0 0 auto; }
+.vy-marketbar__picker,
+.vy-marketbar__right { flex: 0 0 auto; }
+
+/* Provenance, not state. First to go when the row is tight -- the network pill
+   and the wallet button are what a user acts on. */
+@media (max-width: 1320px) {
+  .vy-marketbar__right .vy-badge:not(.vy-badge--network) { display: none; }
+  .vy-marketbar { gap: var(--space-4); }
+  .vy-marketbar__stats { gap: var(--space-4); }
+}
+
+.vy-marketbar__stats .vy-stat dd { display: flex; flex-direction: column; line-height: 1.25; }
+.vy-marketbar__stats .vy-stat dd small {
+  color: var(--text-disabled);
+  font-size: 0.65rem;
+  font-weight: 500;
+}
+
+.vy-marketbar__right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+
+.vy-subtitle {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-small);
+}
+
+/* --- unavailable controls ---------------------------------------------- */
+/* Rendered, not hidden: the layout matches the circulated design, and the
+   reason a control cannot be used is one hover or one focus away. */
+
+.vy-unavailable { position: relative; display: inline-flex; }
+.vy-unavailable__control { display: inline-flex; opacity: 0.45; cursor: not-allowed; }
+.vy-unavailable__control > * { pointer-events: none; }
+
+.vy-tooltip {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 50;
+  display: grid;
+  gap: 4px;
+  width: max-content;
+  max-width: 280px;
+  padding: var(--space-3);
+  background: var(--bg-muted);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-m);
+  box-shadow: var(--shadow-panel);
+  color: var(--text-secondary);
+  font-size: var(--text-caption);
+  font-weight: 400;
+  line-height: var(--leading-body);
+  text-align: left;
+  white-space: normal;
+}
+
+.vy-tooltip strong { color: var(--warning); }
+
+@media (max-width: 900px) {
+  .vy-marketbar__right { margin-left: 0; width: 100%; }
+  .vy-marketbar__stats { gap: var(--space-4); }
+}
+
+/* --- order ticket: type tabs, stepped slider, state switch --------------- */
+
+.vy-ordertype {
+  display: flex;
+  gap: var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.vy-ordertype__tab {
+  padding: var(--space-2) 0;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--text-muted);
+  font-family: var(--font-ui);
+  font-size: var(--text-small);
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.vy-ordertype__tab.is-active { color: var(--text-primary); border-bottom-color: var(--coral); }
+.vy-ordertype__tab:disabled { cursor: not-allowed; }
+
+.vy-shield-row, .vy-lev-row { display: block; }
+.vy-shield-row .vy-unavailable__control,
+.vy-lev-row .vy-unavailable__control { display: block; width: 100%; }
+/* These two report state rather than gating an action, so they should not read
+   as heavily disabled as a control the user might have wanted to press. */
+.vy-shield-row .vy-unavailable__control,
+.vy-lev-row .vy-unavailable__control { opacity: 0.85; cursor: default; }
+
+.vy-shield { align-items: center; }
+.vy-shield strong { flex: 1; color: var(--text-primary); font-size: var(--text-small); }
+
+.vy-switch {
+  width: 30px;
+  height: 17px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-muted);
+  position: relative;
+  flex-shrink: 0;
+}
+
+.vy-switch::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--text-disabled);
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+
+.vy-switch.is-on { background: rgba(143, 199, 126, 0.28); }
+.vy-switch.is-on::after { background: var(--success); transform: translateX(13px); }
+
+/* Stepped, not continuous: each stop is a tier, because those are the only
+   sizes that exist. */
+.vy-slider {
+  width: 100%;
+  height: 3px;
+  appearance: none;
+  border-radius: var(--radius-pill);
+  background: var(--bg-muted);
+  outline: none;
+  cursor: pointer;
+}
+
+.vy-slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--coral);
+  cursor: pointer;
+}
+
+.vy-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border: none;
+  border-radius: 50%;
+  background: var(--coral);
+  cursor: pointer;
+}
+
+.vy-slider:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.vy-slider__stops { display: flex; justify-content: space-between; }
+
+.vy-slider__stop {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text-disabled);
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  cursor: pointer;
+}
+
+.vy-slider__stop.is-active { color: var(--coral); font-weight: 700; }
+.vy-slider__stop:disabled { cursor: not-allowed; }
+
+/* A disabled tab inside the ledger tab row must sit on the same baseline as the
+   real ones, so the row does not look ragged. */
+.vy-tabs .vy-unavailable { align-self: stretch; }
+.vy-tabs .vy-unavailable .vy-tabs__tab { height: 100%; }
+
+/* ============================================================
+   One-screen terminal
+   ============================================================
+   Companion to the .dapp-main.is-terminal rules in dapp-layout.css. Same guard
+   on both axes, for the same reason: below it, normal flow. */
+
+@media (min-width: 981px) {
+  .vy-terminal {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  /* Released inside the locked layout: here the height comes from the viewport,
+     so the canvas must be free to shrink. */
+  .vy-chart__canvas,
+  .vy-chart__body {
+    min-height: 0;
+  }
+
+  .vy-terminal__main {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
+  /* The chart section, its inner .vy-chart, the stage and the canvas are four
+     nested boxes. Each one needs min-height: 0 or the innermost refuses to
+     shrink and the whole column grows past the viewport. */
+  .vy-terminal__chart,
+  .vy-terminal__chart > .vy-chart {
+    min-height: 0;
+  }
+
+  .vy-chart {
+    min-height: 0;
+  }
+
+  /* The one thing allowed to scroll. Order tickets are taller than charts on
+     real terminals too; the alternative is hiding the cap and liquidation
+     figures, which are the numbers a trader on a capped position most needs. */
+  .vy-ticket {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+  }
+
+  .vy-terminal__ledger {
+    flex: 0 0 auto;
+    height: clamp(196px, 25vh, 268px);
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  /* On a short window the chart is what suffers, so the ledger gives some back.
+     It still shows the header row, the empty state and the action bar. */
+  @media (max-height: 760px) {
+    .vy-terminal__ledger { height: clamp(148px, 24vh, 196px); }
+  }
+
+  .vy-tabs__panel {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+  }
+}
+
+/* --- chart chrome ----------------------------------------------------- */
+
+.vy-chart__divider {
+  width: 1px;
+  height: 18px;
+  background: var(--border-subtle);
+}
+
+.vy-chart__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-left: auto;
+}
+
+.vy-chart__tool {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--text-caption);
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out);
+}
+
+.vy-chart__tool:hover:not(:disabled),
+.vy-chart__tool.is-open {
+  color: var(--text-primary);
+  background: var(--bg-elevated);
+}
+
+.vy-chart__tool:disabled { opacity: 0.4; cursor: default; }
+.vy-chart__tool--icon { width: 28px; justify-content: center; padding: 0; }
+
+.vy-chart__count {
+  padding: 0 5px;
+  border-radius: var(--radius-pill);
+  background: rgba(244, 111, 115, 0.16);
+  color: var(--coral);
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  font-style: normal;
+}
+
+.vy-chart__menu { position: relative; display: inline-flex; align-items: center; gap: var(--space-1); }
+
+.vy-chart__dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 40;
+  display: grid;
+  min-width: 190px;
+  padding: var(--space-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-m);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-panel);
+}
+
+.vy-chart__dropdown--right { left: auto; right: 0; }
+
+.vy-chart__dropdown button {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-2);
+  border: 0;
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--text-caption);
+  text-align: left;
+  cursor: pointer;
+}
+
+.vy-chart__dropdown button:hover { background: var(--bg-elevated); color: var(--text-primary); }
+.vy-chart__dropdown button.is-active { color: var(--coral); }
+.vy-chart__dropdown button em { margin-left: auto; font-style: normal; color: var(--text-disabled); }
+.vy-chart__dropdown button strong { min-width: 44px; font-family: var(--font-mono); font-size: 0.68rem; }
+.vy-chart__dropdown button span { color: var(--text-muted); }
+
+.vy-chart__dropdown--indicators {
+  grid-template-columns: repeat(2, minmax(180px, 1fr));
+  gap: var(--space-3);
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.vy-chart__dropdown h4 {
+  margin: 0 0 var(--space-1);
+  padding: 0 var(--space-2);
+  color: var(--text-disabled);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* --- drawing rail ----------------------------------------------------- */
+
+.vy-chart__body {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.vy-chart__stage { position: relative; flex: 1 1 auto; min-width: 0; min-height: 0; display: flex; }
+
+.vy-rail {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-2) 4px;
+  border-right: 1px solid var(--border-subtle);
+}
+
+.vy-rail__group { position: relative; }
+
+.vy-rail__btn {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out);
+}
+
+.vy-rail__btn:hover:not(:disabled) { color: var(--text-primary); background: var(--bg-elevated); }
+.vy-rail__btn:disabled { opacity: 0.35; cursor: default; }
+
+.vy-rail__btn.is-active {
+  color: var(--coral);
+  border-color: rgba(244, 111, 115, 0.4);
+  background: rgba(244, 111, 115, 0.1);
+}
+
+/* Corner mark: this button opens a submenu rather than arming one tool. */
+.vy-rail__more {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 0;
+  height: 0;
+  border-top: 4px solid transparent;
+  border-right: 4px solid currentColor;
+  opacity: 0.5;
+}
+
+.vy-rail__btn--clear { margin-top: auto; }
+.vy-rail__btn--clear:hover:not(:disabled) { color: var(--coral); }
+
+.vy-rail__menu {
+  position: absolute;
+  top: 0;
+  left: calc(100% + 6px);
+  z-index: 40;
+  display: grid;
+  min-width: 168px;
+  padding: var(--space-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-m);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-panel);
+}
+
+.vy-rail__menu button {
+  padding: var(--space-2);
+  border: 0;
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--text-caption);
+  text-align: left;
+  cursor: pointer;
+}
+
+.vy-rail__menu button:hover { background: var(--bg-elevated); color: var(--text-primary); }
+.vy-rail__menu button.is-active { color: var(--coral); }
+
+/* --- info popover ----------------------------------------------------- */
+
+.vy-info { position: relative; display: inline-flex; vertical-align: middle; }
+
+.vy-info__btn {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-disabled);
+  cursor: pointer;
+}
+
+.vy-info__btn:hover,
+.vy-info__btn.is-open { color: var(--coral); }
+
+.vy-info__pop {
+  position: absolute;
+  top: calc(100% + 8px);
+  z-index: 50;
+  width: min(520px, 72vw);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-strong);
+  border-left: 2px solid var(--coral);
+  border-radius: var(--radius-m);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-panel);
+  color: var(--text-secondary);
+  font-size: var(--text-caption);
+  line-height: var(--leading-body);
+  text-align: left;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.vy-info__pop--left { left: 0; }
+.vy-info__pop--right { right: 0; }
+.vy-info__pop strong { color: var(--text-primary); }
+
+/* --- fullscreen ------------------------------------------------------- */
+
+.vy-chart.is-fullscreen {
+  background: var(--bg-surface);
+}
+
+/* --- ledger: tabs, selection, footer actions -------------------------- */
+
+.vy-terminal__ledger {
+  display: flex;
+  flex-direction: column;
+}
+
+.vy-tabs__right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  margin-left: auto;
+}
+
+.vy-tabs__aux {
+  padding: 5px var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--text-caption);
+  cursor: pointer;
+}
+
+.vy-tabs__aux:hover { color: var(--text-primary); background: var(--bg-elevated); }
+.vy-tabs__aux.is-active { color: var(--coral); border-color: var(--coral); }
+
+.vy-table tbody tr { cursor: pointer; }
+
+.vy-table tbody tr.is-selected {
+  background: rgba(244, 111, 115, 0.08);
+  box-shadow: inset 2px 0 0 var(--coral);
+}
+
+.vy-table tbody tr:focus-visible {
+  outline: 1px solid var(--coral);
+  outline-offset: -1px;
+}
+
+/* The design puts Close and Rage-Quit here rather than on each row. They act on
+   the selected position, and say so when nothing is selected. */
+.vy-ledger__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 0 0 auto;
+  padding: var(--space-2) var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.vy-ledger__hint {
+  margin-right: auto;
+  color: var(--text-disabled);
+  font-size: var(--text-caption);
+}
+
+/* The subtitle carries the (i) that holds the disclosure. Restates colour and
+   size because it overrides the earlier .vy-subtitle rule wholesale. */
+.vy-subtitle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-small);
+}
+
+/* The wrapper owns the push to the right now. */
+.vy-tabs__right .vy-tabs__summary { margin-left: 0; }
+
+/* A contract price with its USD equivalent leading. */
+.vy-price { display: inline-flex; flex-direction: column; align-items: flex-end; line-height: 1.25; }
+.vy-price small { color: var(--text-disabled); font-size: 0.62rem; }
+
+/* The ticket is the one column allowed to scroll, so it needs to look like it
+   does. Without this the last row just stops mid-character at the panel edge. */
+.vy-ticket { position: relative; }
+
+@media (min-width: 981px) {
+  .vy-terminal__main::after {
+    content: '';
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    width: 336px;
+    height: 28px;
+    pointer-events: none;
+    background: linear-gradient(to bottom, transparent, var(--bg-surface));
+    border-radius: 0 0 var(--radius-l) var(--radius-l);
+  }
+
+  .vy-terminal__main { position: relative; }
+}

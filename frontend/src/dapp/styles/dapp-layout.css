@@ -72,9 +72,9 @@
   color: var(--text-primary);
 }
 
-.dapp-sidebar__link.is-active {
-  box-shadow: inset 2px 0 0 var(--coral);
-}
+/* No accent bar on the active item. The background change and the coral icon
+   already carry the state, and the inset shadow drew a stray line hugging the
+   rounded corner. */
 
 .dapp-sidebar__footer {
   display: flex;
@@ -258,9 +258,6 @@
     white-space: nowrap;
   }
 
-  .dapp-sidebar__link.is-active {
-    box-shadow: inset 0 2px 0 var(--coral);
-  }
 
   .dapp-main {
     padding: var(--space-5) var(--space-5) calc(88px + env(safe-area-inset-bottom));
@@ -337,5 +334,116 @@
 
   .dapp-sidebar__link small {
     display: none;
+  }
+}
+
+/* The positions terminal needs more than reading width: a chart, an order
+   ticket and an eleven-column table do not fit in 1180px without the table
+   scrolling horizontally on every screen. */
+.dapp-main.is-wide {
+  max-width: 1640px;
+}
+
+.dapp-sidebar__icon {
+  flex-shrink: 0;
+  margin-right: var(--space-3);
+  opacity: 0.75;
+}
+
+.dapp-sidebar__link.is-active .dapp-sidebar__icon {
+  color: var(--coral);
+  opacity: 1;
+}
+
+/* Prover state. Sits above the footer links because it is status, not
+   navigation -- and because a user waiting on a proof looks for it here. */
+.dapp-prover {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-3);
+  border-radius: var(--radius-m);
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  font-size: var(--text-caption);
+}
+
+.dapp-prover__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-disabled);
+}
+
+.dapp-prover__dot.is-ok { background: var(--success); }
+.dapp-prover__dot.is-error { background: var(--error); }
+.dapp-prover__dot.is-busy {
+  background: var(--warning);
+  animation: dapp-prover-pulse 1.1s var(--ease-out) infinite;
+}
+
+@keyframes dapp-prover-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+/* ============================================================
+   Fixed-viewport terminal
+   ============================================================
+   The positions page is laid out TO the viewport rather than growing the page:
+   chart, order ticket and the positions table are all visible at once, and the
+   only thing that scrolls is the ticket column, and only when the window is
+   short.
+
+   Guarded on WIDTH only. Below 981px the mobile bottom-nav layout takes over
+   and a locked height would fight it. There is deliberately no height guard:
+   an earlier version bailed out below 700px tall, which meant a merely zoomed
+   desktop window fell back to normal flow and got a broken page rather than a
+   cramped one. Instead the terminal has a `min-height` FLOOR -- below that the
+   window simply scrolls a little, which degrades honestly.
+
+   Every ancestor of a flexing child carries `min-height: 0`. Without it a grid
+   or flex item refuses to shrink below its content, and the page scrolls anyway
+   while every rule below looks correct. */
+
+@media (min-width: 981px) {
+  /* `min-height`, not `height`. With a fixed height plus `overflow: hidden`,
+     a viewport shorter than the terminal's floor would CLIP the bottom of the
+     page instead of letting it scroll — the positions table would be
+     unreachable rather than merely below the fold. */
+  .dapp-shell.is-fixed {
+    min-height: 100vh;
+    min-height: 100dvh;
+  }
+
+  /* Flex, not grid. The wallet-error alert renders conditionally, so a fixed
+     grid-template-rows would either leave a gap when it is absent or push
+     .page-content into an implicit row below the 1fr one when it appears. */
+  .dapp-main.is-terminal {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    height: 100vh;
+    height: 100dvh;
+    /* The floor. `height` and `min-height` together resolve to the larger, so
+       on a short window the terminal keeps a usable chart and the page scrolls
+       by the difference rather than crushing the chart to nothing. */
+    min-height: 620px;
+    padding: var(--space-4) var(--space-5);
+    overflow: hidden;
+  }
+
+  .dapp-main.is-terminal > .vy-marketbar,
+  .dapp-main.is-terminal > .dapp-alert {
+    flex: 0 0 auto;
+  }
+
+  .dapp-main.is-terminal > .page-content {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
   }
 }
