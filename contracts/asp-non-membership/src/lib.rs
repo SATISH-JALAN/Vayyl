@@ -41,6 +41,22 @@ pub enum Error {
     AlreadyInitialized = 2,
     IsBlocklisted = 3,
     AlreadyBlocked = 4,
+    /// C1: `leaf` is >= the BN254 scalar modulus. Blocking a non-canonical
+    /// alias would be worse than useless -- it reads as an effective block
+    /// while the canonical nullifier stays spendable.
+    NonCanonicalFieldElement = 5,
+}
+
+/// H8: keep the contract's INSTANCE entry alive.
+///
+/// The admin, the blocklist root and the blocked count live in instance storage, and nothing extended it. When the instance
+/// archives the contract stops working entirely until someone submits a
+/// RestoreFootprint. Called on every state-changing entrypoint, where the
+/// transaction is already paying for storage.
+fn extend_instance_ttl(env: &Env) {
+    env.storage()
+        .instance()
+        .extend_ttl(PERSISTENT_TTL_THRESHOLD, PERSISTENT_TTL_EXTEND);
 }
 
 #[contract]
@@ -86,6 +102,7 @@ fn empty_sparse_root(env: &Env, depth: u32) -> BytesN<32> {
 #[contractimpl]
 impl AspNonMembershipContract {
     pub fn initialize(env: Env, admin: Address) -> Result<(), Error> {
+        extend_instance_ttl(&env);
         if env.storage().instance().has(&DataKey::Admin) {
             return Err(Error::AlreadyInitialized);
         }
@@ -105,6 +122,10 @@ impl AspNonMembershipContract {
     /// For the buildathon, we track blocked leaves in storage and update the root
     /// by hashing the new leaf into the existing root (simplified but functional).
     pub fn block_leaf(env: Env, leaf: BytesN<32>) -> Result<(), Error> {
+        extend_instance_ttl(&env);
+        if !vayyl_types::is_canonical_fr(&leaf) {
+            return Err(Error::NonCanonicalFieldElement);
+        }
         let admin: Address = env
             .storage()
             .instance()
@@ -153,11 +174,21 @@ impl AspNonMembershipContract {
     /// In the full system, the ZK circuit verifies a sparse Merkle non-membership proof,
     /// and this on-chain check is a secondary validation.
     pub fn is_not_blocked(env: Env, leaf: BytesN<32>) -> bool {
+        // Fail CLOSED on a non-canonical leaf. This returns a bare bool, so the
+        // honest-looking answer for an alias of a blocked nullifier would be
+        // "not blocked" -- which is exactly the C1/D2 bypass. Report it as
+        // blocked instead; a legitimate caller never supplies one.
+        if !vayyl_types::is_canonical_fr(&leaf) {
+            return false;
+        }
         !env.storage().persistent().has(&DataKey::BlockedLeaf(leaf))
     }
 
     /// Assert non-membership. Returns Ok(true) if leaf is not blocked.
     pub fn assert_non_member(env: Env, leaf: BytesN<32>) -> Result<bool, Error> {
+        if !vayyl_types::is_canonical_fr(&leaf) {
+            return Err(Error::NonCanonicalFieldElement);
+        }
         if env.storage().persistent().has(&DataKey::BlockedLeaf(leaf)) {
             Err(Error::IsBlocklisted)
         } else {
@@ -190,6 +221,7 @@ impl AspNonMembershipContract {
     /// Upgrade the contract's WASM code in place (admin-gated).
     /// Keeps the blocklist and sparse-tree root intact.
     pub fn upgrade(env: Env, new_wasm_hash: BytesN<32>) -> Result<(), Error> {
+        extend_instance_ttl(&env);
         let admin: Address = env
             .storage()
             .instance()
@@ -229,7 +261,7 @@ mod test {
         client.initialize(&admin);
 
         let clean_leaf = BytesN::from_array(&env, &[1u8; 32]);
-        let bad_leaf = BytesN::from_array(&env, &[99u8; 32]);
+        let bad_leaf = BytesN::from_array(&env, &[0x13u8; 32]);
 
         // Block the bad leaf
         client.block_leaf(&bad_leaf);
@@ -243,12 +275,18 @@ mod test {
         assert_eq!(client.blocked_count(), 1);
     }
 
-    // C2 regression: a leaf whose 32-byte value is >= the BN254 field modulus
-    // must hash without panicking. [0xFF; 32] = 2^256 - 1, well above the prime;
-    // before field reduction was added to hash2() this trapped the whole tx
-    // ("input exceeds field modulus"). ~1/8 of arbitrary 32-byte values hit this.
+    // C1 -- SUPERSEDES the earlier C2 regression that lived here.
+    //
+    // That test asserted the OPPOSITE: that `block_leaf([0xFF; 32])` succeeds.
+    // It was written when `hash2` panicked on inputs above the modulus, and the
+    // fix was to reduce before hashing. Reducing stopped the trap, but it also
+    // made such a block MEANINGLESS -- `DataKey::BlockedLeaf` is keyed on the
+    // RAW bytes, so blocking `n + k*r` leaves the canonical `n` perfectly
+    // spendable while the admin sees a successful block. A compliance control
+    // that reports success without taking effect is worse than a refused call,
+    // so the entrypoint now rejects instead.
     #[test]
-    fn test_block_leaf_above_field_modulus() {
+    fn test_block_leaf_rejects_values_at_or_above_the_field_modulus() {
         let env = Env::default();
         env.mock_all_auths();
         let contract_id = env.register(AspNonMembershipContract, ());
@@ -257,12 +295,68 @@ mod test {
         let admin = Address::generate(&env);
         client.initialize(&admin);
 
-        // Value strictly greater than the BN254 scalar modulus.
-        let over_modulus_leaf = BytesN::from_array(&env, &[0xFFu8; 32]);
+        // 2^256 - 1, far above r.
+        let over_modulus = BytesN::from_array(&env, &[0xFFu8; 32]);
+        assert_eq!(
+            client.try_block_leaf(&over_modulus),
+            Err(Ok(Error::NonCanonicalFieldElement)),
+        );
 
-        // Must not panic; must update the root and mark the leaf blocked.
-        client.block_leaf(&over_modulus_leaf);
+        // Exactly r reduces to zero, so it is the sharpest boundary case.
+        let exactly_r = BytesN::from_array(&env, &vayyl_types::BN254_FR_MODULUS_BE);
+        assert_eq!(
+            client.try_block_leaf(&exactly_r),
+            Err(Ok(Error::NonCanonicalFieldElement)),
+        );
+
+        // r - 1 is the largest legal value and must still be accepted.
+        let mut r_minus_1 = vayyl_types::BN254_FR_MODULUS_BE;
+        r_minus_1[31] -= 1;
+        let largest_legal = BytesN::from_array(&env, &r_minus_1);
+        client.block_leaf(&largest_legal);
         assert_eq!(client.blocked_count(), 1);
-        assert!(!client.is_not_blocked(&over_modulus_leaf));
+        assert!(!client.is_not_blocked(&largest_legal));
+
+        // The rejected calls stored nothing: the count is still 1 from the
+        // legal insert above. Note we deliberately do NOT assert
+        // `is_not_blocked(&over_modulus)` here -- that returns false, because
+        // the query fails CLOSED on any non-canonical input by design.
+        assert_eq!(client.blocked_count(), 1);
+    }
+
+    // D2: the bypass this closes. A blocked nullifier `n` must not become
+    // spendable simply by presenting `n + r`, which the verifier reduces to the
+    // same scalar. `is_not_blocked` returns a bare bool, so it fails CLOSED.
+    #[test]
+    fn test_alias_of_a_blocked_leaf_is_not_reported_unblocked() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(AspNonMembershipContract, ());
+        let client = AspNonMembershipContractClient::new(&env, &contract_id);
+
+        let admin = Address::generate(&env);
+        client.initialize(&admin);
+
+        let n = [0x13u8; 32];
+        client.block_leaf(&BytesN::from_array(&env, &n));
+
+        // n + r, computed big-endian with carry.
+        let mut alias = [0u8; 32];
+        let mut carry = 0u16;
+        for i in (0..32).rev() {
+            let sum = n[i] as u16 + vayyl_types::BN254_FR_MODULUS_BE[i] as u16 + carry;
+            alias[i] = (sum & 0xff) as u8;
+            carry = sum >> 8;
+        }
+        let alias = BytesN::from_array(&env, &alias);
+
+        assert!(
+            !client.is_not_blocked(&alias),
+            "an alias of a blocked leaf was reported as not blocked -- D2 bypass",
+        );
+        assert_eq!(
+            client.try_assert_non_member(&alias),
+            Err(Ok(Error::NonCanonicalFieldElement)),
+        );
     }
 }

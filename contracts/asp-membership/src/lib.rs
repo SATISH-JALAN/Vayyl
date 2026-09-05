@@ -44,6 +44,24 @@ pub enum Error {
     NotAMember = 3,
     TreeFull = 4,
     LeafAlreadyExists = 5,
+    /// C1: `leaf` is >= the BN254 scalar modulus, so it is a non-canonical
+    /// encoding. `hash2` reduces mod r before hashing while `DataKey::Leaf` is
+    /// the raw bytes, so `n` and `n + r` would occupy two keys but one tree
+    /// position -- corrupting the mirror the relayer keeps and the path every
+    /// client builds. See `vayyl_types::is_canonical_fr`.
+    NonCanonicalFieldElement = 6,
+}
+
+/// H8: keep the contract's INSTANCE entry alive.
+///
+/// The admin, the tree root, the next leaf index and the root history ring live in instance storage, and nothing extended it. When the instance
+/// archives the contract stops working entirely until someone submits a
+/// RestoreFootprint. Called on every state-changing entrypoint, where the
+/// transaction is already paying for storage.
+fn extend_instance_ttl(env: &Env) {
+    env.storage()
+        .instance()
+        .extend_ttl(PERSISTENT_TTL_THRESHOLD, PERSISTENT_TTL_EXTEND);
 }
 
 #[contract]
@@ -80,6 +98,7 @@ fn hash2(env: &Env, left: &BytesN<32>, right: &BytesN<32>) -> BytesN<32> {
 #[contractimpl]
 impl AspMembershipContract {
     pub fn initialize(env: Env, admin: Address) -> Result<(), Error> {
+        extend_instance_ttl(&env);
         if env.storage().instance().has(&DataKey::Admin) {
             return Err(Error::AlreadyInitialized);
         }
@@ -110,6 +129,10 @@ impl AspMembershipContract {
     /// Insert an approved leaf into the ASP Merkle tree (admin-gated).
     /// Uses frontier-based insertion identical to VayylPool's Merkle tree.
     pub fn insert_leaf(env: Env, leaf: BytesN<32>) -> Result<(), Error> {
+        extend_instance_ttl(&env);
+        if !vayyl_types::is_canonical_fr(&leaf) {
+            return Err(Error::NonCanonicalFieldElement);
+        }
         let admin: Address = env
             .storage()
             .instance()
@@ -250,6 +273,7 @@ impl AspMembershipContract {
     /// Upgrade the contract's WASM code in place (admin-gated).
     /// Keeps the full ASP Merkle tree (frontier, root, leaves) intact.
     pub fn upgrade(env: Env, new_wasm_hash: BytesN<32>) -> Result<(), Error> {
+        extend_instance_ttl(&env);
         let admin: Address = env
             .storage()
             .instance()
@@ -355,7 +379,7 @@ mod test {
         let admin = Address::generate(&env);
         client.initialize(&admin);
 
-        client.insert_leaf(&BytesN::from_array(&env, &[100u8; 32]));
+        client.insert_leaf(&BytesN::from_array(&env, &[0x14u8; 32]));
         let first_root = client.root();
 
         // Push ROOT_HISTORY_SIZE more roots so `first_root` is evicted from the
@@ -457,7 +481,10 @@ mod test {
 
         let l0 = BytesN::from_array(&env, &[0x11; 32]);
         let l1 = BytesN::from_array(&env, &[0x22; 32]);
-        let l2 = BytesN::from_array(&env, &[0x33; 32]);
+        // 0x23, not the 0x33 that would continue the 0x11/0x22 pattern: a
+        // 32-byte fill of 0x33 exceeds the BN254 scalar modulus (lead byte
+        // 0x30) and `insert_leaf` now rejects non-canonical leaves.
+        let l2 = BytesN::from_array(&env, &[0x23; 32]);
         client.insert_leaf(&l0);
         client.insert_leaf(&l1);
         client.insert_leaf(&l2);
@@ -489,5 +516,35 @@ mod test {
 
         let recomputed = circuit_style_root(&env, &l2, &siblings, &index_bits);
         assert_eq!(recomputed, client.root(), "on-chain root must match circuit MerkleProof");
+    }
+
+    // C1: an ASP leaf is Poseidon2(pubX, pubY) and therefore always below r.
+    // A non-canonical leaf would occupy a distinct `DataKey::Leaf` while
+    // hashing (via the reducing `hash2`) to the SAME tree position as its
+    // canonical twin -- desynchronising the on-chain tree from the relayer's
+    // leaf mirror, which is what every client builds its ASP path from.
+    #[test]
+    fn test_insert_leaf_rejects_non_canonical_values() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let contract_id = env.register(AspMembershipContract, ());
+        let client = AspMembershipContractClient::new(&env, &contract_id);
+        let admin = Address::generate(&env);
+        client.initialize(&admin);
+
+        // Exactly r, and 2^256 - 1.
+        for bad in [vayyl_types::BN254_FR_MODULUS_BE, [0xFFu8; 32]] {
+            assert_eq!(
+                client.try_insert_leaf(&BytesN::from_array(&env, &bad)),
+                Err(Ok(Error::NonCanonicalFieldElement)),
+            );
+        }
+        assert_eq!(client.leaf_count(), 0, "nothing was inserted");
+
+        // r - 1 is the largest legal leaf and must still be accepted.
+        let mut r_minus_1 = vayyl_types::BN254_FR_MODULUS_BE;
+        r_minus_1[31] -= 1;
+        client.insert_leaf(&BytesN::from_array(&env, &r_minus_1));
+        assert_eq!(client.leaf_count(), 1);
     }
 }
