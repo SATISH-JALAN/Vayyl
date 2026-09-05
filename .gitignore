@@ -161,3 +161,13 @@ backend/relayer/asp-leaves.json
 /.gitbook.yaml
 /ARCHITECTURE.md
 /scripts/build_gitbook.js
+
+# TradingView Advanced Charts. Licensed, distributed from TradingView's PRIVATE
+# `charting_library` GitHub repo, and covered by an agreement that prohibits
+# altering or redistributing the source. It must never reach a commit.
+#
+# Ignored BEFORE the package is ever unpacked, because adding this rule
+# afterwards does not remove anything already staged or committed.
+frontend/public/charting_library/
+frontend/public/datafeeds/
+frontend/charting-library.lock.json
