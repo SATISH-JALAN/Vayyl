@@ -387,14 +387,27 @@ export class RelayerService {
             throw new Error("Only smart contract invocations are allowed");
         }
         
+        // D3: reject every host function type EXCEPT invoke-contract.
+        //
+        // This used to be a bare `if`, with no `else`. An `uploadContractWasm`
+        // or `createContract` envelope therefore fell through validation
+        // untouched and got fee-bumped, so anyone could make the relayer pay to
+        // upload arbitrary WASM. The allowlist only means anything if a
+        // non-invoke function cannot skip past it.
         const func = op.func;
-        if (func.switch().name === 'hostFunctionTypeInvokeContract') {
-             const invokeArgs = func.invokeContract();
-             const contractIdXdr = invokeArgs.contractAddress();
-             const contractAddress = StellarSdk.Address.fromScAddress(contractIdXdr).toString();
-             this.assertAllowedContract(contractAddress);
+        const kind = func.switch().name;
+        if (kind !== 'hostFunctionTypeInvokeContract') {
+            throw new Error(
+                `Only contract invocations may be relayed (got ${kind}). ` +
+                `Uploads and deployments are never relayed: the relayer pays their fees.`
+            );
         }
-        
+
+        const invokeArgs = func.invokeContract();
+        const contractIdXdr = invokeArgs.contractAddress();
+        const contractAddress = StellarSdk.Address.fromScAddress(contractIdXdr).toString();
+        this.assertAllowedContract(contractAddress);
+
         console.log(`Validated transaction ${tx.hash().toString('hex')} targeting allowed contract.`);
     }
 
@@ -410,8 +423,20 @@ export class RelayerService {
             
             return Number(minResourceFee + inclusionFee);
         } catch (e: any) {
-            console.error("Simulation failed, falling back to fixed fee", e);
-            return 5000000;
+            // D4: refuse, do not guess.
+            //
+            // This used to return a flat 0.5 XLM. A transaction crafted to fail
+            // simulation was still relayed, at that inclusion fee — at the
+            // configured 30 POST/min per IP, up to 15 XLM a minute out of the
+            // relayer's account. A transaction that will not simulate is not one
+            // worth paying for: it would fail on-chain anyway and the fee is
+            // spent either way.
+            console.error("Simulation failed; refusing to relay", e);
+            throw new Error(
+                `Refusing to relay: simulation failed (${e?.message ?? e}). ` +
+                `The relayer pays the fee, so it does not submit transactions ` +
+                `that cannot be simulated.`
+            );
         }
     }
 }

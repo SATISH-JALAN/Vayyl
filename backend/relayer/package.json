@@ -8,7 +8,7 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "tsx watch src/index.ts",
-    "test": "tsx --test src/enrollment.test.ts"
+    "test": "tsx --test src/*.test.ts"
   },
   "dependencies": {
     "@stellar/stellar-sdk": "^16.0.1",
