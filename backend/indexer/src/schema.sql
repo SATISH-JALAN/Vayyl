@@ -55,15 +55,50 @@ CREATE TABLE IF NOT EXISTS indexer_state (
     value VARCHAR(255) NOT NULL
 );
 
+-- Positions.
+--
+-- Soroban RPC retains events for about seven days and a position can be open
+-- far longer, so this is the only durable record that a position id belongs to
+-- an address. It is a LISTING index, not a source of truth: the client re-reads
+-- every position from the contract before acting on it, because a stale row
+-- here would produce a close proof describing a different position.
+--
+-- `tier_id` and `entry_price` are stored because they are what makes a closed
+-- position's payout note recoverable on a clean device -- see
+-- frontend/src/dapp/lib/position-notes.ts.
 CREATE TABLE IF NOT EXISTS positions (
     id SERIAL PRIMARY KEY,
     position_id VARCHAR(64) NOT NULL UNIQUE,
     owner VARCHAR(56) NOT NULL,
     commitment VARCHAR(64) NOT NULL,
+    change_commitment VARCHAR(64),
+    tier_id INTEGER,
     direction INTEGER,
     size NUMERIC(38,0),
+    margin NUMERIC(38,0),
+    entry_price NUMERIC(38,0),
     last_health_timestamp BIGINT,
     is_closed BOOLEAN DEFAULT FALSE,
+    -- Set on close. Both are public in the PositionClose event, and together
+    -- with tier_id they determine the payout note exactly.
+    close_price NUMERIC(38,0),
+    payout NUMERIC(38,0),
+    fee NUMERIC(38,0),
+    output_note_commitment VARCHAR(64),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Owner lookup is the only query the API makes, and it runs on every page load.
+CREATE INDEX IF NOT EXISTS positions_owner_idx ON positions (owner);
+
+-- Added after the table shipped, so existing deployments need them too.
+-- Postgres has no IF NOT EXISTS for a column list, hence one statement each.
+ALTER TABLE positions ADD COLUMN IF NOT EXISTS change_commitment VARCHAR(64);
+ALTER TABLE positions ADD COLUMN IF NOT EXISTS tier_id INTEGER;
+ALTER TABLE positions ADD COLUMN IF NOT EXISTS margin NUMERIC(38,0);
+ALTER TABLE positions ADD COLUMN IF NOT EXISTS entry_price NUMERIC(38,0);
+ALTER TABLE positions ADD COLUMN IF NOT EXISTS close_price NUMERIC(38,0);
+ALTER TABLE positions ADD COLUMN IF NOT EXISTS payout NUMERIC(38,0);
+ALTER TABLE positions ADD COLUMN IF NOT EXISTS fee NUMERIC(38,0);
+ALTER TABLE positions ADD COLUMN IF NOT EXISTS output_note_commitment VARCHAR(64);

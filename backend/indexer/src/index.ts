@@ -9,6 +9,7 @@ const DB_URL = process.env.DATABASE_URL || 'postgresql://postgres:postgres@local
 const RPC_URL = process.env.RPC_URL || 'https://soroban-testnet.stellar.org';
 const POOL_ADDRESS = process.env.POOL_ADDRESS;
 const POSITION_MANAGER_ADDRESS = process.env.POSITION_MANAGER_ADDRESS;
+const LIQUIDATION_ENGINE_ADDRESS = process.env.LIQUIDATION_ENGINE_ADDRESS;
 const NETWORK = process.env.STELLAR_NETWORK || 'testnet';
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3001;
 
@@ -31,8 +32,19 @@ async function main() {
     if (!POSITION_MANAGER_ADDRESS) {
         console.warn('Warning: POSITION_MANAGER_ADDRESS not set, will not index position events');
     }
+    if (POSITION_MANAGER_ADDRESS && !LIQUIDATION_ENGINE_ADDRESS) {
+        // Worth a warning of its own rather than silence: positions would be
+        // indexed while liquidations were not, so a seized position would sit
+        // in the listing looking open forever.
+        console.warn(
+            'Warning: LIQUIDATION_ENGINE_ADDRESS not set. Positions will be indexed but ' +
+            'liquidations will not, so seized positions will keep showing as open.',
+        );
+    }
 
-    const poller = new Poller(RPC_URL, db, POOL_ADDRESS, POSITION_MANAGER_ADDRESS);
+    const poller = new Poller(
+        RPC_URL, db, POOL_ADDRESS, POSITION_MANAGER_ADDRESS, LIQUIDATION_ENGINE_ADDRESS,
+    );
     poller.start().catch(err => {
         console.error('Poller crashed:', err);
     });

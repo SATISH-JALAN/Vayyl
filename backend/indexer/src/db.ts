@@ -248,26 +248,90 @@ export class Database {
         return result.rows.map(r => r.nullifier_hash);
     }
 
-    async insertPosition(positionId: string, owner: string, commitment: string, direction: number, size: bigint) {
+    /**
+     * Record an opened position.
+     *
+     * DO NOTHING on conflict, not UPDATE. The contract refuses a duplicate
+     * position id (audit H6), so a second `position_open` for the same id can
+     * only be a replayed event -- and treating it as an update would let a
+     * replay rewrite an existing row's owner and tier. The previous version
+     * reset `is_closed` to FALSE as part of that update, which would also
+     * resurrect a closed position in the listing.
+     */
+    async insertPosition(p: {
+        positionId: string;
+        owner: string;
+        commitment: string;
+        changeCommitment: string;
+        tierId: number;
+        direction: number;
+        size: bigint;
+        margin: bigint;
+        entryPrice: bigint;
+    }) {
         await this.pool.query(
-            `INSERT INTO positions (position_id, owner, commitment, direction, size)
-             VALUES ($1, $2, $3, $4, $5)
-             ON CONFLICT (position_id) DO UPDATE SET commitment = EXCLUDED.commitment, direction = EXCLUDED.direction, size = EXCLUDED.size, is_closed = FALSE`,
-            [positionId, owner, commitment, direction, size.toString()]
+            `INSERT INTO positions
+               (position_id, owner, commitment, change_commitment, tier_id,
+                direction, size, margin, entry_price, is_closed)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, FALSE)
+             ON CONFLICT (position_id) DO NOTHING`,
+            [
+                p.positionId, p.owner, p.commitment, p.changeCommitment, p.tierId,
+                p.direction, p.size.toString(), p.margin.toString(), p.entryPrice.toString(),
+            ]
         );
     }
 
     async updatePositionHealth(positionId: string, timestamp: number) {
+        // Monotonic: an out-of-order event must not move the heartbeat
+        // BACKWARDS, which would make a healthy position look overdue for
+        // liquidation to anything reading this table.
         await this.pool.query(
-            `UPDATE positions SET last_health_timestamp = $2, updated_at = CURRENT_TIMESTAMP WHERE position_id = $1`,
+            `UPDATE positions
+                SET last_health_timestamp = GREATEST(COALESCE(last_health_timestamp, 0), $2),
+                    updated_at = CURRENT_TIMESTAMP
+              WHERE position_id = $1`,
             [positionId, timestamp]
         );
     }
 
-    async updatePositionClose(positionId: string, newCommitment: string) {
+    async updatePositionClose(p: {
+        positionId: string;
+        outputNoteCommitment: string;
+        closePrice: bigint;
+        payout: bigint;
+        fee: bigint;
+    }) {
         await this.pool.query(
-            `UPDATE positions SET commitment = $2, is_closed = TRUE, updated_at = CURRENT_TIMESTAMP WHERE position_id = $1`,
-            [positionId, newCommitment]
+            `UPDATE positions
+                SET is_closed = TRUE,
+                    output_note_commitment = $2,
+                    close_price = $3,
+                    payout = $4,
+                    fee = $5,
+                    updated_at = CURRENT_TIMESTAMP
+              WHERE position_id = $1`,
+            [p.positionId, p.outputNoteCommitment, p.closePrice.toString(),
+             p.payout.toString(), p.fee.toString()]
+        );
+    }
+
+    /**
+     * Record a liquidation.
+     *
+     * Marked closed with a payout of zero, which is what actually happened: the
+     * collateral went to the keeper and the vault, and the owner received
+     * nothing. Leaving the row open instead would show the owner a position
+     * that no longer exists on-chain.
+     */
+    async updatePositionSeized(positionId: string) {
+        await this.pool.query(
+            `UPDATE positions
+                SET is_closed = TRUE,
+                    payout = 0,
+                    updated_at = CURRENT_TIMESTAMP
+              WHERE position_id = $1`,
+            [positionId]
         );
     }
 

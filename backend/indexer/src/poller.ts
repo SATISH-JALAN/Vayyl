@@ -21,14 +21,28 @@ export class Poller {
     private rpcUrl: string;
     private poolAddress: string;
     private positionManagerAddress?: string;
+    /**
+     * The LiquidationEngine. Subscribed separately from the manager because a
+     * seizure is emitted BY THE ENGINE, not by the manager -- so without this
+     * a liquidated position would simply stop appearing, and its owner would
+     * have no record of what became of their collateral.
+     */
+    private liquidationEngineAddress?: string;
     private running = false;
 
-    constructor(rpcUrl: string, db: Database, poolAddress: string, positionManagerAddress?: string) {
+    constructor(
+        rpcUrl: string,
+        db: Database,
+        poolAddress: string,
+        positionManagerAddress?: string,
+        liquidationEngineAddress?: string,
+    ) {
         this.server = new StellarSdk.rpc.Server(rpcUrl, { allowHttp: true });
         this.db = db;
         this.rpcUrl = rpcUrl;
         this.poolAddress = poolAddress;
         this.positionManagerAddress = positionManagerAddress;
+        this.liquidationEngineAddress = liquidationEngineAddress;
     }
 
     async start() {
@@ -96,6 +110,9 @@ export class Poller {
             const contractIds = [this.poolAddress];
             if (this.positionManagerAddress) {
                 contractIds.push(this.positionManagerAddress);
+            }
+            if (this.liquidationEngineAddress) {
+                contractIds.push(this.liquidationEngineAddress);
             }
 
             const filters: StellarSdk.rpc.Api.EventFilter[] = [{
@@ -274,16 +291,30 @@ export class Poller {
                     );
                     break;
                 case 'PositionOpen':
-                    await this.db.insertPosition(decoded.positionId, decoded.owner, decoded.commitment, decoded.direction, decoded.size);
-                    console.log(`PositionOpen: id=${decoded.positionId.slice(0, 12)}... owner=${decoded.owner}`);
+                    await this.db.insertPosition(decoded);
+                    console.log(
+                        `PositionOpen: id=${decoded.positionId.slice(0, 12)}… owner=${decoded.owner} ` +
+                        `tier=${decoded.tierId} ${decoded.direction === 1 ? 'long' : 'short'} ` +
+                        `entry=${decoded.entryPrice}`,
+                    );
                     break;
                 case 'PositionHealth':
                     await this.db.updatePositionHealth(decoded.positionId, decoded.timestamp);
-                    console.log(`PositionHealth: id=${decoded.positionId.slice(0, 12)}... timestamp=${decoded.timestamp}`);
+                    console.log(`PositionHealth: id=${decoded.positionId.slice(0, 12)}… at=${decoded.timestamp}`);
                     break;
                 case 'PositionClose':
-                    await this.db.updatePositionClose(decoded.positionId, decoded.newCommitment);
-                    console.log(`PositionClose: id=${decoded.positionId.slice(0, 12)}...`);
+                    await this.db.updatePositionClose(decoded);
+                    console.log(
+                        `PositionClose: id=${decoded.positionId.slice(0, 12)}… ` +
+                        `payout=${decoded.payout} fee=${decoded.fee}`,
+                    );
+                    break;
+                case 'PositionSeized':
+                    await this.db.updatePositionSeized(decoded.positionId);
+                    console.log(
+                        `PositionSeized: id=${decoded.positionId.slice(0, 12)}… ` +
+                        `keeper=${decoded.keeper} collateral=${decoded.collateral}`,
+                    );
                     break;
             }
         } catch (e: any) {

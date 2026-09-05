@@ -12,6 +12,41 @@ const mapEntry = (k: string, v: xdr.ScVal) =>
   new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol(k), val: v });
 
 describe('decodePoolEvent', () => {
+  // Regression: the decoder used to read the event body BEFORE checking whether
+  // it recognised the event name. Contracts emit plenty it does not care about
+  // -- `initialize`, `add_settlement_authority`, the SAC's own `transfer` on the
+  // vault -- and those bodies are not maps, so `mapToObject` threw "map not
+  // set". The poller caught it and logged, so nothing broke, but every restart
+  // produced a wall of errors that made a REAL decode failure invisible.
+  it('skips an unrecognised event whose body is not a map', () => {
+    const topic = [sym('add_settlement_authority')];
+    const value = nativeToScVal(true); // a bool, not a map
+    expect(decodePoolEvent(topic, value)).toBeNull();
+  });
+
+  it('rejects a handled event name that arrives with too few topics', () => {
+    // The name gate is not the only guard. `transfer` needs two nullifier
+    // topics; one is not a truncated event, it is a different event.
+    //
+    // Note the decoder does NOT have to defend against the SAC's identically
+    // named `transfer`: the poller filters getEvents by contract id, and the
+    // token contract is not among [pool, manager, engine]. If that filter ever
+    // widens, this decoder needs a topic-TYPE check, not just an arity one.
+    const topic = [sym('transfer'), bytesN('11'.repeat(32))];
+    const value = xdr.ScVal.scvMap([
+      mapEntry('commitment1', bytesN('22'.repeat(32))),
+    ]);
+    expect(decodePoolEvent(topic, value)).toBeNull();
+  });
+
+  it('still throws when a KNOWN event has an unreadable body', () => {
+    // The failure mode worth preserving. Defaulting a malformed deposit to
+    // leaf_index 0 / amount 0 would insert a real commitment describing a
+    // deposit that never happened, and nothing downstream could tell.
+    const topic = [sym('deposit'), bytesN('ab'.repeat(32))];
+    expect(() => decodePoolEvent(topic, nativeToScVal(true))).toThrow();
+  });
+
   it('decodes a deposit event', () => {
     const commitment = 'ab'.repeat(32);
     const topic = [sym('deposit'), bytesN(commitment)];

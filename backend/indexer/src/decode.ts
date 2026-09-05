@@ -50,9 +50,34 @@ export type PoolEvent =
       ephemeralY: string;
       amount: bigint;
     }
-  | { kind: 'PositionOpen'; positionId: string; owner: string; commitment: string; direction: number; size: bigint }
+  | {
+      kind: 'PositionOpen';
+      positionId: string;
+      owner: string;
+      commitment: string;
+      changeCommitment: string;
+      tierId: number;
+      direction: number;
+      size: bigint;
+      margin: bigint;
+      entryPrice: bigint;
+    }
   | { kind: 'PositionHealth'; positionId: string; timestamp: number }
-  | { kind: 'PositionClose'; positionId: string; newCommitment: string; outputNoteCommitment: string };
+  | {
+      kind: 'PositionClose';
+      positionId: string;
+      outputNoteCommitment: string;
+      closePrice: bigint;
+      payout: bigint;
+      fee: bigint;
+    }
+  | {
+      kind: 'PositionSeized';
+      positionId: string;
+      keeper: string;
+      collateral: bigint;
+      bounty: bigint;
+    };
 
 /** 32-byte ScVal (BytesN<32>) → lowercase hex, no 0x. */
 function bytesN32ToHex(v: xdr.ScVal): string {
@@ -82,9 +107,38 @@ function mapToObject(v: xdr.ScVal): Record<string, unknown> {
  * Decode a raw RPC event (topic: xdr.ScVal[], value: xdr.ScVal) into a typed
  * PoolEvent, or null if it is not a recognised Vayyl event.
  */
+/**
+ * Event names this decoder understands.
+ *
+ * Checked BEFORE the body is read. The contracts emit plenty of events this
+ * indexer has no interest in -- `initialize`, `add_settlement_authority`, the
+ * SAC's own `transfer` on the vault -- and their bodies are not maps. Calling
+ * `mapToObject` on those throws "map not set", which the poller caught and
+ * logged once per event, per restart.
+ *
+ * The tempting fix is to make `mapToObject` return {} for a non-map. That is
+ * worse: every field here reads `data.x ?? 0`, so a deposit whose body failed
+ * to parse would decode to leaf_index 0 and amount 0 and be inserted as a real
+ * commitment. Refusing to guess is the point -- an unknown event is skipped,
+ * and a known event with an unreadable body still throws where someone sees it.
+ */
+const HANDLED_EVENTS = new Set([
+  'deposit',
+  'withdraw',
+  'transfer',
+  'transfer_v2',
+  'transfer_v3',
+  'ragequit_v2',
+  'position_open',
+  'position_health',
+  'position_close',
+  'position_seized',
+]);
+
 export function decodePoolEvent(topic: xdr.ScVal[], value: xdr.ScVal): PoolEvent | null {
   if (!topic || topic.length === 0) return null;
   const name = symbolName(topic[0]);
+  if (!HANDLED_EVENTS.has(name)) return null;
   const data = mapToObject(value);
 
   switch (name) {
@@ -189,16 +243,22 @@ export function decodePoolEvent(topic: xdr.ScVal[], value: xdr.ScVal): PoolEvent
     }
     case 'position_open': {
       if (topic.length < 3) return null;
-      const c = data.commitment as Buffer | Uint8Array | undefined;
       const hex = (b?: Buffer | Uint8Array) =>
         b ? Buffer.from(b).toString('hex').padStart(64, '0') : '';
       return {
         kind: 'PositionOpen',
         positionId: bytesN32ToHex(topic[1]),
         owner: String(scValToNative(topic[2])),
-        commitment: hex(c),
+        commitment: hex(data.commitment as Buffer | Uint8Array | undefined),
+        changeCommitment: hex(data.change_commitment as Buffer | Uint8Array | undefined),
+        tierId: Number(data.tier_id ?? 0),
         direction: Number(data.direction ?? 0),
+        // BigInt, never Number: these are i128 stroops on-chain and anything
+        // above 2^53 loses precision silently in a JS number, which would
+        // mis-record a position with no error anywhere.
         size: BigInt((data.size as bigint | number | string) ?? 0),
+        margin: BigInt((data.margin as bigint | number | string) ?? 0),
+        entryPrice: BigInt((data.entry_price as bigint | number | string) ?? 0),
       };
     }
     case 'position_health': {
@@ -206,20 +266,40 @@ export function decodePoolEvent(topic: xdr.ScVal[], value: xdr.ScVal): PoolEvent
       return {
         kind: 'PositionHealth',
         positionId: bytesN32ToHex(topic[1]),
+        // LEDGER time, which is what the contract now stores. Previously this
+        // carried the oracle's own stamp, so a stalled feed made every position
+        // look permanently fresh here too.
         timestamp: Number(data.timestamp ?? 0),
       };
     }
     case 'position_close': {
       if (topic.length < 2) return null;
-      const nc = data.new_commitment as Buffer | Uint8Array | undefined;
-      const oc = data.output_note_commitment as Buffer | Uint8Array | undefined;
       const hex = (b?: Buffer | Uint8Array) =>
         b ? Buffer.from(b).toString('hex').padStart(64, '0') : '';
       return {
         kind: 'PositionClose',
         positionId: bytesN32ToHex(topic[1]),
-        newCommitment: hex(nc),
-        outputNoteCommitment: hex(oc),
+        outputNoteCommitment: hex(data.output_note_commitment as Buffer | Uint8Array | undefined),
+        closePrice: BigInt((data.close_price as bigint | number | string) ?? 0),
+        // The settled amount. Together with the tier and the fee this is
+        // everything needed to re-derive the payout note on a clean device,
+        // which is why it is indexed rather than only emitted.
+        payout: BigInt((data.payout as bigint | number | string) ?? 0),
+        fee: BigInt((data.fee as bigint | number | string) ?? 0),
+      };
+    }
+
+    case 'position_seized': {
+      // Emitted by LiquidationEngine, not PositionManager. Without it a seized
+      // position would simply stop appearing, and the owner would have no
+      // record of what happened to their collateral.
+      if (topic.length < 3) return null;
+      return {
+        kind: 'PositionSeized',
+        positionId: bytesN32ToHex(topic[1]),
+        keeper: String(scValToNative(topic[2])),
+        collateral: BigInt((data.collateral as bigint | number | string) ?? 0),
+        bounty: BigInt((data.bounty as bigint | number | string) ?? 0),
       };
     }
     default:
