@@ -2,6 +2,7 @@ pragma circom 2.1.0;
 
 include "lib/position_primitives.circom";
 include "lib/range_check.circom";
+include "lib/babyjubjub.circom";
 
 // Position Health Attestation Circuit (system design §2.6)
 // =======================================================
@@ -36,8 +37,7 @@ template PositionHealth() {
     signal input size;
     signal input direction;        // 0 = short, 1 = long
     signal input entry_price;
-    signal input pubX;
-    signal input pubY;
+    signal input privKey;          // P7: ownership, not just knowledge of the opening
     signal input position_blindness;
     signal input price_ge_entry;   // selector: 1 iff oracle_price >= entry_price
 
@@ -58,14 +58,26 @@ template PositionHealth() {
     component rc_threshold = RangeCheck64();
     rc_threshold.in <== health_threshold;
 
+    // 1c. P7: derive the position's public key from the spend key rather than
+    //     accepting it as a free witness.
+    //
+    //     Without this, `attest_health` proves only that SOMEBODY knows the
+    //     opening of the commitment — and since anyone may submit an
+    //     attestation, that is a weaker statement than it looks. It is not a
+    //     drain (a third party attesting only keeps the position alive), but it
+    //     is the difference between "the owner says this position is solvent"
+    //     and "someone does", and the heartbeat is the owner's signal.
+    component key = DerivePublicKey();
+    key.privKey <== privKey;
+
     // 2. Validate the position commitment (binds the proof to a committed position).
     component pos_commit = PositionCommitment();
     pos_commit.collateral_amount <== collateral_amount;
     pos_commit.size <== size;
     pos_commit.direction <== direction;
     pos_commit.entry_price <== entry_price;
-    pos_commit.pubX <== pubX;
-    pos_commit.pubY <== pubY;
+    pos_commit.pubX <== key.pubX;
+    pos_commit.pubY <== key.pubY;
     pos_commit.blindness <== position_blindness;
     pos_commit.commitment === position_commitment;
 

@@ -1,142 +1,139 @@
 pragma circom 2.1.0;
 
-include "lib/position_primitives.circom";
 include "lib/note.circom";
 include "lib/range_check.circom";
+include "lib/position_primitives.circom";
+include "lib/tiers.circom";
+include "lib/babyjubjub.circom";
 
-// Position Close / Modify Circuit
-// Consumes a position, settles PnL against an oracle price, 
-// and outputs a new position commitment and/or a shielded note.
-template PositionClose(depth) {
-    // Public Inputs
+// Position Close
+// ==============
+// Proves ownership of an open position and mints the settled payout as a
+// shielded note.
+//
+// Public: [position_nullifier, output_note_commitment, old_position_commitment,
+//          tier_id, entry_price, direction, payout, fee, position_id]
+//
+// The settlement arithmetic moved on-chain
+// ----------------------------------------
+// The previous circuit computed PnL itself, from a balance equation over free
+// witnesses:
+//
+//     old_collateral + old_size*asset_val === new_collateral + note_amount
+//                                            + fee + old_size*debt_val
+//
+// with `old_collateral`, `old_size`, `old_entry_price`, `old_pubX/Y` and
+// `old_privKey` all unconstrained, and the OLD COMMITMENT not a public input at
+// all. So a prover could invent a position with whatever collateral, size and
+// entry price produced the payout they wanted, and settle it (audit C3 plus the
+// P0/P2/P3 cluster). Every constraint in that equation was satisfiable by
+// construction because the prover chose both sides.
+//
+// Now `payout` is a PUBLIC input the contract computes from stored state and a
+// fresh oracle price. This circuit does not re-derive it; it proves the two
+// things a contract cannot:
+//
+//   1. The prover owns the position — they know the spend key whose BabyJubjub
+//      public key opens `old_position_commitment` (audit P3/P7). The old
+//      commitment is supplied by the CONTRACT from `PositionState`, so there is
+//      no position to invent (audit C3).
+//   2. The output note is worth exactly `payout - fee` and is addressed to that
+//      same key, so the settled value cannot be redirected or inflated.
+//
+// `new_position_commitment` is gone with the modify path: a tier fixes the size,
+// so a partially closed position would belong to no tier, and an untiered
+// position is one the vault cannot reserve against.
+template PositionClose() {
+    // ── public ────────────────────────────────────────────────
     signal input position_nullifier;
-    signal input new_position_commitment;
     signal input output_note_commitment;
-    signal input oracle_price;
+    signal input old_position_commitment;  // from PositionState, not the caller
+    signal input tier_id;
+    signal input entry_price;
+    signal input direction;
+    signal input payout;                   // computed on-chain, capped
     signal input fee;
-    signal input meta_hash;
+    signal input position_id;
 
-    // Private Inputs (Old Position)
-    signal input old_collateral;
-    signal input old_size;
-    signal input old_direction;
-    signal input old_entry_price;
-    signal input old_pubX;
-    signal input old_pubY;
-    signal input old_blindness;
-    signal input old_privKey;
-
-    // Private Inputs (New Position)
-    signal input new_collateral;
-    signal input new_size;
-    signal input new_direction;
-    signal input new_entry_price;
-    signal input new_pubX;
-    signal input new_pubY;
-    signal input new_blindness;
-
-    // Private Inputs (Output Note)
-    signal input note_amount;
-    signal input note_pubX;
-    signal input note_pubY;
+    // ── private ───────────────────────────────────────────────
+    signal input privKey;
+    signal input position_blindness;
     signal input note_blindness;
 
-    // 1. Dummy constraint for meta_hash
-    signal meta_hash_sq <== meta_hash * meta_hash;
+    component tier = TierConstants();
+    tier.tier_id <== tier_id;
 
-    // 1b. Old direction must be boolean.
-    // old_direction drives the settlement selector (2*old_direction - 1); if it
-    // is left as an arbitrary field element the settled PnL — and hence the
-    // extractable note_amount — becomes attacker-chosen (audit H1, 2nd forge).
-    old_direction * (old_direction - 1) === 0;
+    direction * (direction - 1) === 0;
 
-    // 2. Old Position Nullifier
-    component old_pos = PositionCommitment();
-    old_pos.collateral_amount <== old_collateral;
-    old_pos.size <== old_size;
-    old_pos.direction <== old_direction;
-    old_pos.entry_price <== old_entry_price;
-    old_pos.pubX <== old_pubX;
-    old_pos.pubY <== old_pubY;
-    old_pos.blindness <== old_blindness;
+    // ── ownership ─────────────────────────────────────────────
+    // The public key is DERIVED, never witnessed. As a free witness a prover
+    // could claim a position addressed to a key they do not hold; the
+    // commitment check alone does not stop that, because the commitment is
+    // being reconstructed from the same free values.
+    component key = DerivePublicKey();
+    key.privKey <== privKey;
 
-    component old_nullifier = PositionNullifier();
-    old_nullifier.commitment <== old_pos.commitment;
-    old_nullifier.privKey <== old_privKey;
-    old_nullifier.nullifier === position_nullifier;
+    component pos = PositionCommitment();
+    pos.collateral_amount <== tier.margin;
+    pos.size <== tier.size;
+    pos.direction <== direction;
+    pos.entry_price <== entry_price;
+    pos.pubX <== key.pubX;
+    pos.pubY <== key.pubY;
+    pos.blindness <== position_blindness;
+    pos.commitment === old_position_commitment;
 
-    // 3. New Position Commitment
-    // Direction must be boolean
-    new_direction * (new_direction - 1) === 0;
+    component nf = PositionNullifier();
+    nf.commitment <== pos.commitment;
+    nf.privKey <== privKey;
+    nf.nullifier === position_nullifier;
 
-    component new_pos = PositionCommitment();
-    new_pos.collateral_amount <== new_collateral;
-    new_pos.size <== new_size;
-    new_pos.direction <== new_direction;
-    new_pos.entry_price <== new_entry_price;
-    new_pos.pubX <== new_pubX;
-    new_pos.pubY <== new_pubY;
-    new_pos.blindness <== new_blindness;
-    new_pos.commitment === new_position_commitment;
-
-    // 4. Output Note Commitment
-    component out_note = NoteCommitment();
-    out_note.amount <== note_amount;
-    out_note.pubX <== note_pubX;
-    out_note.pubY <== note_pubY;
-    out_note.blindness <== note_blindness;
-    out_note.commitment === output_note_commitment;
-
-    // 5. Range checks.
-    // Load-bearing: old_size/old_entry_price/oracle_price feed the settlement
-    // multiplications (old_size * asset_val, old_size * debt_val); without a
-    // 64-bit bound their products can wrap mod p and forge a balanced
-    // settlement (audit H1). old_collateral bounds the lhs additively. The
-    // new-position and output-note amounts are bounded as before.
-    component rc_old_col = RangeCheck64();
-    rc_old_col.in <== old_collateral;
-
-    component rc_old_size = RangeCheck64();
-    rc_old_size.in <== old_size;
-
-    component rc_old_entry = RangeCheck64();
-    rc_old_entry.in <== old_entry_price;
-
-    component rc_oracle = RangeCheck64();
-    rc_oracle.in <== oracle_price;
-
-    component rc_new_size = RangeCheck64();
-    rc_new_size.in <== new_size;
-
-    component rc_new_entry = RangeCheck64();
-    rc_new_entry.in <== new_entry_price;
-
-    component rc_new_col = RangeCheck64();
-    rc_new_col.in <== new_collateral;
-
-    component rc_note_amt = RangeCheck64();
-    rc_note_amt.in <== note_amount;
+    // ── the payout ────────────────────────────────────────────
+    component rc_payout = RangeCheck64();
+    rc_payout.in <== payout;
 
     component rc_fee = RangeCheck64();
     rc_fee.in <== fee;
 
-    // 6. Balance & PnL Settlement
-    // LHS = old_collateral + old_size * asset_val
-    // RHS = new_collateral + note_amount + fee + old_size * debt_val
+    // The note is the payout net of the relayer fee. Range-checking the
+    // DIFFERENCE is what enforces `fee <= payout`: a larger fee makes this
+    // p - k, a ~254-bit value that cannot decompose into 64 bits. No separate
+    // comparator is needed, and there is no way to reach a negative note.
+    signal note_amount <== payout - fee;
+    component rc_note = RangeCheck64();
+    rc_note.in <== note_amount;
 
-    signal asset_val;
-    asset_val <== old_direction * (oracle_price - old_entry_price) + old_entry_price;
+    component out = NoteCommitment();
+    out.amount <== note_amount;
+    out.pubX <== key.pubX;
+    out.pubY <== key.pubY;
+    out.blindness <== note_blindness;
+    out.commitment === output_note_commitment;
 
-    signal debt_val;
-    debt_val <== old_direction * (old_entry_price - oracle_price) + oracle_price;
+    // ── the solvency cap ──────────────────────────────────────
+    // The contract already clamps `payout` to the tier maximum. Re-asserting it
+    // here means the two would have to be wrong in the SAME direction for the
+    // vault's reservation to be insufficient — and the reservation is the only
+    // thing standing between a winning trader and an unpayable claim. Both
+    // values are below 2^64, so 65 bits is enough for the comparator.
+    component cap = AssertGreaterEqThan(65);
+    cap.a <== tier.max_payout;
+    cap.b <== payout;
 
-    signal lhs;
-    lhs <== old_collateral + (old_size * asset_val);
-
-    signal rhs;
-    rhs <== new_collateral + note_amount + fee + (old_size * debt_val);
-
-    lhs === rhs;
+    // Keeps the id in the statement — see position_open.circom.
+    signal position_id_sq <== position_id * position_id;
 }
 
-component main { public [ position_nullifier, new_position_commitment, output_note_commitment, oracle_price, fee, meta_hash ] } = PositionClose(20);
+component main {
+    public [
+        position_nullifier,
+        output_note_commitment,
+        old_position_commitment,
+        tier_id,
+        entry_price,
+        direction,
+        payout,
+        fee,
+        position_id
+    ]
+} = PositionClose();
