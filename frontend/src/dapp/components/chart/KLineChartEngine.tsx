@@ -6,6 +6,7 @@ import { useMarketStore } from '../../store/market';
 import { loadBars, moreFor, planLoad, proxyTransport } from '../../lib/chart-datafeed';
 import { OVERLAY_GROUP } from './chart-tools';
 import { DEFAULT_INDICATORS, findIndicator } from './chart-indicators';
+import { VAYYL_LINE, registerVayylLine } from './vayyl-line';
 import type { ChartApi, ChartEngineProps } from './engine';
 
 /** Height for an indicator's own pane, in px. See the note where VOL is added. */
@@ -51,6 +52,13 @@ export default function KLineChartEngine({ overlays, className, onReady }: Props
       const kc = await import('klinecharts');
       if (disposed || !containerRef.current) return;
 
+      // Registered here, not at module scope: `registerOverlay` is a
+      // klinecharts export, and importing it any earlier would run the
+      // library's `window.navigator` access during server rendering.
+      // Re-registering the same name is a no-op overwrite, so remounting is
+      // safe.
+      registerVayylLine(kc.registerOverlay as (t: unknown) => void);
+
       const styles = getComputedStyle(el);
       const read = (name: string, fallback: string) =>
         styles.getPropertyValue(name).trim() || fallback;
@@ -61,6 +69,24 @@ export default function KLineChartEngine({ overlays, className, onReady }: Props
       const text = read('--text-muted', '#918780');
 
       const chart = kc.init(el, {
+        // Axis labels in the design's format: a day name where the day turns
+        // over, clock time everywhere else. KLineChart's default stamps the
+        // date onto every tick ("09-02 14:30"), which reads as noise once the
+        // ticks are close together.
+        formatter: {
+          // Axis labels in the design's format: the date where the day turns
+          // over, clock time everywhere else. KLineChart's default stamps the
+          // date onto every tick ("09-02 14:30"), which is noise once the ticks
+          // are close together.
+          //
+          // The day boundary is detected by COMPARING WITH THE PREVIOUS TICK,
+          // not by testing the clock. Ticks are placed by the chart at whatever
+          // spacing fits, so they land on times like 14:30 and 22:30 -- an
+          // equality test against midnight fires on none of them, which is
+          // exactly the bug this replaced. Labels are formatted left to right,
+          // so a timestamp going backwards means a new pass has started.
+          formatDate: formatAxisDate(),
+        },
         styles: {
           grid: {
             horizontal: { color: grid },
@@ -88,6 +114,13 @@ export default function KLineChartEngine({ overlays, className, onReady }: Props
           },
           indicator: {
             bars: [{ upColor: `${up}55`, downColor: `${down}55` }],
+            // The green value badge on the volume axis, as the design has it.
+            lastValueMark: { show: true },
+            // KLineChart's own indicator legend reads
+            // "VOL(5,10,20) MA5: ... MA10: ... MA20: ...". The panel renders a
+            // plain "Volume 1.82M" over the pane instead, so this is silenced
+            // for the same reason as the candle tooltip.
+            tooltip: { showRule: 'none' },
           },
           xAxis: { axisLine: { color: grid }, tickText: { color: text } },
           yAxis: { axisLine: { color: grid }, tickText: { color: text } },
@@ -138,7 +171,10 @@ export default function KLineChartEngine({ overlays, className, onReady }: Props
       // context; the candles are the chart.
       for (const name of DEFAULT_INDICATORS) {
         const onMain = findIndicator(name)?.pane === 'main';
-        const paneId = chart.createIndicator(name, onMain);
+        // `calcParams: []` drops VOL's 5/10/20 moving averages. They are on by
+        // default and draw three coloured lines across the volume bars, which
+        // the design does not have and which obscure the bars at this height.
+        const paneId = chart.createIndicator({ name, calcParams: [] }, onMain);
         if (!onMain && typeof paneId === 'string') {
           chart.setPaneOptions({ id: paneId, height: SUB_PANE_HEIGHT });
         }
@@ -195,7 +231,7 @@ export default function KLineChartEngine({ overlays, className, onReady }: Props
         continue;
       }
       const created = chart.createOverlay({
-        name: 'priceLine',
+        name: VAYYL_LINE,
         // Tagged so the rail's clear button can remove the user's drawings
         // WITHOUT removing these. Oracle, entry and liquidation are the three
         // lines on this chart that are not decoration.
@@ -206,13 +242,53 @@ export default function KLineChartEngine({ overlays, className, onReady }: Props
           line: { color: colorFor(o.tone), style: o.tone === 'oracle' ? 'dashed' : 'solid' },
           text: { color: colorFor(o.tone) },
         },
-        extendData: o.label,
+        extendData: `${o.label} ${o.price.toFixed(4)}`,
       });
       if (typeof created === 'string') ids.set(o.id, created);
     }
   }, [overlays]);
 
   return <div className={`vy-chart__canvas ${className ?? ''}`.trim()} ref={containerRef} />;
+}
+
+/**
+ * A stateful x-axis label formatter.
+ *
+ * Holds the previous tick so it can tell when the day changes. One instance per
+ * chart -- sharing it between charts would interleave two passes and drop
+ * dates.
+ */
+function formatAxisDate() {
+  let prevTimestamp = Number.POSITIVE_INFINITY;
+  let prevDay = '';
+
+  return ({ timestamp, type }: { timestamp: number; type: string }) => {
+    const d = new Date(timestamp);
+
+    if (type !== 'xAxis') {
+      return d.toLocaleString('en-GB', {
+        day: '2-digit',
+        month: 'short',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      });
+    }
+
+    // Time running backwards means the chart restarted its left-to-right pass.
+    if (timestamp < prevTimestamp) prevDay = '';
+    prevTimestamp = timestamp;
+
+    const day = d.toDateString();
+    const dayChanged = day !== prevDay;
+    prevDay = day;
+
+    // On a daily timeframe every tick is a different day, so this yields dates
+    // throughout without needing to know the interval.
+    return dayChanged
+      ? d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+      : d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
+  };
 }
 
 /** Map our interval union onto KLineChart's {type, span}. */

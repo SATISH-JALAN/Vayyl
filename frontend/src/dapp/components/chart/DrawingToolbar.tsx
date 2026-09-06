@@ -10,15 +10,19 @@ import type { ChartApi } from './engine';
 /**
  * The vertical drawing rail.
  *
- * Every button drives KLineChart's real overlay API — `createOverlay` puts the
- * chart into drawing mode and the next clicks on the canvas place the points.
- * Nothing here is a mock: the names come from `chart-tools.ts`, which is
- * checked against the installed library on every test run precisely because a
- * wrong name produces a button that does nothing at all, silently.
+ * Nine buttons, matching the circulated design: cursor, then the seven overlay
+ * groups from `chart-tools.ts`, then zoom. Every one drives KLineChart's real
+ * API — `createOverlay` puts the chart into drawing mode and the next clicks on
+ * the canvas place the points. Nothing here is a mock: the template names are
+ * checked against the installed library on every test run, precisely because a
+ * wrong name makes the button do nothing at all, silently.
  *
- * The cursor button cancels an in-progress drawing rather than being decorative
- * — without it, arming a tool by mistake leaves the chart waiting for clicks
- * with no way back except drawing the thing you did not want.
+ * The cursor button cancels an in-progress drawing rather than being
+ * decorative. Without it, arming a tool by mistake leaves the chart waiting for
+ * clicks with no way back except drawing the thing you did not want.
+ *
+ * Clearing drawings lives in the settings menu, not here, because the design
+ * has nine icons and a tenth would be visible drift.
  */
 export default function DrawingToolbar({ api }: { api: ChartApi | null }) {
   const [openGroup, setOpenGroup] = useState<string | null>(null);
@@ -50,18 +54,26 @@ export default function DrawingToolbar({ api }: { api: ChartApi | null }) {
     setOpenGroup(null);
   };
 
-  const clearDrawings = () => {
-    cancelPending();
-    // Scoped to the user's group. A bare removeOverlay() would also delete the
-    // oracle, entry and liquidation lines, which are not drawings.
-    api?.removeOverlay({ groupId: OVERLAY_GROUP.USER });
-    setActiveTool(null);
+  const zoom = (scale: number) => {
+    api?.zoomAtCoordinate(scale);
+    setOpenGroup(null);
+  };
+
+  const resetView = () => {
+    api?.scrollToRealTime();
+    setOpenGroup(null);
   };
 
   const disabled = api === null;
 
   return (
-    <div className="vy-rail" ref={railRef} role="toolbar" aria-orientation="vertical" aria-label="Drawing tools">
+    <div
+      className="vy-rail"
+      ref={railRef}
+      role="toolbar"
+      aria-orientation="vertical"
+      aria-label="Drawing tools"
+    >
       <button
         type="button"
         className={`vy-rail__btn ${activeTool === null ? 'is-active' : ''}`}
@@ -87,7 +99,9 @@ export default function DrawingToolbar({ api }: { api: ChartApi | null }) {
               aria-haspopup={single ? undefined : 'menu'}
               aria-expanded={single ? undefined : openGroup === group.id}
               onClick={() =>
-                single ? arm(group.tools[0]) : setOpenGroup((v) => (v === group.id ? null : group.id))
+                single
+                  ? arm(group.tools[0])
+                  : setOpenGroup((v) => (v === group.id ? null : group.id))
               }
             >
               <ChartIcon name={group.icon} />
@@ -113,15 +127,37 @@ export default function DrawingToolbar({ api }: { api: ChartApi | null }) {
         );
       })}
 
-      <button
-        type="button"
-        className="vy-rail__btn vy-rail__btn--clear"
-        onClick={clearDrawings}
-        disabled={disabled}
-        title="Remove your drawings — the oracle and liquidation lines stay"
-      >
-        <ChartIcon name="clear" />
-      </button>
+      <div className="vy-rail__group">
+        <button
+          type="button"
+          className="vy-rail__btn"
+          disabled={disabled}
+          title="Zoom"
+          aria-haspopup="menu"
+          aria-expanded={openGroup === 'zoom'}
+          onClick={() => setOpenGroup((v) => (v === 'zoom' ? null : 'zoom'))}
+        >
+          <ChartIcon name="zoom" />
+          <i className="vy-rail__more" aria-hidden="true" />
+        </button>
+
+        {openGroup === 'zoom' && (
+          <div className="vy-rail__menu" role="menu">
+            {/* Positive scales in, negative out. Anchored at the chart's own
+                zoom anchor rather than a coordinate, so it behaves like the
+                scroll-wheel zoom the user already has. */}
+            <button type="button" role="menuitem" onClick={() => zoom(0.5)}>
+              Zoom in
+            </button>
+            <button type="button" role="menuitem" onClick={() => zoom(-0.5)}>
+              Zoom out
+            </button>
+            <button type="button" role="menuitem" onClick={resetView}>
+              Jump to latest
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

@@ -30,7 +30,7 @@ export default function IndicatorMenu({ api }: { api: ChartApi | null }) {
       api.removeIndicator({ name });
       setActive((v) => v.filter((n) => n !== name));
     } else {
-      const paneId = api.createIndicator(name, pane === 'main');
+      const paneId = api.createIndicator({ name, calcParams: [] }, pane === 'main');
       // Same reason as the default VOL pane: left proportional, each added
       // oscillator takes a share of the height away from the candles until
       // they are unreadable.
@@ -56,7 +56,6 @@ export default function IndicatorMenu({ api }: { api: ChartApi | null }) {
       >
         <ChartIcon name="indicators" />
         <span>Indicators</span>
-        {active.length > 0 && <em className="vy-chart__count">{active.length}</em>}
       </button>
 
       {open && (

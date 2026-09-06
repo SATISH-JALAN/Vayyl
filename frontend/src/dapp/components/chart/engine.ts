@@ -73,6 +73,9 @@ export interface ChartApi {
   removeIndicator: (filter?: unknown) => unknown;
   overrideOverlay: (value: unknown) => unknown;
   setPaneOptions: (options: unknown) => void;
+  /** Positive scale zooms in, negative out. */
+  zoomAtCoordinate: (scale: number, coordinate?: unknown, animationDuration?: number) => void;
+  scrollToRealTime: (animationDuration?: number) => void;
   setStyles: (styles: unknown) => void;
   /** Renders the chart to a data URL locally. Uploads nothing. */
   getConvertPictureUrl: (includeOverlay?: boolean, type?: string, background?: string) => string;

@@ -39,9 +39,12 @@ export const TOOL_GROUPS: ToolGroup[] = [
     ],
   },
   {
-    id: 'horizontal',
-    label: 'Horizontal line',
-    icon: 'horizontal',
+    // One rail button for every straight level, horizontal and vertical. The
+    // design shows nine icons; this keeps all sixteen overlay templates
+    // reachable without adding a tenth.
+    id: 'lines',
+    label: 'Horizontal & vertical lines',
+    icon: 'lines',
     tools: [
       { id: 'horizontalStraightLine', label: 'Horizontal line', overlay: 'horizontalStraightLine' },
       { id: 'horizontalRayLine', label: 'Horizontal ray', overlay: 'horizontalRayLine' },
@@ -49,23 +52,10 @@ export const TOOL_GROUPS: ToolGroup[] = [
       // Draws its own price label on the axis, which is what makes it useful
       // for marking a level you are watching rather than just a line.
       { id: 'priceLine', label: 'Price line', overlay: 'priceLine' },
-    ],
-  },
-  {
-    id: 'vertical',
-    label: 'Vertical line',
-    icon: 'vertical',
-    tools: [
       { id: 'verticalStraightLine', label: 'Vertical line', overlay: 'verticalStraightLine' },
       { id: 'verticalRayLine', label: 'Vertical ray', overlay: 'verticalRayLine' },
       { id: 'verticalSegment', label: 'Vertical segment', overlay: 'verticalSegment' },
     ],
-  },
-  {
-    id: 'fib',
-    label: 'Fibonacci retracement',
-    icon: 'fib',
-    tools: [{ id: 'fibonacciLine', label: 'Fibonacci retracement', overlay: 'fibonacciLine' }],
   },
   {
     id: 'channel',
@@ -77,13 +67,22 @@ export const TOOL_GROUPS: ToolGroup[] = [
     ],
   },
   {
+    id: 'fib',
+    label: 'Fibonacci retracement',
+    icon: 'fib',
+    tools: [{ id: 'fibonacciLine', label: 'Fibonacci retracement', overlay: 'fibonacciLine' }],
+  },
+  {
     id: 'text',
     label: 'Text',
     icon: 'text',
-    tools: [
-      { id: 'simpleAnnotation', label: 'Annotation', overlay: 'simpleAnnotation' },
-      { id: 'simpleTag', label: 'Tag', overlay: 'simpleTag' },
-    ],
+    tools: [{ id: 'simpleTag', label: 'Text tag', overlay: 'simpleTag' }],
+  },
+  {
+    id: 'emoji',
+    label: 'Annotation',
+    icon: 'emoji',
+    tools: [{ id: 'simpleAnnotation', label: 'Annotation', overlay: 'simpleAnnotation' }],
   },
   {
     id: 'brush',

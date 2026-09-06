@@ -106,7 +106,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  text-transform: lowercase;
+  text-transform: capitalize;
 }
 
 .vy-badge--network i {
@@ -946,7 +946,18 @@
   .vy-marketbar__stats { gap: var(--space-4); }
 }
 
-.vy-marketbar__stats .vy-stat dd { display: flex; flex-direction: column; line-height: 1.25; }
+/* One line per stat, matching the design. The second lines that used to sit
+   under Mark Price, 24h Change and Oracle moved into tooltips -- they carried
+   real information (the contract's own unit, the feed source, the oracle age)
+   so they are not deleted, just no longer doubling the header's height. */
+.vy-marketbar__stats .vy-stat dd {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
 .vy-marketbar__stats .vy-stat dd small {
   color: var(--text-disabled);
   font-size: 0.65rem;
@@ -1516,4 +1527,55 @@
   }
 
   .vy-terminal__main { position: relative; }
+}
+
+/* The volume figure over its own pane, in the design's format. Positioned from
+   the bottom because that is where the sub-pane is anchored: the x-axis sits
+   below it and the pane height is pinned in KLineChartEngine. Both are declared
+   here so the label cannot drift away from the pane it labels. */
+.vy-chart__stage {
+  --vy-subpane: 72px;
+  --vy-xaxis: 26px;
+}
+
+.vy-chart__volume {
+  position: absolute;
+  left: var(--space-3);
+  bottom: calc(var(--vy-xaxis) + var(--vy-subpane) - 20px);
+  z-index: 5;
+  display: flex;
+  gap: var(--space-2);
+  pointer-events: none;
+  color: var(--text-muted);
+  font-size: var(--text-caption);
+}
+
+.vy-chart__volume strong { color: var(--success); font-weight: 600; }
+
+/* --- market bar, single-row stats -------------------------------------- */
+
+/* Wider gaps now that each stat is one line, so the row reads as separate
+   figures rather than one run of text. */
+.vy-marketbar__stats { gap: var(--space-6); }
+
+.vy-marketbar__stats .vy-stat dd .vy-badge {
+  padding: 3px var(--space-2);
+  font-size: 0.62rem;
+}
+
+/* Shown only when the oracle is past MAX_ORACLE_AGE. At that point the
+   contract refuses every position write, so this is the reason the page has
+   stopped working and it belongs on screen, not in a tooltip. */
+.vy-badge--warn {
+  border-color: rgba(211, 163, 95, 0.45);
+  background: rgba(211, 163, 95, 0.12);
+  color: var(--warning);
+}
+
+@media (max-width: 1320px) {
+  /* The proving-system badge is provenance, not state — first to go when the
+     row is tight. The network pill and the wallet button are what a user acts
+     on. */
+  .vy-marketbar__stats .vy-stat dd .vy-badge:not(.vy-badge--warn) { display: none; }
+  .vy-marketbar__stats { gap: var(--space-4); }
 }

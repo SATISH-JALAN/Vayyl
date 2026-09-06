@@ -18,6 +18,21 @@ interface Reading {
   high: number;
   low: number;
   close: number;
+  volume?: number | null;
+}
+
+/**
+ * Volume in the design's format: 1.82M, 940.3K, 512.
+ *
+ * Returns null rather than "0" when the source publishes no volume. The
+ * CoinGecko fallback genuinely does not, and a zero reads as "nothing traded",
+ * which is a different and false claim.
+ */
+function formatVolume(v: number | null | undefined): string | null {
+  if (v === null || v === undefined || !Number.isFinite(v)) return null;
+  if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(2)}M`;
+  if (v >= 1_000) return `${(v / 1_000).toFixed(1)}K`;
+  return v.toFixed(0);
 }
 
 /**
@@ -55,7 +70,9 @@ export default function ChartPanel() {
     if (!api) return;
     const onCrosshair = (data: unknown) => {
       const k = (data as { kLineData?: Reading } | null)?.kLineData;
-      setHovered(k ? { open: k.open, high: k.high, low: k.low, close: k.close } : null);
+      setHovered(
+        k ? { open: k.open, high: k.high, low: k.low, close: k.close, volume: k.volume } : null,
+      );
     };
     api.subscribeAction('onCrosshairChange', onCrosshair);
     return () => api.unsubscribeAction('onCrosshairChange', onCrosshair);
@@ -96,6 +113,7 @@ export default function ChartPanel() {
   const last = candles.length > 0 ? candles[candles.length - 1] : null;
   const reading: Reading | null = hovered ?? last;
   const change = reading ? reading.close - reading.open : null;
+  const volume = formatVolume(reading?.volume);
 
   return (
     <div className={`vy-chart ${isFullscreen ? 'is-fullscreen' : ''}`.trim()} ref={panelRef}>
@@ -165,6 +183,17 @@ export default function ChartPanel() {
                   {reading.open > 0 ? ((change / reading.open) * 100).toFixed(2) : '0.00'}%)
                 </span>
               )}
+            </div>
+          )}
+
+          {/* The design's volume label, over its own pane. KLineChart's built-in
+              indicator legend is silenced in the engine because it reads
+              "VOL(5,10,20) MA5: ... MA10: ... MA20: ..." and the design has a
+              plain figure. */}
+          {volume !== null && (
+            <div className="vy-chart__volume dapp-mono" aria-label="Volume">
+              <span>Volume</span>
+              <strong>{volume}</strong>
             </div>
           )}
 

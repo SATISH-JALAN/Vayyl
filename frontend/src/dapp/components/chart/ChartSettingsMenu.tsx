@@ -4,6 +4,7 @@ import { useRef, useState } from 'react';
 
 import ChartIcon from './ChartIcons';
 import { useDismiss } from '../common/useDismiss';
+import { OVERLAY_GROUP } from './chart-tools';
 import { CANDLE_STYLES, type CandleStyle, type ChartApi } from './engine';
 
 /**
@@ -101,6 +102,21 @@ export default function ChartSettingsMenu({ api }: { api: ChartApi | null }) {
           >
             <span>Last price line</span>
             <em>{lastPrice ? 'On' : 'Off'}</em>
+          </button>
+
+          {/* Lives here rather than on the rail, which the design fixes at nine
+              icons. Scoped to the user's group: a bare removeOverlay() would
+              also delete the oracle, entry and liquidation lines, which are not
+              drawings. */}
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              api?.removeOverlay({ groupId: OVERLAY_GROUP.USER });
+              setOpenMenu(null);
+            }}
+          >
+            <span>Clear my drawings</span>
           </button>
         </div>
       )}
