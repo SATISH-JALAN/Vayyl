@@ -96,11 +96,19 @@ export default function MarketBar() {
       <dl className="vy-marketbar__stats">
         <div className="vy-stat">
           <dt>Mark Price</dt>
-          <dd className={`dapp-mono ${stale ? 'is-stale' : ''}`}>
+          {/* One line, as the design has it. The contract's own unit -- stroops
+              of collateral per contract unit, the number the tier arithmetic
+              actually runs on -- moves to the tooltip rather than being
+              dropped: it is still the figure that settles. */}
+          <dd
+            className={`dapp-mono ${stale ? 'is-stale' : ''}`}
+            title={
+              oraclePrice === null
+                ? 'No oracle reading'
+                : `${(Number(oraclePrice) / 1e7).toFixed(4)} XLM per contract unit — the unit the contract settles in`
+            }
+          >
             {markPrice === null ? '—' : usd(markPrice)}
-            {oraclePrice !== null && (
-              <small>{(Number(oraclePrice) / 1e7).toFixed(4)} XLM/unit</small>
-            )}
           </dd>
         </div>
 
@@ -110,41 +118,60 @@ export default function MarketBar() {
             className={`dapp-mono ${
               summary?.change24h == null ? '' : summary.change24h >= 0 ? 'is-up' : 'is-down'
             }`}
+            title={source ? `Source: ${source}` : 'No market feed responded'}
           >
             {summary?.change24h == null
               ? '—'
               : `${summary.change24h >= 0 ? '+' : ''}${summary.change24h.toFixed(2)}%`}
-            <small>{source ?? 'no feed'}</small>
           </dd>
         </div>
 
         <div className="vy-stat">
           <dt>24h Volume</dt>
-          <dd className="dapp-mono">
+          <dd className="dapp-mono" title={source ? `Source: ${source}` : undefined}>
             {summary?.volume24h == null
               ? '—'
               : `$${(summary.volume24h / 1_000_000).toFixed(2)}M`}
           </dd>
         </div>
 
-        <div className="vy-stat">
+        <div className="vy-stat vy-stat--oracle">
           <dt>Oracle</dt>
           <dd className={`dapp-mono ${stale ? 'is-stale' : ''}`}>
             {/* Named for what it is. The deployment runs Vayyl's own SEP-40
                 publisher, not Reflector, and printing someone else's oracle
                 name would be a claim about provenance that is not true. */}
-            {configured ? 'Vayyl SEP-40' : 'offline'}
-            <small>
-              {age === null ? 'no reading' : stale ? `stale ${age}s` : `${age}s ago`}
-            </small>
+            <span
+              title={
+                age === null
+                  ? 'No price has been published'
+                  : `Last published ${age}s ago`
+              }
+            >
+              {configured ? 'Vayyl SEP-40' : 'offline'}
+            </span>
+
+            {/* Sits where the design puts its badge. Says the true thing: the
+                proving system, verified by Soroban's native host functions. */}
+            <span
+              className="vy-badge"
+              title="Groth16 over BN254, verified by Soroban's native host functions"
+            >
+              Groth16 · BN254
+            </span>
+
+            {/* Surfaced only when it matters. A fresh oracle needs no comment;
+                a stale one stops every position write path with StaleOracle,
+                and burying that in a tooltip would hide the reason the page
+                had stopped working. */}
+            {stale && age !== null && (
+              <span className="vy-badge vy-badge--warn">stale {age}s</span>
+            )}
           </dd>
         </div>
       </dl>
 
       <div className="vy-marketbar__right">
-        <span className="vy-badge" title="Groth16 over BN254, verified by Soroban's native host functions">
-          Groth16 · BN254
-        </span>
         <span className="vy-badge vy-badge--network">
           <i aria-hidden="true" />
           {NETWORK.toLowerCase()}
