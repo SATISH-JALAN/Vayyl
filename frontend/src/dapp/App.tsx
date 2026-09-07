@@ -64,7 +64,7 @@ const icons: Record<RouteKey, React.ReactNode> = {
 
 const navItems: Array<{ route: RouteKey; href: string; label: string; status?: string }> = [
   { route: 'dashboard', href: '/app', label: 'Dashboard' },
-  { route: 'pool', href: '/app?view=pool', label: 'Shielded Vault' },
+  { route: 'pool', href: '/app?view=pool', label: 'Private Payments' },
   // "Preview" stays until the contracts behind a page are actually deployed. The
   // page itself reports the same thing, but the nav is where a user decides what
   // to click, and a label that oversells it wastes their time.
