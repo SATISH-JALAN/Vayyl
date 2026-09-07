@@ -23,9 +23,9 @@ test('seed ASP leaves are well-formed and distinct', () => {
         INITIAL_ASP_LEAVES.length,
         'seed contains duplicate leaves',
     );
-    // Pins the live tree this seed is meant to mirror (asp-membership
-    // CD5DLTOI..., re-bootstrapped 2026-08-02, leaf_count = 5). The authoritative
-    // check is AspEnrollmentService.verifyAgainstChain() at startup; this only
-    // catches an edit that forgets the tree it has to match.
-    assert.equal(INITIAL_ASP_LEAVES.length, 5);
+    // Pins the live tree this seed mirrors: asp-membership CB5KJ3JW...
+    // (deployed 2026-09-05) reports leaf_count = 0, so the seed must be empty.
+    // The authoritative check is AspEnrollmentService.verifyAgainstChain() at
+    // startup; this only catches an edit that forgets the tree it has to match.
+    assert.equal(INITIAL_ASP_LEAVES.length, 0);
 });

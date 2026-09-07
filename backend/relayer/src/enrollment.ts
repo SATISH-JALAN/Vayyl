@@ -9,27 +9,26 @@ const FIELD_MODULUS = BigInt('21888242871839275222246405745257275088548364400416
 /**
  * Seed mirror of the on-chain ASP tree, in leaf-index order.
  *
- * These MUST be exactly the leaves the live `asp-membership` contract holds, in
- * the same order. The client rebuilds its ASP Merkle path from this list, so an
- * extra, missing, or reordered entry yields an ASP root the pool has never seen
- * and every deposit is rejected — with nothing in the message pointing here.
+ * EMPTY ON PURPOSE. This mirrors asp-membership
+ * CB5KJ3JWTLECUMDMIVAN4KMESGAQE6OY3PT6AGU6TVOGZHOGHAIELMRK (deployed
+ * 2026-09-05), whose leaf_count is 0 — nobody has enrolled against it yet. An
+ * empty seed is the only value verifyAgainstChain() can accept for that tree.
  *
- * A sixth leaf (4239942066...) used to be listed. It came from a browser session
- * on 2026-07-11 against the previous pool (CBUNTVFH...), and it does NOT exist on
- * the ASP tree re-bootstrapped on 2026-08-02, whose 5 leaves are below. Verified
- * against CD5DLTOI...: leaf_count = 5, and the first five hash to the on-chain
- * root 0x305ab746415279a18cfb09df42b68f9c9929742f528351f0bda7243e9d42e61d.
+ * DO NOT re-seed this from an older deployment. The five leaves that used to sit
+ * here belong to CD5DLTOI... (re-bootstrapped 2026-08-02, since grown to 9), and
+ * a sixth before those belonged to CBUNTVFH.... The client rebuilds its ASP
+ * Merkle path from this list, so an extra, missing, or reordered entry yields an
+ * ASP root the pool has never seen and every deposit is rejected — with nothing
+ * in the message pointing here.
  *
- * `assertMatchesChain()` re-checks this at startup — do not hand-edit without
+ * Leaves enrolled after boot live in ASP_LEAF_STORE_PATH and are real state: the
+ * contract can look a leaf up but cannot ENUMERATE, so a lost store is not
+ * reconstructible from chain. Empty here does not mean the store is disposable.
+ *
+ * verifyAgainstChain() re-checks this at startup — do not hand-edit without
  * re-running the service against the deployment you intend to serve.
  */
-export const INITIAL_ASP_LEAVES = [
-    '493303968121297919190709288514242366434035426510870016984691670712591500002',
-    '9355251392402790607961937900655308684576976763364361612739956862647095463520',
-    '14106331126009556338246032878453862687149273467692362284834967058553236230883',
-    '6038008587679474091977388632319198517007692281305427930445766896380993899274',
-    '431514013848352006058987078204336949099959250776040360314329397218955618469',
-];
+export const INITIAL_ASP_LEAVES: string[] = [];
 
 export function normalizeAspLeaf(value: unknown): string {
     if (typeof value !== 'string' || !/^[0-9]+$/.test(value)) {
