@@ -1,8 +1,7 @@
 import { useMemo, useState, type FormEvent } from 'react';
 
-import Button from '../common/Button';
-import Card from '../common/Card';
-import Input from '../common/Input';
+import AmountField from './AmountField';
+import Receipt from './Receipt';
 import { usePoolStore } from '../../store/pool';
 import { useWalletStore } from '../../store/wallet';
 import { decodeShieldedAddress } from '../../lib/address';
@@ -82,46 +81,53 @@ export default function TransferForm() {
   };
 
   return (
-    <Card className="dapp-card--strong">
-      <div className="dapp-card__header">
+    <section className="vy-composer">
+      <header className="vy-composer__head">
         <div>
-          <h2 className="dapp-card__title">Send privately</h2>
-          <p className="dapp-card__description">
-            Send any amount to another Vayyl address. Nothing leaves the pool,
-            the amount never touches the ledger, and neither party appears on it.
+          <h2>Send privately</h2>
+          <p>Pay another Vayyl address without either party touching the ledger.</p>
+        </div>
+        <span className="vy-badge vy-badge--ok">Amount hidden</span>
+      </header>
+
+      <form className="vy-composer__body" onSubmit={handleTransfer}>
+        <div className="vy-field">
+          <label className="vy-field-label" htmlFor="transfer-recipient">
+            Recipient shielded address
+          </label>
+          <input
+            id="transfer-recipient"
+            className={`vy-text-input dapp-mono ${addressError ? 'is-invalid' : ''}`.trim()}
+            placeholder="VAYYL…"
+            autoComplete="off"
+            spellCheck={false}
+            value={recipient}
+            onChange={(e) => setRecipient(e.target.value)}
+            disabled={isProving}
+            aria-invalid={!!addressError || undefined}
+          />
+          <p className={`vy-field-hint ${addressError ? 'is-error' : ''}`.trim()}>
+            {addressError ??
+              'The recipient discovers this payment automatically — you do not need to send them anything.'}
           </p>
         </div>
-        <span className="dapp-badge dapp-badge--success">Amount hidden</span>
-      </div>
 
-      <form className="dapp-form" onSubmit={handleTransfer}>
-        <Input
-          label="Recipient shielded address"
-          placeholder="VAYYL..."
-          value={recipient}
-          onChange={(e) => setRecipient(e.target.value)}
-          disabled={isProving}
-          helperText={
-            addressError ??
-            'The recipient discovers this payment automatically — you do not need to send them anything.'
-          }
-        />
-        <Input
-          label="Amount"
-          placeholder="0.0"
-          inputMode="decimal"
+        <AmountField
           value={amount}
-          onChange={(e) => setAmount(e.target.value)}
+          onChange={setAmount}
           disabled={isProving}
-          helperText={
+          invalid={!!amountError}
+          max={maxSendable > 0n ? { label: 'Max', value: fmt(maxSendable) } : null}
+          hint={
             amountError ??
             `${fmt(balance)} XLM across ${activeNotes.length} note${activeNotes.length === 1 ? '' : 's'}` +
-            (maxSendable < balance ? ` · up to ${fmt(maxSendable)} XLM in one send` : '')
+              (maxSendable < balance ? ` · up to ${fmt(maxSendable)} XLM in one send` : '')
           }
         />
 
-        <Button
+        <button
           type="submit"
+          className="vy-composer__submit"
           disabled={isProving || !recipientValid || !stroops || !address || activeNotes.length === 0}
         >
           {!address
@@ -129,26 +135,23 @@ export default function TransferForm() {
             : activeNotes.length === 0
               ? 'No spendable note'
               : isProving
-                ? 'Generating proof'
-                : !stroops
-                  ? 'Enter an amount'
-                  : `Send ${amount} XLM privately`}
-        </Button>
+                ? 'Generating proof…'
+                : !recipientValid
+                  ? 'Enter a recipient'
+                  : !stroops
+                    ? 'Enter an amount'
+                    : `Send ${amount} XLM privately`}
+        </button>
 
-        {confirmedHash ? (
-          <div className="dapp-transaction-confirmation">
-            <strong>
-              {status?.startsWith('Transfer confirmed') ? 'Transfer confirmed' : 'Latest transfer transaction'}
-            </strong>
-            <a href={`https://stellar.expert/explorer/testnet/tx/${confirmedHash}`} target="_blank" rel="noreferrer">
-              <code>{confirmedHash}</code>
-              <span className="dapp-explorer-brand"><img src="/brands/stellar-expert.png" alt="" />View in Stellar Expert</span>
-            </a>
-          </div>
-        ) : status ? (
-          <p className={`dapp-status ${isError ? 'dapp-status--error' : 'dapp-status--success'}`}>{status}</p>
-        ) : null}
+        <Receipt
+          confirmedHash={confirmedHash}
+          confirmed={status?.startsWith('Transfer confirmed')}
+          confirmedLabel="Transfer confirmed"
+          latestLabel="Latest transfer transaction"
+          status={status}
+          isError={isError}
+        />
       </form>
-    </Card>
+    </section>
   );
 }
