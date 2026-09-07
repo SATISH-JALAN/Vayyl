@@ -11,7 +11,13 @@
 // nothing is how a demo starts lying.
 //
 // When one of these ships for real, delete its entry and the compiler finds
-// every place that referenced it.
+// every place that referenced it. That promise rests on the "satisfies" below
+// rather than a type annotation: annotating the object Record<string, ...>
+// would widen its key type to string, and an index access on a string-keyed
+// Record NEVER errors -- so a deleted entry would compile fine everywhere and
+// render an empty tooltip at runtime. "satisfies" checks each value against
+// UnavailableReason while keeping the keys literal, so UNAVAILABLE.rageQuit is
+// a compile error the moment rageQuit is gone.
 
 export interface UnavailableReason {
   /** What the control is called in the UI. */
@@ -20,7 +26,7 @@ export interface UnavailableReason {
   reason: string;
 }
 
-export const UNAVAILABLE: Record<string, UnavailableReason> = {
+export const UNAVAILABLE = {
   limitOrders: {
     label: 'Limit',
     reason:
@@ -49,7 +55,10 @@ export const UNAVAILABLE: Record<string, UnavailableReason> = {
     reason:
       'Leverage is derived, not chosen. A tier fixes the position size, so the notional — and therefore the leverage — moves with the mark price.',
   },
-};
+} satisfies Record<string, UnavailableReason>;
+
+/** The keys that actually exist, for anything that stores one. */
+export type UnavailableKey = keyof typeof UNAVAILABLE;
 
 // chartScreenshot was here. It described TradingView's screenshot button, which
 // posts the image to snapshot.tradingview.com. KLineChart renders to a data URL
