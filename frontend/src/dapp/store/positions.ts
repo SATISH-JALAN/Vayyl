@@ -582,11 +582,26 @@ export const usePositionsStore = create<PositionsState>((set, get) => ({
       const price = await fetchOraclePrice();
       if (!price) throw new Error('The price feed is stale; attestation would be rejected.');
 
-      const posBlind = await positionBlindness(keys.spendKey, BigInt('0x' + positionId));
+      // Same key resolution closePosition uses, and for the same reason: the
+      // position is committed to whichever key owned the collateral note. A
+      // position funded from a note recovered under the old viewing key is
+      // committed to THAT key, so attesting with the wallet's current one
+      // rebuilds a different position_commitment and the proof fails. This used
+      // to read keys.spendKey directly, which meant such a position could be
+      // closed but never attested -- a failure that reads as random.
+      const record = recallPosition(positionId);
+      const noteKeys = record?.legacyViewingKey
+        ? await keysForNote(
+            { legacyViewingKey: record.legacyViewingKey } as never,
+            keys,
+          )
+        : keys;
+
+      const posBlind = await positionBlindness(noteKeys.spendKey, BigInt('0x' + positionId));
 
       set({ status: 'Proving solvency…' });
       const proved = await runWorkerTask('PROVE_POSITION_HEALTH', {
-        privKey: keys.spendKey.toString(),
+        privKey: noteKeys.spendKey.toString(),
         tierId: onChain.tierId,
         marginStroops: tier.marginStroops.toString(),
         size: tier.size.toString(),
