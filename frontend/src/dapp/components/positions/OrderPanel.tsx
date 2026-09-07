@@ -91,6 +91,26 @@ export default function OrderPanel() {
   const blocked =
     !address || !keys || !oraclePrice || !capacityOk || tierMismatch || isProving || !configured;
 
+  // The button is pinned while the alerts above it scroll, so every reason it is
+  // disabled has to be legible on the button ITSELF -- otherwise the trader sees
+  // a dead control and no cause. The alerts keep the full explanation; this is
+  // the one-line version that is always on screen.
+  const submitLabel = !configured
+    ? 'Positions not deployed'
+    : !address
+      ? 'Connect wallet first'
+      : !keys
+        ? 'Unlock your shielded keys'
+        : isProving
+          ? status || 'Generating proof…'
+          : tierMismatch
+            ? 'Tier table mismatch'
+            : !oraclePrice
+              ? 'Mark price unavailable'
+              : !capacityOk
+                ? 'Counterparty vault is full'
+                : 'Generate Proof & Review';
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!configured) return;
@@ -309,15 +329,7 @@ export default function OrderPanel() {
             className={`vy-submit ${direction === 1 ? 'vy-submit--long' : 'vy-submit--short'}`}
             disabled={blocked}
           >
-            {!configured
-              ? 'Positions not deployed'
-              : !address
-                ? 'Connect wallet first'
-                : !keys
-                  ? 'Unlock your shielded keys'
-                  : isProving
-                    ? status || 'Generating proof…'
-                    : 'Generate Proof & Review'}
+            {submitLabel}
           </button>
 
           {status && !isProving && (
