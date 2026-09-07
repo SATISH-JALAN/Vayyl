@@ -1591,6 +1591,15 @@
 /* Shown only when the oracle is past MAX_ORACLE_AGE. At that point the
    contract refuses every position write, so this is the reason the page has
    stopped working and it belongs on screen, not in a tooltip. */
+/* The positive counterpart to --warn. Used where a badge reports a state that
+   is correct rather than one that needs attention -- ASP enrollment, for
+   instance, where being in the tree is the working case. */
+.vy-badge--ok {
+  border-color: rgba(143, 199, 126, 0.45);
+  background: rgba(143, 199, 126, 0.12);
+  color: var(--success);
+}
+
 .vy-badge--warn {
   border-color: rgba(211, 163, 95, 0.45);
   background: rgba(211, 163, 95, 0.12);
