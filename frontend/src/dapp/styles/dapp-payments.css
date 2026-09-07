@@ -1,0 +1,548 @@
+/* ============================================================
+   Private payments
+   ============================================================
+   The payments page is built from the positions terminal's vocabulary --
+   .vy-market for the stat header, .vy-summary for the flow panel, .vy-tabs +
+   .vy-table for the ledger -- so it reads as the same product rather than a
+   second design pinned onto it. No new colours: everything below resolves to
+   tokens already declared in dapp-tokens.css.
+
+   What lives here is the composer: the mode rail, the amount field, the panels
+   in the right column, and the receipt line. */
+
+.vy-pay {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* The header panel doubles as the page's h1, so reset the heading defaults it
+   would otherwise bring with it. */
+h1.vy-market__pair {
+  margin: 0;
+  font-weight: inherit;
+}
+
+/* The terminal's topbar puts each stat on ONE line and moves the second line
+   into a tooltip, because it is competing for height with a chart. This header
+   is not, so the caption stays visible: "3 unspent notes" and "withdrawal
+   floor 5" are the context that makes the number above them mean something. */
+.vy-market__stats .vy-stat dd {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  line-height: 1.25;
+}
+
+.vy-market__stats .vy-stat dd small {
+  color: var(--text-disabled);
+  font-size: 0.65rem;
+  font-weight: 500;
+}
+
+.vy-market__stats .vy-stat dd .vy-badge {
+  align-self: flex-start;
+  padding: 3px var(--space-2);
+  font-size: 0.62rem;
+}
+
+/* --- two-column body -------------------------------------------------- */
+
+.vy-pay__grid {
+  display: grid;
+  grid-template-columns: minmax(360px, 1fr) minmax(300px, 380px);
+  gap: var(--space-3);
+  align-items: start;
+}
+
+.vy-pay__col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+/* --- mode rail -------------------------------------------------------- */
+
+/* Three options with an icon and a consequence, not three grey rectangles.
+   Shield / Send / Unshield are the protocol's words; the second line is what
+   the reader actually needs in order to pick one. */
+.vy-modes {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-l);
+  background: var(--bg-surface);
+}
+
+.vy-mode {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-m);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  transition:
+    background var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out);
+}
+
+.vy-mode svg {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+}
+
+.vy-mode span {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.vy-mode strong {
+  color: inherit;
+  font-size: var(--text-small);
+  font-weight: 750;
+  line-height: 1.25;
+}
+
+.vy-mode small {
+  color: var(--text-disabled);
+  font-size: var(--text-caption);
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.vy-mode:hover:not(.is-active) {
+  color: var(--text-secondary);
+  background: var(--bg-elevated);
+}
+
+.vy-mode.is-active {
+  border-color: var(--border-strong);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+}
+
+.vy-mode.is-active svg { color: var(--coral); }
+
+/* --- composer --------------------------------------------------------- */
+
+.vy-composer {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-l);
+  background: var(--bg-surface);
+  overflow: hidden;
+}
+
+.vy-composer__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-4) var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.vy-composer__head h2 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--text-h3);
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.vy-composer__head p {
+  margin: 4px 0 0;
+  color: var(--text-muted);
+  font-size: var(--text-caption);
+  line-height: var(--leading-body);
+}
+
+.vy-composer__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-4);
+}
+
+.vy-composer__submit {
+  padding: var(--space-4);
+  border: none;
+  border-radius: var(--radius-m);
+  background: var(--coral);
+  color: var(--charcoal);
+  font-family: var(--font-ui);
+  font-size: var(--text-small);
+  font-weight: 750;
+  cursor: pointer;
+  transition: filter var(--dur-fast) var(--ease-out);
+}
+
+.vy-composer__submit:hover:not(:disabled) { filter: brightness(1.08); }
+.vy-composer__submit:disabled { cursor: not-allowed; opacity: 0.45; }
+
+/* --- fields ----------------------------------------------------------- */
+
+.vy-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.vy-field-label {
+  color: var(--text-muted);
+  font-size: var(--text-caption);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.vy-field-hint {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-caption);
+  line-height: var(--leading-body);
+}
+
+.vy-field-hint.is-error { color: var(--error); }
+.vy-field-hint.is-ok { color: var(--success); }
+
+.vy-text-input {
+  width: 100%;
+  padding: var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-m);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: var(--text-caption);
+  outline: none;
+  transition: border-color var(--dur-fast) var(--ease-out);
+}
+
+.vy-text-input:focus { border-color: var(--border-strong); }
+.vy-text-input.is-invalid { border-color: var(--error); }
+.vy-text-input::placeholder { color: var(--text-disabled); }
+.vy-text-input:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* --- the amount, as the primary control ------------------------------- */
+
+.vy-amount-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.vy-amount-field__box {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-3) var(--space-3) var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-m);
+  background: var(--bg-primary);
+  transition: border-color var(--dur-fast) var(--ease-out);
+}
+
+.vy-amount-field__box:focus-within { border-color: var(--border-strong); }
+.vy-amount-field__box.is-invalid { border-color: var(--error); }
+
+/* Sized to be read across the room. This is the number the whole page exists
+   to collect; it should not look like the address field above it. */
+.vy-amount-field__input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 1.75rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  outline: none;
+}
+
+.vy-amount-field__input::placeholder { color: var(--text-disabled); }
+.vy-amount-field__input:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Hides the spinner arrows Chrome and Firefox add to numeric-looking fields. */
+.vy-amount-field__input::-webkit-outer-spin-button,
+.vy-amount-field__input::-webkit-inner-spin-button {
+  appearance: none;
+  margin: 0;
+}
+
+.vy-amount-field__asset {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 0 0 auto;
+  padding: 6px var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  font-size: var(--text-caption);
+  font-weight: 700;
+}
+
+.vy-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.vy-chip {
+  padding: 5px var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+  background: var(--bg-primary);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  transition:
+    border-color var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out);
+}
+
+.vy-chip:hover:not(:disabled) { border-color: var(--border-strong); color: var(--text-primary); }
+.vy-chip.is-active { border-color: var(--coral); color: var(--coral); }
+.vy-chip:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Distinguished because it is the only chip that is a COMPUTED ceiling rather
+   than a convenience: it is the largest amount one transfer can actually move. */
+.vy-chip--max { font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+
+/* --- note picker ------------------------------------------------------ */
+
+/* A withdrawal spends one whole note, so the notes are laid out as the discrete
+   objects they are. A <select> collapsed the amounts -- the very thing being
+   chosen -- behind a closed dropdown. */
+.vy-notepick {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-height: 176px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+.vy-notepick__item {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-m);
+  background: var(--bg-primary);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  transition:
+    border-color var(--dur-fast) var(--ease-out),
+    background var(--dur-fast) var(--ease-out);
+}
+
+.vy-notepick__item strong { color: var(--text-primary); font-size: var(--text-small); font-weight: 700; }
+.vy-notepick__item small { color: var(--text-disabled); font-size: 0.65rem; }
+.vy-notepick__item:hover:not(:disabled) { border-color: var(--border-strong); }
+.vy-notepick__item:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.vy-notepick__item.is-active {
+  border-color: var(--coral);
+  background: var(--bg-elevated);
+}
+
+/* --- receipt ---------------------------------------------------------- */
+
+.vy-receipt {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-m);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  text-decoration: none;
+  transition: border-color var(--dur-fast) var(--ease-out);
+}
+
+.vy-receipt:hover { border-color: var(--border-strong); }
+.vy-receipt.is-ok { border-left: 2px solid var(--success); }
+.vy-receipt__label { flex: 1; font-size: var(--text-caption); font-weight: 700; }
+.vy-receipt__hash { color: var(--text-muted); font-size: var(--text-caption); }
+.vy-receipt img { width: 14px; height: 14px; opacity: 0.7; }
+
+/* --- right-column panels ---------------------------------------------- */
+
+.vy-pay__side { position: sticky; top: var(--space-4); }
+
+.vy-panel {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-m);
+  background: var(--bg-surface);
+  overflow: hidden;
+}
+
+.vy-panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+/* Matches .vy-summary__head, so the three panels in this column read as one
+   family rather than three separately-styled boxes. */
+.vy-panel__head h2 {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--text-caption);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.vy-panel__action {
+  padding: 3px var(--space-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+}
+
+.vy-panel__action:hover { border-color: var(--border-strong); color: var(--text-primary); }
+
+.vy-panel__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3);
+}
+
+.vy-panel__link {
+  color: var(--coral);
+  font-size: var(--text-caption);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.vy-panel__link:hover { text-decoration: underline; }
+
+.vy-addr {
+  display: block;
+  padding: var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-s);
+  background: var(--bg-primary);
+  color: var(--success);
+  font-size: 0.62rem;
+  line-height: 1.6;
+  word-break: break-all;
+}
+
+.vy-steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: vy-step;
+}
+
+.vy-steps li {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--text-caption);
+  line-height: var(--leading-body);
+  counter-increment: vy-step;
+}
+
+.vy-steps li::before {
+  content: counter(vy-step);
+  flex: 0 0 auto;
+  color: var(--coral);
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  font-weight: 700;
+}
+
+/* --- flow summary tones ----------------------------------------------- */
+
+/* .vy-summary is the order ticket's panel, reused. These two tones are new:
+   the payments version reports whether each line is a privacy WIN or a public
+   consequence, and that distinction is the panel's whole point. */
+.vy-summary dd.is-ok { color: var(--success); }
+.vy-summary dd.is-warn { color: var(--warning); }
+
+/* --- anonymity meter -------------------------------------------------- */
+
+/* Drawn only when the pool enforces a withdrawal floor, because the floor is
+   the only denominator that means anything. See the note in pages/Pool.tsx. */
+.vy-meter {
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-primary);
+  overflow: hidden;
+}
+
+.vy-meter__fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  transition: width var(--dur-normal) var(--ease-out);
+}
+
+.vy-meter__fill.is-ok { background: var(--success); }
+.vy-meter__fill.is-low { background: var(--warning); }
+
+/* --- ledger on this page ---------------------------------------------- */
+
+/* The terminal pins its ledger to a clamped height because it shares one
+   locked 100dvh screen with a chart. This page scrolls normally, so the ledger
+   sizes to its rows -- but a cap keeps a wallet with fifty notes from turning
+   the page into an endless list. */
+.vy-pay .vy-tabs__panel {
+  min-height: 120px;
+  max-height: 260px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+/* --- narrow ----------------------------------------------------------- */
+
+@media (max-width: 1180px) {
+  .vy-pay__grid { grid-template-columns: minmax(0, 1fr); }
+  .vy-pay__side { position: static; }
+}
+
+@media (max-width: 620px) {
+  /* Stacked rather than squeezed: at three columns the second line truncates to
+     nothing, which is the half that makes the choice legible. */
+  .vy-modes { grid-auto-flow: row; }
+  .vy-amount-field__input { font-size: 1.4rem; }
+}

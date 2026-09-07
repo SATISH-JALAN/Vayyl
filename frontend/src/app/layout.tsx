@@ -7,6 +7,7 @@ import '../dapp/styles/dapp-typography.css';
 import '../dapp/styles/dapp-layout.css';
 import '../dapp/styles/dapp-components.css';
 import '../dapp/styles/dapp-terminal.css';
+import '../dapp/styles/dapp-payments.css';
 
 const cormorant = Cormorant_Garamond({
   subsets: ['latin'],
