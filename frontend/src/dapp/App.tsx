@@ -13,8 +13,12 @@ import Positions from './pages/Positions';
 import Escrow from './pages/Escrow';
 import Compliance from './pages/Compliance';
 import Settings from './pages/Settings';
+import { routeFromView, type RouteKey } from './routes';
 
-export type RouteKey = 'dashboard' | 'pool' | 'positions' | 'escrow' | 'compliance' | 'settings';
+// Re-exported so existing importers keep working; ./routes is the definition,
+// and src/app/app/page.tsx imports it from there rather than through this
+// module, which would pull every page component into the server bundle.
+export type { RouteKey };
 
 /** Stroke icons, sized to the 14px nav row. */
 const icons: Record<RouteKey, React.ReactNode> = {
@@ -91,17 +95,7 @@ const FIXED_HEIGHT_ROUTES: RouteKey[] = ['positions'];
 const OWN_TOPBAR_ROUTES: RouteKey[] = ['positions'];
 
 function routeFromLocation(fallback: RouteKey): RouteKey {
-  const view = new URLSearchParams(window.location.search).get('view');
-  if (
-    view === 'pool' ||
-    view === 'positions' ||
-    view === 'escrow' ||
-    view === 'compliance' ||
-    view === 'settings'
-  ) {
-    return view;
-  }
-  return fallback;
+  return routeFromView(new URLSearchParams(window.location.search).get('view') ?? undefined, fallback);
 }
 
 function renderRoute(route: RouteKey) {

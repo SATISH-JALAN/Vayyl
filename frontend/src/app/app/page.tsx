@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 
-import type { RouteKey } from '../../dapp/App';
+import { routeFromView } from '../../dapp/routes';
 import DappClient from './DappClient';
 
 export const metadata: Metadata = {
@@ -10,11 +10,10 @@ export const metadata: Metadata = {
 
 type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
 
-function routeFromView(value: string | string[] | undefined): RouteKey {
-  const view = Array.isArray(value) ? value[0] : value;
-  if (view === 'pool' || view === 'positions' || view === 'escrow' || view === 'settings') return view;
-  return 'dashboard';
-}
+// routeFromView is shared with the client parser in src/dapp/App.tsx. It used
+// to be a second hand-written whitelist here, and it had fallen behind by one
+// route: 'compliance' was missing, so /app?view=compliance server-rendered the
+// Dashboard and swapped to Compliance only after hydration.
 
 export default async function AppPage({ searchParams }: { searchParams: SearchParams }) {
   const params = await searchParams;

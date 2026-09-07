@@ -2,7 +2,7 @@
 
 import { Buffer } from 'buffer';
 
-import type { RouteKey } from '../../dapp/App';
+import type { RouteKey } from '../../dapp/routes';
 import App from '../../dapp/App';
 
 const globals = globalThis as typeof globalThis & { Buffer?: typeof Buffer };
