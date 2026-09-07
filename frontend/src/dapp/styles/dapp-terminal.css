@@ -260,10 +260,51 @@
   border-radius: var(--radius-l);
 }
 
-.vy-ticket form { display: flex; flex-direction: column; gap: var(--space-4); }
+.vy-ticket form { display: flex; flex-direction: column; flex: 1; min-height: 0; gap: var(--space-3); }
+
+/* The ticket's fields scroll; .vy-ticket__footer does not.
+   "min-height: 0" is load-bearing on BOTH the form above and this element. A
+   flex child's default min-height is auto, so without it the region refuses to
+   shrink below its content, the form grows past the column, and the submit
+   button leaves the screen -- which is the bug this replaced. */
+.vy-ticket__scroll {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+/* Pinned. The primary action of a trading terminal does not scroll. */
+.vy-ticket__footer {
+  position: relative;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* Says "there is more above" at the exact boundary. This used to be painted on
+   .vy-terminal__main::after as a fixed-width rectangle in the corner, which cut
+   through whatever row happened to be there; anchored to the footer it can only
+   ever land on the seam. */
+.vy-ticket__footer::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 100%;
+  height: 24px;
+  pointer-events: none;
+  background: linear-gradient(to bottom, transparent, var(--bg-surface));
+}
 
 .vy-ticket__offline {
   display: grid;
+  flex: none;
   gap: var(--space-1);
   margin-bottom: var(--space-4);
   padding: var(--space-3);
@@ -1162,14 +1203,13 @@
     min-height: 0;
   }
 
-  /* The one thing allowed to scroll. Order tickets are taller than charts on
-     real terminals too; the alternative is hiding the cap and liquidation
-     figures, which are the numbers a trader on a capped position most needs. */
+  /* The ticket itself clips; .vy-ticket__scroll inside it is the one thing
+     allowed to scroll. Order tickets are taller than charts on real terminals
+     too, and the alternative is hiding the cap and liquidation figures, which
+     are the numbers a trader on a capped position most needs. */
   .vy-ticket {
     min-height: 0;
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    scrollbar-width: thin;
+    overflow: hidden;
   }
 
   .vy-terminal__ledger {
@@ -1509,25 +1549,10 @@
 .vy-price { display: inline-flex; flex-direction: column; align-items: flex-end; line-height: 1.25; }
 .vy-price small { color: var(--text-disabled); font-size: 0.62rem; }
 
-/* The ticket is the one column allowed to scroll, so it needs to look like it
-   does. Without this the last row just stops mid-character at the panel edge. */
+/* The scroll fade now lives on .vy-ticket__footer::before, at the seam between
+   the ticket's scrolling fields and its pinned submit button. */
 .vy-ticket { position: relative; }
-
-@media (min-width: 981px) {
-  .vy-terminal__main::after {
-    content: '';
-    position: absolute;
-    right: 0;
-    bottom: 0;
-    width: 336px;
-    height: 28px;
-    pointer-events: none;
-    background: linear-gradient(to bottom, transparent, var(--bg-surface));
-    border-radius: 0 0 var(--radius-l) var(--radius-l);
-  }
-
-  .vy-terminal__main { position: relative; }
-}
+.vy-terminal__main { position: relative; }
 
 /* The volume figure over its own pane, in the design's format. Positioned from
    the bottom because that is where the sub-pane is anchored: the x-axis sits
