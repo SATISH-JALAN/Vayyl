@@ -1,11 +1,13 @@
 import { useState, type FormEvent } from 'react';
 
-import Button from '../common/Button';
-import Card from '../common/Card';
-import Input from '../common/Input';
+import AmountField from './AmountField';
+import Receipt from './Receipt';
 import { usePoolStore } from '../../store/pool';
 import { useWalletStore } from '../../store/wallet';
 import { xlmToStroops } from '../../lib/amount';
+
+/** Conveniences, not balances — this page never reads the account's public XLM. */
+const PRESETS = ['10', '25', '50', '100'];
 
 export default function DepositForm() {
   const [amount, setAmount] = useState('');
@@ -41,59 +43,53 @@ export default function DepositForm() {
   };
 
   return (
-    <Card className="dapp-card--strong">
-      <div className="dapp-card__header">
+    <section className="vy-composer">
+      <header className="vy-composer__head">
         <div>
-          <h2 className="dapp-card__title">Shield XLM</h2>
-          <p className="dapp-card__description">
-            Create a spendable note for this wallet.
-          </p>
+          <h2>Shield XLM</h2>
+          <p>Move public XLM into the pool as a spendable note.</p>
         </div>
-        <span className="dapp-badge dapp-badge--success">Deposit</span>
-      </div>
+        <span className="vy-badge">Any amount</span>
+      </header>
 
-      <form className="dapp-form" onSubmit={handleDeposit}>
-        <div className="dapp-form-row">
-          <Input
-            label="Amount"
-            placeholder="0.0"
-            inputMode="decimal"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            disabled={isProving}
-            helperText={
-              parseError ??
-              'Any amount, up to 7 decimal places. The deposit itself is public; ' +
-              'privacy starts when you send.'
-            }
-          />
-          <Input label="Asset" value="XLM" disabled readOnly />
-        </div>
+      <form className="vy-composer__body" onSubmit={handleDeposit}>
+        <AmountField
+          value={amount}
+          onChange={setAmount}
+          disabled={isProving}
+          invalid={!!parseError}
+          presets={PRESETS}
+          hint={
+            parseError ??
+            'Up to 7 decimal places. The deposit itself is public; privacy starts when you send.'
+          }
+        />
 
-        <Button type="submit" disabled={isProving || !address || !stroops}>
+        <button
+          type="submit"
+          className="vy-composer__submit"
+          disabled={isProving || !address || !stroops}
+        >
           {!address
             ? 'Connect wallet first'
             : isProving
-              ? 'Generating proof'
+              ? 'Generating proof…'
               : !stroops
                 ? 'Enter an amount'
                 : aspEligible === false
                   ? `Prepare & shield ${amount} XLM`
                   : `Shield ${amount} XLM`}
-        </Button>
+        </button>
 
-        {confirmedHash ? (
-          <div className="dapp-transaction-confirmation">
-            <strong>{status?.startsWith('Deposit confirmed') ? 'Deposit confirmed' : 'Latest shield transaction'}</strong>
-            <a href={`https://stellar.expert/explorer/testnet/tx/${confirmedHash}`} target="_blank" rel="noreferrer">
-              <code>{confirmedHash}</code>
-              <span className="dapp-explorer-brand"><img src="/brands/stellar-expert.png" alt="" />View in Stellar Expert</span>
-            </a>
-          </div>
-        ) : status ? (
-          <p className={`dapp-status ${isError ? 'dapp-status--error' : 'dapp-status--success'}`}>{status}</p>
-        ) : null}
+        <Receipt
+          confirmedHash={confirmedHash}
+          confirmed={status?.startsWith('Deposit confirmed')}
+          confirmedLabel="Deposit confirmed"
+          latestLabel="Latest shield transaction"
+          status={status}
+          isError={isError}
+        />
       </form>
-    </Card>
+    </section>
   );
 }
