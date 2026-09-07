@@ -1,10 +1,9 @@
 import { useState, type FormEvent } from 'react';
 
-import Button from '../common/Button';
-import Card from '../common/Card';
-import Input from '../common/Input';
+import Receipt from './Receipt';
 import { usePoolStore } from '../../store/pool';
 import { useWalletStore } from '../../store/wallet';
+import { shortHash } from '../../lib/format';
 
 export default function WithdrawForm() {
   const [destination, setDestination] = useState('');
@@ -56,67 +55,101 @@ export default function WithdrawForm() {
   };
 
   return (
-    <Card className="dapp-card--strong">
-      <div className="dapp-card__header">
+    <section className="vy-composer">
+      <header className="vy-composer__head">
         <div>
-          <h2 className="dapp-card__title">Unshield XLM</h2>
-          <p className="dapp-card__description">
-            Send one note to a funded Stellar account.
-          </p>
+          <h2>Unshield XLM</h2>
+          <p>Send one whole note to a funded Stellar account.</p>
         </div>
-        <span className="dapp-badge dapp-badge--warning">Whole note</span>
-      </div>
+        <span className="vy-badge vy-badge--warn">Whole note</span>
+      </header>
 
-      <form className="dapp-form" onSubmit={handleWithdraw}>
-        <Input
-          label="Destination address"
-          placeholder="G..."
-          value={destination}
-          onChange={(e) => setDestination(e.target.value)}
-          disabled={isProving}
-        />
-        <div className="dapp-form-group">
-          <label className="dapp-label" htmlFor="withdraw-note">Note to unshield</label>
-          <select
-            id="withdraw-note"
-            className="dapp-input"
-            value={selected?.id ?? ''}
-            onChange={(e) => setSelectedNoteId(e.target.value)}
-            disabled={isProving || activeNotes.length === 0}
-          >
-            {activeNotes.map((note) => (
-              <option key={note.id} value={note.id}>
-                {fmt(note.amountStroops!)} XLM
-              </option>
-            ))}
-          </select>
-          <p className="dapp-helper">
-            A withdrawal spends one whole note. To take out part of one, send
-            yourself the amount first, then unshield the note that comes back.
+      <form className="vy-composer__body" onSubmit={handleWithdraw}>
+        <div className="vy-field">
+          <label className="vy-field-label" htmlFor="withdraw-destination">
+            Destination address
+          </label>
+          <input
+            id="withdraw-destination"
+            className="vy-text-input dapp-mono"
+            placeholder="G…"
+            autoComplete="off"
+            spellCheck={false}
+            value={destination}
+            onChange={(e) => setDestination(e.target.value)}
+            disabled={isProving}
+          />
+          <p className="vy-field-hint">
+            This address and the amount are public. The link back to your deposit is not.
           </p>
         </div>
 
-        <Button type="submit" disabled={isProving || !destination || !address || !selected}>
+        {/* Picked from a list rather than a <select>, because the amount is the
+            thing being chosen and a collapsed dropdown hides exactly that. The
+            constraint -- one whole note, no partial exit -- is legible when the
+            notes are laid out as the discrete objects they are. */}
+        <div className="vy-field">
+          <span className="vy-field-label">Note to unshield</span>
+          {activeNotes.length === 0 ? (
+            <p className="vy-field-hint">
+              No spendable note yet. Shield XLM first, or wait for an incoming payment to be
+              scanned.
+            </p>
+          ) : (
+            <div className="vy-notepick" role="radiogroup" aria-label="Note to unshield">
+              {activeNotes.map((note) => (
+                <button
+                  key={note.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={selected?.id === note.id}
+                  className={`vy-notepick__item ${selected?.id === note.id ? 'is-active' : ''}`.trim()}
+                  onClick={() => setSelectedNoteId(note.id)}
+                  disabled={isProving}
+                >
+                  <strong className="dapp-mono">{fmt(note.amountStroops!)} XLM</strong>
+                  <small className="dapp-mono" title={note.commitment}>
+                    leaf #{note.leafIndex} · {shortHash(note.commitment, 6, 4)}
+                  </small>
+                </button>
+              ))}
+            </div>
+          )}
+          {/* Only alongside actual notes. With none to pick, the line above
+              already says what to do, and stacking both read as two answers to
+              a question the user had not asked yet. */}
+          {activeNotes.length > 0 && (
+            <p className="vy-field-hint">
+              A withdrawal spends one whole note. To take out part of one, send yourself the
+              amount first, then unshield the note that comes back.
+            </p>
+          )}
+        </div>
+
+        <button
+          type="submit"
+          className="vy-composer__submit"
+          disabled={isProving || !destination || !address || !selected}
+        >
           {!address
             ? 'Connect wallet first'
             : !selected
               ? 'No spendable note'
               : isProving
-                ? 'Generating proof'
-                : `Unshield ${fmt(selected.amountStroops!)} XLM`}
-        </Button>
+                ? 'Generating proof…'
+                : !destination
+                  ? 'Enter a destination'
+                  : `Unshield ${fmt(selected.amountStroops!)} XLM`}
+        </button>
 
-        {confirmedHash ? (
-          <div className="dapp-transaction-confirmation">
-            <strong>{status?.startsWith('Withdraw confirmed') ? 'Withdrawal confirmed' : 'Latest withdrawal transaction'}</strong>
-            <a href={`https://stellar.expert/explorer/testnet/tx/${confirmedHash}`} target="_blank" rel="noreferrer">
-              <code>{confirmedHash}</code>
-              <span className="dapp-explorer-brand"><img src="/brands/stellar-expert.png" alt="" />View in Stellar Expert</span>
-            </a>
-          </div>
-        ) : status ? (
-          <p className={`dapp-status ${isError ? 'dapp-status--error' : 'dapp-status--success'}`}>{status}</p>
-        ) : null}
+        <Receipt
+          confirmedHash={confirmedHash}
+          confirmed={status?.startsWith('Withdraw confirmed')}
+          confirmedLabel="Withdrawal confirmed"
+          latestLabel="Latest withdrawal transaction"
+          status={status}
+          isError={isError}
+        />
       </form>
 
       {/*
@@ -156,17 +189,17 @@ export default function WithdrawForm() {
               />
               I understand this exit is public and permanent.
             </label>
-            <Button
+            <button
               type="button"
-              variant="ghost"
+              className="dapp-button dapp-button--ghost"
               onClick={handleRageQuit}
               disabled={isProving || !destination || !address || !exitAcknowledged || activeNotes.length === 0}
             >
-              {!destination ? 'Enter a destination above' : isProving ? 'Generating proof' : 'Exit publicly'}
-            </Button>
+              {!destination ? 'Enter a destination above' : isProving ? 'Generating proof…' : 'Exit publicly'}
+            </button>
           </div>
         ) : null}
       </div>
-    </Card>
+    </section>
   );
 }
