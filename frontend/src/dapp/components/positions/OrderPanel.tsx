@@ -114,211 +114,218 @@ export default function OrderPanel() {
       )}
 
       <form onSubmit={handleSubmit} aria-disabled={!configured}>
-        <div className="vy-side" role="radiogroup" aria-label="Direction">
-          <button
-            type="button"
-            role="radio"
-            aria-checked={direction === 1}
-            className={`vy-side__btn vy-side__btn--long ${direction === 1 ? 'is-active' : ''}`}
-            onClick={() => setDirection(1)}
-            disabled={isProving || !configured}
-          >
-            Long
-          </button>
-          <button
-            type="button"
-            role="radio"
-            aria-checked={direction === 0}
-            className={`vy-side__btn vy-side__btn--short ${direction === 0 ? 'is-active' : ''}`}
-            onClick={() => setDirection(0)}
-            disabled={isProving || !configured}
-          >
-            Short
-          </button>
-        </div>
-
-        {/* Reports state, does not offer a choice — there is no unshielded path. */}
-        <Unavailable reason={UNAVAILABLE.shieldedToggle} className="vy-shield-row">
-          <div className="vy-shield">
-            <span className="vy-shield__icon" aria-hidden="true">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M12 3l7 3v6c0 4.5-3 8-7 9-4-1-7-4.5-7-9V6z" />
-                <path d="M9 12l2 2 4-4" />
-              </svg>
-            </span>
-            <strong>Shielded Position (ZK-SNARK)</strong>
-            <span className="vy-switch is-on" role="img" aria-label="Always on" />
-          </div>
-        </Unavailable>
-
-        <div className="vy-ordertype" role="tablist" aria-label="Order type">
-          <button type="button" role="tab" aria-selected className="vy-ordertype__tab is-active">
-            Market
-          </button>
-          <Unavailable reason={UNAVAILABLE.limitOrders}>
-            <button type="button" className="vy-ordertype__tab" disabled aria-disabled="true">
-              Limit
+        {/* Scrolls; the submit button below does not. On a short window the
+            ticket is taller than its column, and the one control that must
+            never be the thing pushed off-screen is the primary action. */}
+        <div className="vy-ticket__scroll">
+          <div className="vy-side" role="radiogroup" aria-label="Direction">
+            <button
+              type="button"
+              role="radio"
+              aria-checked={direction === 1}
+              className={`vy-side__btn vy-side__btn--long ${direction === 1 ? 'is-active' : ''}`}
+              onClick={() => setDirection(1)}
+              disabled={isProving || !configured}
+            >
+              Long
             </button>
-          </Unavailable>
-        </div>
-
-        <div className="vy-field">
-          <label className="vy-field__label">
-            Collateral
-            <span className="vy-field__hint">fixed per tier</span>
-          </label>
-          <div className="vy-amount">
-            <output className="dapp-mono vy-amount__value">{xlm(tier.marginStroops)}</output>
-            <span className="vy-amount__unit">XLM</span>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={direction === 0}
+              className={`vy-side__btn vy-side__btn--short ${direction === 0 ? 'is-active' : ''}`}
+              onClick={() => setDirection(0)}
+              disabled={isProving || !configured}
+            >
+              Short
+            </button>
           </div>
 
-          <input
-            className="vy-slider"
-            type="range"
-            min={0}
-            max={TIERS.length - 1}
-            step={1}
-            value={tierId}
-            onChange={(e) => setTierId(Number(e.target.value))}
-            disabled={isProving || !configured}
-            aria-label="Size tier"
-          />
-          <div className="vy-slider__stops">
-            {TIERS.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                className={`vy-slider__stop ${tierId === t.id ? 'is-active' : ''}`}
-                onClick={() => setTierId(t.id)}
-                disabled={isProving || !configured}
-              >
-                {xlm(t.marginStroops, 0)} XLM
+          {/* Reports state, does not offer a choice — there is no unshielded path. */}
+          <Unavailable reason={UNAVAILABLE.shieldedToggle} className="vy-shield-row">
+            <div className="vy-shield">
+              <span className="vy-shield__icon" aria-hidden="true">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M12 3l7 3v6c0 4.5-3 8-7 9-4-1-7-4.5-7-9V6z" />
+                  <path d="M9 12l2 2 4-4" />
+                </svg>
+              </span>
+              <strong>Shielded Position (ZK-SNARK)</strong>
+              <span className="vy-switch is-on" role="img" aria-label="Always on" />
+            </div>
+          </Unavailable>
+
+          <div className="vy-ordertype" role="tablist" aria-label="Order type">
+            <button type="button" role="tab" aria-selected className="vy-ordertype__tab is-active">
+              Market
+            </button>
+            <Unavailable reason={UNAVAILABLE.limitOrders}>
+              <button type="button" className="vy-ordertype__tab" disabled aria-disabled="true">
+                Limit
               </button>
-            ))}
+            </Unavailable>
           </div>
-          <p className="vy-note">
-            Sizes are public and identical inside a tier. That sameness is what hides yours.
-          </p>
-        </div>
 
-        <div className="vy-field">
-          <label className="vy-field__label">
-            Leverage
-            <span className="vy-field__hint">derived, not chosen</span>
-          </label>
-          <Unavailable reason={UNAVAILABLE.leverageSlider} className="vy-lev-row">
-            <div className="vy-lev">
-              <strong className="dapp-mono">
-                {oraclePrice ? `${leverageAt(tier, oraclePrice).toFixed(2)}×` : '—'}
-              </strong>
-              <span className="vy-lev__detail">{tier.size.toString()} units at the mark</span>
+          <div className="vy-field">
+            <label className="vy-field__label">
+              Collateral
+              <span className="vy-field__hint">fixed per tier</span>
+            </label>
+            <div className="vy-amount">
+              <output className="dapp-mono vy-amount__value">{xlm(tier.marginStroops)}</output>
+              <span className="vy-amount__unit">XLM</span>
             </div>
-          </Unavailable>
-        </div>
 
-        <div className="vy-summary">
-          <div className="vy-summary__head">
-            <span>Order summary (confidential)</span>
-            <InfoPopover label="How these figures are derived" align="right">
-              <strong>Every figure here is a real limit</strong>, computed from the tier table and
-              the current mark — not an estimate. This is a <strong>capped</strong> position: past
-              the knock-out it stops earning, and that cap is exactly what lets the counterparty
-              vault prove on-chain that it can pay you. Collateral and size are public constants
-              per tier; leverage is whatever the size works out to at the current price.
-            </InfoPopover>
+            <input
+              className="vy-slider"
+              type="range"
+              min={0}
+              max={TIERS.length - 1}
+              step={1}
+              value={tierId}
+              onChange={(e) => setTierId(Number(e.target.value))}
+              disabled={isProving || !configured}
+              aria-label="Size tier"
+            />
+            <div className="vy-slider__stops">
+              {TIERS.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  className={`vy-slider__stop ${tierId === t.id ? 'is-active' : ''}`}
+                  onClick={() => setTierId(t.id)}
+                  disabled={isProving || !configured}
+                >
+                  {xlm(t.marginStroops, 0)} XLM
+                </button>
+              ))}
+            </div>
+            <p className="vy-note">
+              Sizes are public and identical inside a tier. That sameness is what hides yours.
+            </p>
           </div>
-          <dl>
-            <div>
-              <dt>Margin mode</dt>
-              <dd>Isolated</dd>
+
+          <div className="vy-field">
+            <label className="vy-field__label">
+              Leverage
+              <span className="vy-field__hint">derived, not chosen</span>
+            </label>
+            <Unavailable reason={UNAVAILABLE.leverageSlider} className="vy-lev-row">
+              <div className="vy-lev">
+                <strong className="dapp-mono">
+                  {oraclePrice ? `${leverageAt(tier, oraclePrice).toFixed(2)}×` : '—'}
+                </strong>
+                <span className="vy-lev__detail">{tier.size.toString()} units at the mark</span>
+              </div>
+            </Unavailable>
+          </div>
+
+          <div className="vy-summary">
+            <div className="vy-summary__head">
+              <span>Order summary (confidential)</span>
+              <InfoPopover label="How these figures are derived" align="right">
+                <strong>Every figure here is a real limit</strong>, computed from the tier table and
+                the current mark — not an estimate. This is a <strong>capped</strong> position: past
+                the knock-out it stops earning, and that cap is exactly what lets the counterparty
+                vault prove on-chain that it can pay you. Collateral and size are public constants
+                per tier; leverage is whatever the size works out to at the current price.
+              </InfoPopover>
             </div>
-            <div>
-              <dt>Est. liquidation</dt>
-              <dd><Price value={liq} /></dd>
-            </div>
-            <div>
-              <dt>Knocks out at</dt>
-              <dd><Price value={bounds?.knockOut ?? null} /></dd>
-            </div>
-            <div>
-              <dt>Wiped out at</dt>
-              <dd><Price value={bounds?.wipeOut ?? null} /></dd>
-            </div>
-            <div>
-              <dt>Max payout</dt>
-              <dd className="dapp-mono">{xlm(tier.maxPayoutStroops)} XLM</dd>
-            </div>
-            <div>
-              <dt>Proof output</dt>
-              <dd>Position commitment</dd>
-            </div>
-            <div>
-              <dt>Verifier</dt>
-              <dd>Native Soroban BN254</dd>
-            </div>
-          </dl>
-          <p className="vy-note">
-            Capped position: past the knock-out it stops earning. The cap is what lets the
-            counterparty prove on-chain that it can pay you.
-          </p>
+            <dl>
+              <div>
+                <dt>Margin mode</dt>
+                <dd>Isolated</dd>
+              </div>
+              <div>
+                <dt>Est. liquidation</dt>
+                <dd><Price value={liq} /></dd>
+              </div>
+              <div>
+                <dt>Knocks out at</dt>
+                <dd><Price value={bounds?.knockOut ?? null} /></dd>
+              </div>
+              <div>
+                <dt>Wiped out at</dt>
+                <dd><Price value={bounds?.wipeOut ?? null} /></dd>
+              </div>
+              <div>
+                <dt>Max payout</dt>
+                <dd className="dapp-mono">{xlm(tier.maxPayoutStroops)} XLM</dd>
+              </div>
+              <div>
+                <dt>Proof output</dt>
+                <dd>Position commitment</dd>
+              </div>
+              <div>
+                <dt>Verifier</dt>
+                <dd>Native Soroban BN254</dd>
+              </div>
+            </dl>
+            <p className="vy-note">
+              Capped position: past the knock-out it stops earning. The cap is what lets the
+              counterparty prove on-chain that it can pay you.
+            </p>
+          </div>
+
+          {tierMismatch && (
+            <p className="vy-alert vy-alert--error" role="alert">
+              This build and the deployed contract disagree about the tier table. Any proof made
+              here would be rejected on-chain.
+            </p>
+          )}
+
+          {configured && !hasFetched && !oraclePrice && (
+            <p className="vy-alert">Reading the mark price from the chain…</p>
+          )}
+
+          {configured && hasFetched && !oraclePrice && (
+            <p className="vy-alert vy-alert--error" role="alert">
+              The oracle price is stale or unavailable, so the contract will refuse to open a
+              position. Existing positions are unaffected. If this persists, the price publisher has
+              stopped — see scripts/push_price.mjs.
+            </p>
+          )}
+
+          {vault && !capacityOk && (
+            <p className="vy-alert vy-alert--error" role="alert">
+              The counterparty is full. This tier needs {xlm(reserve)} XLM set aside and only{' '}
+              {xlm(vault.freeBalance)} XLM is free. This is a normal state — it frees up as
+              positions close, or anyone can add liquidity.
+            </p>
+          )}
+
+          {vault && capacityOk && (
+            <p className="vy-alert">
+              Opening reserves <strong className="dapp-mono">{xlm(reserve)} XLM</strong> of the{' '}
+              <strong className="dapp-mono">{xlm(vault.freeBalance)} XLM</strong> free in the
+              counterparty vault.
+            </p>
+          )}
         </div>
 
-        {tierMismatch && (
-          <p className="vy-alert vy-alert--error" role="alert">
-            This build and the deployed contract disagree about the tier table. Any proof made
-            here would be rejected on-chain.
-          </p>
-        )}
+        <div className="vy-ticket__footer">
+          <button
+            type="submit"
+            className={`vy-submit ${direction === 1 ? 'vy-submit--long' : 'vy-submit--short'}`}
+            disabled={blocked}
+          >
+            {!configured
+              ? 'Positions not deployed'
+              : !address
+                ? 'Connect wallet first'
+                : !keys
+                  ? 'Unlock your shielded keys'
+                  : isProving
+                    ? status || 'Generating proof…'
+                    : 'Generate Proof & Review'}
+          </button>
 
-        {configured && !hasFetched && !oraclePrice && (
-          <p className="vy-alert">Reading the mark price from the chain…</p>
-        )}
-
-        {configured && hasFetched && !oraclePrice && (
-          <p className="vy-alert vy-alert--error" role="alert">
-            The oracle price is stale or unavailable, so the contract will refuse to open a
-            position. Existing positions are unaffected. If this persists, the price publisher has
-            stopped — see scripts/push_price.mjs.
-          </p>
-        )}
-
-        {vault && !capacityOk && (
-          <p className="vy-alert vy-alert--error" role="alert">
-            The counterparty is full. This tier needs {xlm(reserve)} XLM set aside and only{' '}
-            {xlm(vault.freeBalance)} XLM is free. This is a normal state — it frees up as
-            positions close, or anyone can add liquidity.
-          </p>
-        )}
-
-        {vault && capacityOk && (
-          <p className="vy-alert">
-            Opening reserves <strong className="dapp-mono">{xlm(reserve)} XLM</strong> of the{' '}
-            <strong className="dapp-mono">{xlm(vault.freeBalance)} XLM</strong> free in the
-            counterparty vault.
-          </p>
-        )}
-
-        <button
-          type="submit"
-          className={`vy-submit ${direction === 1 ? 'vy-submit--long' : 'vy-submit--short'}`}
-          disabled={blocked}
-        >
-          {!configured
-            ? 'Positions not deployed'
-            : !address
-              ? 'Connect wallet first'
-              : !keys
-                ? 'Unlock your shielded keys'
-                : isProving
-                  ? status || 'Generating proof…'
-                  : 'Generate Proof & Review'}
-        </button>
-
-        {status && !isProving && (
-          <p className={`vy-alert ${isError ? 'vy-alert--error' : 'vy-alert--ok'}`} role="status">
-            {status}
-          </p>
-        )}
+          {status && !isProving && (
+            <p className={`vy-alert ${isError ? 'vy-alert--error' : 'vy-alert--ok'}`} role="status">
+              {status}
+            </p>
+          )}
+        </div>
       </form>
     </aside>
   );
